@@ -3422,12 +3422,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Logo -->
   <div class="h-16 flex items-center justify-between px-5 border-b border-blue-800">
-    <div class="flex items-center gap-3">
+    <div onclick="goToHomepage()" class="flex items-center gap-3 cursor-pointer hover:opacity-90 transition group" title="ចុចដើម្បីទៅកាន់ទំព័រដើម (Homepage)">
       <img src="/static/ac_logo.jpg" alt="AC Logo"
-        class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0" />
+        class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0 group-hover:scale-105 transition" />
       <div class="leading-tight">
         <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
-        <p class="text-sm font-bold">HR Dashboard</p>
+        <p class="text-sm font-bold group-hover:text-blue-200 transition">HR Dashboard</p>
       </div>
     </div>
     <!-- Mobile close button -->
@@ -3441,8 +3441,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button onclick="showTab('dashboard')"
       id="nav-dashboard"
       class="nav-link active w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left">
-      <span class="material-symbols-outlined text-xl">dashboard</span>
-      <span>ផ្ទៃតាប្លូ</span>
+      <span class="material-symbols-outlined text-xl">home</span>
+      <span>ទំព័រដើម</span>
     </button>
     <button onclick="showTab('leaves')"
       id="nav-leaves"
@@ -3520,7 +3520,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
       <div>
-        <h1 id="page-title" class="text-base font-semibold text-gray-800">ផ្ទៃតាប្លូ</h1>
+        <h1 id="page-title" class="text-base font-semibold text-gray-800">ទំព័រដើម</h1>
         <p class="text-xs text-gray-400" id="page-date"></p>
       </div>
     </div>
@@ -3537,7 +3537,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
       </button>
       <!-- Avatar -->
-      <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow">
+      <div onclick="goToHomepage()" class="w-9 h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition" title="ទៅកាន់ទំព័រដើម (Homepage)">
         <img src="/static/ac_logo.jpg" alt="AC" class="w-full h-full object-cover" />
       </div>
     </div>
@@ -4626,7 +4626,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // ===== Tab switching =====
   const tabs = ['dashboard','leaves','loans','employees','settings','reports-leave','reports-loan'];
   const titles = {
-    dashboard: 'ផ្ទៃតាប្លូ',
+    dashboard: 'ទំព័រដើម',
     leaves: 'ច្បាប់ឈប់សម្រាក',
     loans: 'ខ្ចីប្រាក់ / បុរេប្រទាន',
     employees: 'បុគ្គលិកទាំងអស់',
@@ -4634,6 +4634,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     'reports-leave': 'របាយការណ៍ច្បាប់ (សងថ្ងៃសៅរ៍-អាទិត្យ)',
     'reports-loan': 'របាយការណ៍ខ្ចីប្រាក់ (កាត់ប្រាក់ខែចុងខែ)'
   };
+
+  function goToHomepage() {
+    showTab('dashboard');
+  }
 
   function showTab(tab) {
     if (window.innerWidth < 1024) closeSidebar();
@@ -4653,7 +4657,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       activeNav.classList.add('active');
       activeNav.classList.remove('text-blue-200');
     }
-    document.getElementById('page-title').textContent = titles[tab] || 'ផ្ទៃតាប្លូ';
+    document.getElementById('page-title').textContent = titles[tab] || 'ទំព័រដើម';
     if (tab === 'leaves') loadLeaves();
     if (tab === 'loans') loadLoans();
     if (tab === 'employees') loadEmployees();
