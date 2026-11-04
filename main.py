@@ -226,6 +226,35 @@ def edit_telegram_message(chat_id: str, message_id: int, new_text: str, reply_ma
     except Exception as e:
         print(f"Error editing telegram message: {e}")
 
+def delete_telegram_message(chat_id: str, message_id: int):
+    """
+    Deletes an intermediate Telegram message (e.g. step 1 or step 2 prompt)
+    so group chat remains clean and only the final card is kept.
+    """
+    try:
+        if not chat_id or not message_id:
+            return False
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            return False
+        url = f"https://api.telegram.org/bot{token}/deleteMessage"
+        payload = {
+            "chat_id": str(chat_id),
+            "message_id": int(message_id)
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("ok", False)
+    except Exception as e:
+        # Silently fail if message was already deleted or expired
+        return False
+
 def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, position: str = None) -> dict:
     """
     Auto-registers or auto-updates employee records from Telegram.
@@ -1493,10 +1522,18 @@ async def test_gemini(payload: GeminiTestRequest):
     if not key:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូល Google Gemini API Key ជាមុនសិន!")
         
-    model = (payload.gemini_model or "gemini-3.5-flash-lite").strip()
-    candidate_models = [model, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.1-flash-lite"]
+    model = (payload.gemini_model or "gemini-flash-lite-latest").strip()
+    candidate_models = [
+        model,
+        "gemini-flash-lite-latest",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
     seen = set()
-    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    models_to_try = [m for m in candidate_models if m and not m.startswith("gemini-3.") and not (m in seen or seen.add(m))]
     
     last_err = ""
     for m in models_to_try:
@@ -1510,7 +1547,7 @@ async def test_gemini(payload: GeminiTestRequest):
                 data=json.dumps(test_payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=4) as r:
+            with urllib.request.urlopen(req, timeout=12) as r:
                 data = json.loads(r.read().decode('utf-8'))
                 cand_list = data.get("candidates", [])
                 if cand_list:
@@ -2006,16 +2043,124 @@ PURPOSE_MAP = {
     "family": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ",
 }
 
+def download_telegram_voice_bytes(file_id: str, token: str) -> Optional[bytes]:
+    """
+    Downloads raw voice/audio bytes from Telegram API given a file_id.
+    """
+    if not file_id or not token:
+        return None
+    try:
+        gf_url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+        gf_req = urllib.request.Request(gf_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(gf_req, timeout=8) as r:
+            gf_data = json.loads(r.read().decode())
+            file_path = gf_data.get("result", {}).get("file_path")
+            if file_path:
+                down_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                with urllib.request.urlopen(urllib.request.Request(down_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15) as down_r:
+                    return down_r.read()
+    except Exception as ve:
+        print(f"Error downloading voice message ({file_id}): {ve}")
+    return None
+
+def transcribe_voice_khmer(audio_bytes: bytes, audio_mime: str = "audio/ogg") -> Optional[str]:
+    """
+    Transcribes a voice note into natural, accurate Khmer text using Google Gemini.
+    """
+    if not audio_bytes:
+        return None
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"}) or {}
+        api_key = (s.get("gemini_api_key", "").strip() if s else "") or os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return None
+
+        configured_model = (s.get("gemini_model", "") or "").strip()
+        candidate_models = [
+            configured_model,
+            "gemini-flash-lite-latest",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash"
+        ]
+        seen = set()
+        models_to_try = [m for m in candidate_models if m and not m.startswith("gemini-3.") and not (m in seen or seen.add(m))]
+
+        b64_audio = base64.b64encode(audio_bytes).decode('utf-8')
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": audio_mime,
+                                "data": b64_audio
+                            }
+                        },
+                        {
+                            "text": (
+                                "Please listen carefully to this voice recording from a Cambodian staff member and transcribe the spoken words into natural, accurate Khmer text (អក្សរខ្មែរ).\n"
+                                "Rules:\n"
+                                "1. Output ONLY the transcribed Khmer spoken words without explanation, markdown, English, or quotes.\n"
+                                "2. If the user states a reason for taking leave (e.g., ឈឺពោះ, ឈឺក្បាល, ទៅស្រុកកំណើត, ការកូន, រវល់ធុរៈគ្រួសារ) or borrowing money, capture the exact Khmer words clearly."
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1
+            }
+        }
+
+        for m in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode('utf-8'),
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=20) as response:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    candidates = res_data.get("candidates", [])
+                    if candidates:
+                        cand_parts = candidates[0].get("content", {}).get("parts", [])
+                        if cand_parts:
+                            raw_txt = cand_parts[0].get("text", "").strip()
+                            clean = re.sub(r"^```[a-z]*\s*", "", raw_txt)
+                            clean = re.sub(r"\s*```$", "", clean)
+                            clean = clean.strip('"\'''\n\r ')
+                            if clean:
+                                return clean
+            except Exception as e:
+                print(f"transcribe_voice_khmer model {m} error: {e}")
+                continue
+    except Exception as outer_e:
+        print(f"transcribe_voice_khmer outer error: {outer_e}")
+    return None
+
 def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, audio_mime: str = "audio/ogg") -> Optional[dict]:
     s = settings_collection.find_one({"_id": "app_settings"}) or {}
     api_key = (s.get("gemini_api_key", "").strip() if s else "") or os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         return None
         
-    model = (s.get("gemini_model", "") or "gemini-3.5-flash-lite").strip()
-    candidate_models = [model, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.1-flash-lite"]
+    model = (s.get("gemini_model", "") or "gemini-flash-lite-latest").strip()
+    candidate_models = [
+        model,
+        "gemini-flash-lite-latest",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
     seen = set()
-    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    models_to_try = [m for m in candidate_models if m and not m.startswith("gemini-3.") and not (m in seen or seen.add(m))]
     
     parts = []
     if audio_bytes:
@@ -2098,7 +2243,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
                 data=json.dumps(payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=20) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 candidates = res_data.get("candidates", [])
                 if candidates:
@@ -2190,19 +2335,10 @@ async def telegram_webhook(req: Request):
                 else:
                     days_display = f"{days} ថ្ងៃ"
 
-                # Check and immediately lock/remove buttons from this days message so user cannot click again!
+                # In group chat, immediately delete Step 1 message to keep chat uncluttered!
                 cq_msg_id = cq_msg.get("message_id")
                 if cq_msg_id:
-                    edit_telegram_message(
-                        chat_id=cq_chat_id,
-                        message_id=cq_msg_id,
-                        new_text=(
-                            f"📋 <b>សួស្តី {cq_name}!</b>\n\n"
-                            f"✅ <b>ចំនួនថ្ងៃឈប់សម្រាក:</b> {days_display} (បានជ្រើសរើសរួច)\n"
-                            f"🔒 <i>(ទម្រង់នេះបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(cq_chat_id, cq_msg_id)
                 
                 # Acknowledge callback query
                 if token and cq_id:
@@ -2228,7 +2364,7 @@ async def telegram_webhook(req: Request):
                 ask_reason_msg = (
                     f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n\n"
-                    f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
+                    f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (ឬផ្ញើសំឡេង Voice)៖</b>"
                 )
                 sent_res = send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
                 reason_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
@@ -2243,6 +2379,7 @@ async def telegram_webhook(req: Request):
                         "name": cq_name,
                         "is_private": is_cq_private,
                         "chat_id": cq_chat_id,
+                        "step1_msg_id": cq_msg_id,
                         "reason_msg_id": reason_msg_id
                     },
                     upsert=True
@@ -2278,14 +2415,14 @@ async def telegram_webhook(req: Request):
                 active_flow = user_flows_collection.find_one({"user_id": cq_user_id, "type": "leave"})
                 cq_msg_id = cq_msg.get("message_id")
                 
-                # If flow is not active, this form was already used/finished! Reject and remove buttons!
+                # If flow is not active, this form was already used/finished! Reject and delete!
                 if not active_flow:
                     if cq_msg_id:
-                        remove_telegram_inline_keyboard(cq_chat_id, cq_msg_id)
+                        delete_telegram_message(cq_chat_id, cq_msg_id)
                     ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                     ans_data = json.dumps({
                         "callback_query_id": cq_id,
-                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានទេ។ សូមចាប់ផ្តើមថ្មីតាមលំដាប់លំដោយដោយចុច [ 📝 ស្នើសុំច្បាប់ ]",
+                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ!",
                         "show_alert": True
                     }).encode('utf-8')
                     try:
@@ -2294,6 +2431,7 @@ async def telegram_webhook(req: Request):
                         pass
                     return {"ok": True}
                 
+                step1_msg_id = active_flow.get("step1_msg_id") if active_flow else None
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
                 if days == 0.5:
@@ -2303,19 +2441,11 @@ async def telegram_webhook(req: Request):
                 else:
                     days_display = f"{days} ថ្ងៃ"
                 
-                # Immediately lock this reason message so buttons disappear completely!
+                # Clean up intermediate reason & step 1 messages so ONLY the final Admin Card remains!
                 if cq_msg_id:
-                    edit_telegram_message(
-                        chat_id=cq_chat_id,
-                        message_id=cq_msg_id,
-                        new_text=(
-                            f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
-                            f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n"
-                            f"📝 <b>មូលហេតុ:</b> {rsn} ✅ (បានជ្រើសរើស)\n"
-                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(cq_chat_id, cq_msg_id)
+                if step1_msg_id and step1_msg_id != cq_msg_id:
+                    delete_telegram_message(cq_chat_id, step1_msg_id)
                 
                 # Acknowledge callback
                 if token and cq_id:
@@ -2391,18 +2521,9 @@ async def telegram_webhook(req: Request):
                     return {"ok": True}
                     
                 cq_msg_id = cq_msg.get("message_id")
-                # Immediately remove buttons on this amount message so it cannot be clicked again!
+                # In group chat, immediately delete Step 1 message to keep chat uncluttered!
                 if cq_msg_id:
-                    edit_telegram_message(
-                        chat_id=cq_chat_id,
-                        message_id=cq_msg_id,
-                        new_text=(
-                            f"💰 <b>សួស្តី {cq_name}!</b>\n\n"
-                            f"✅ <b>ចំនួនទឹកប្រាក់ស្នើខ្ចី:</b> {amount:,} រៀល (បានជ្រើសរើសរួច)\n"
-                            f"🔒 <i>(ទម្រង់នេះបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(cq_chat_id, cq_msg_id)
                 
                 # Acknowledge callback
                 if token and cq_id:
@@ -2428,7 +2549,7 @@ async def telegram_webhook(req: Request):
                 ask_purpose_msg = (
                     f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n\n"
-                    f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
+                    f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (ឬផ្ញើសំឡេង Voice)៖</b>"
                 )
                 sent_res = send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
                 purpose_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
@@ -2442,6 +2563,7 @@ async def telegram_webhook(req: Request):
                         "name": cq_name,
                         "is_private": is_cq_private,
                         "chat_id": cq_chat_id,
+                        "step1_msg_id": cq_msg_id,
                         "purpose_msg_id": purpose_msg_id
                     },
                     upsert=True
@@ -2479,11 +2601,11 @@ async def telegram_webhook(req: Request):
                 
                 if not active_flow:
                     if cq_msg_id:
-                        remove_telegram_inline_keyboard(cq_chat_id, cq_msg_id)
+                        delete_telegram_message(cq_chat_id, cq_msg_id)
                     ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                     ans_data = json.dumps({
                         "callback_query_id": cq_id,
-                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានទេ។ សូមចាប់ផ្តើមថ្មីតាមលំដាប់លំដោយដោយចុច [ 💰 ស្នើខ្ចីប្រាក់ ]",
+                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ!",
                         "show_alert": True
                     }).encode('utf-8')
                     try:
@@ -2492,21 +2614,14 @@ async def telegram_webhook(req: Request):
                         pass
                     return {"ok": True}
                 
+                step1_msg_id = active_flow.get("step1_msg_id") if active_flow else None
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
-                # Immediately lock this purpose message so buttons disappear!
+                # Clean up intermediate purpose & step 1 messages so ONLY the final Admin Card remains!
                 if cq_msg_id:
-                    edit_telegram_message(
-                        chat_id=cq_chat_id,
-                        message_id=cq_msg_id,
-                        new_text=(
-                            f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
-                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
-                            f"🎯 <b>គោលបំណង:</b> {pur} ✅ (បានជ្រើសរើស)\n"
-                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(cq_chat_id, cq_msg_id)
+                if step1_msg_id and step1_msg_id != cq_msg_id:
+                    delete_telegram_message(cq_chat_id, step1_msg_id)
                 
                 # Acknowledge callback
                 if token and cq_id:
@@ -3002,9 +3117,29 @@ async def telegram_webhook(req: Request):
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
         if active_flow and not is_system_cmd:
-            content = (message.get("caption") or "សារសំឡេង (Voice Message)") if has_voice else text
+            is_voice_input = False
+            content = ""
+            if has_voice:
+                is_voice_input = True
+                voice_obj = message.get("voice") or message.get("audio")
+                file_id = voice_obj.get("file_id") if voice_obj else None
+                audio_bytes = download_telegram_voice_bytes(file_id, token) if file_id and token else None
+                transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else None
+                caption = (message.get("caption") or "").strip()
+                if transcription:
+                    content = transcription
+                elif caption:
+                    content = caption
+                else:
+                    content = "សារសំឡេងសុំច្បាប់"
+            else:
+                content = text or "មិនបានបញ្ជាក់"
+
             flow_type = active_flow.get("type")
             flow_is_private = active_flow.get("is_private", is_private_chat)
+            flow_chat_id = active_flow.get("chat_id", chat_id_str)
+            user_msg_id = message.get("message_id")
+            step1_msg_id = active_flow.get("step1_msg_id")
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
@@ -3030,20 +3165,15 @@ async def telegram_webhook(req: Request):
                 })
                 leave_id = str(l_res.inserted_id)
                 reason_msg_id = active_flow.get("reason_msg_id")
-                flow_chat_id = active_flow.get("chat_id", chat_id_str)
                 user_flows_collection.delete_one({"user_id": user_id_str})
+                
+                # Clean up intermediate prompt messages & user's trigger message so ONLY the official card remains!
                 if reason_msg_id:
-                    edit_telegram_message(
-                        chat_id=flow_chat_id,
-                        message_id=reason_msg_id,
-                        new_text=(
-                            f"⏱️ <b>បុគ្គលិក:</b> {sender_name}\n"
-                            f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                            f"📝 <b>មូលហេតុ:</b> {content} ✅ (បានវាយបញ្ចូលផ្ទាល់)\n"
-                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(flow_chat_id, reason_msg_id)
+                if step1_msg_id and step1_msg_id != reason_msg_id:
+                    delete_telegram_message(flow_chat_id, step1_msg_id)
+                if not is_private_chat and user_msg_id:
+                    delete_telegram_message(chat_id_str, user_msg_id)
                 
                 conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
@@ -3052,11 +3182,12 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
+                voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                    f"📝 <b>មូលហេតុ:</b> {content}\n"
+                    f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}\n"
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
@@ -3065,7 +3196,7 @@ async def telegram_webhook(req: Request):
                         f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                        f"📝 <b>មូលហេតុ:</b> {content}\n\n"
+                        f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}\n\n"
                         f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
@@ -3087,20 +3218,15 @@ async def telegram_webhook(req: Request):
                 })
                 loan_id = str(ln_res.inserted_id)
                 purpose_msg_id = active_flow.get("purpose_msg_id")
-                flow_chat_id = active_flow.get("chat_id", chat_id_str)
                 user_flows_collection.delete_one({"user_id": user_id_str})
+                
+                # Clean up intermediate prompt messages & user's trigger message so ONLY the official card remains!
                 if purpose_msg_id:
-                    edit_telegram_message(
-                        chat_id=flow_chat_id,
-                        message_id=purpose_msg_id,
-                        new_text=(
-                            f"💵 <b>បុគ្គលិក:</b> {sender_name}\n"
-                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                            f"🎯 <b>គោលបំណង:</b> {content} ✅ (បានវាយបញ្ចូលផ្ទាល់)\n"
-                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
-                        ),
-                        reply_markup={"inline_keyboard": []}
-                    )
+                    delete_telegram_message(flow_chat_id, purpose_msg_id)
+                if step1_msg_id and step1_msg_id != purpose_msg_id:
+                    delete_telegram_message(flow_chat_id, step1_msg_id)
+                if not is_private_chat and user_msg_id:
+                    delete_telegram_message(chat_id_str, user_msg_id)
                 
                 adm_btn = {
                     "inline_keyboard": [[
@@ -3108,11 +3234,12 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
+                voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
                 admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {content}\n"
+                    f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 if flow_is_private or is_private_chat:
@@ -3120,7 +3247,7 @@ async def telegram_webhook(req: Request):
                         f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {content}\n\n"
+                        f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}\n\n"
                         f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
@@ -3199,37 +3326,32 @@ async def telegram_webhook(req: Request):
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
         
-        # 2. Handle Voice Message (Powered by Google Gemini Multimodal Audio)
+        # 2. Handle Voice Message (Powered by Google Gemini Multimodal Audio & Speech-to-Text)
         if has_voice:
-            caption = message.get("caption") or ""
+            caption = (message.get("caption") or "").strip()
             voice_obj = message.get("voice") or message.get("audio")
             file_id = voice_obj.get("file_id") if voice_obj else None
-            audio_bytes = None
-            if file_id and token:
-                try:
-                    gf_url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
-                    gf_req = urllib.request.Request(gf_url, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(gf_req, timeout=6) as r:
-                        gf_data = json.loads(r.read().decode())
-                        file_path = gf_data.get("result", {}).get("file_path")
-                        if file_path:
-                            down_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
-                            with urllib.request.urlopen(urllib.request.Request(down_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as down_r:
-                                audio_bytes = down_r.read()
-                except Exception as ve:
-                    print("Error downloading voice message:", ve)
-                    
+            audio_bytes = download_telegram_voice_bytes(file_id, token) if file_id and token else None
+            
+            # 1. Transcribe spoken Khmer words into natural Khmer text
+            transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else ""
+            
+            # Clean up user's voice message in group chat if bot has admin permission
+            user_msg_id = message.get("message_id")
+            if not is_private_chat and user_msg_id:
+                delete_telegram_message(chat_id_str, user_msg_id)
+            
             ai_data = None
             if audio_bytes:
                 ai_data = call_gemini_ai(
-                    prompt=f"Please listen carefully to this Khmer voice message from staff '{sender_name}' and analyze their intent.",
+                    prompt=f"Please listen carefully to this Khmer voice message from staff '{sender_name}'. The transcribed Khmer speech is: '{transcription}'. Analyze their intent.",
                     user_name=sender_name,
                     audio_bytes=audio_bytes
                 )
                 
             if ai_data and ai_data.get("intent") == "leave":
                 days = int(ai_data.get("days", 1))
-                reason = ai_data.get("reason") or "សារសំឡេងសុំច្បាប់"
+                reason = ai_data.get("reason") or transcription or "សារសំឡេងសុំច្បាប់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
@@ -3248,10 +3370,10 @@ async def telegram_webhook(req: Request):
                     ]]
                 }
                 admin_card = (
-                    f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
+                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                    f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                    f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
@@ -3260,7 +3382,7 @@ async def telegram_webhook(req: Request):
                         f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {reason}\n\n"
+                        f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
                         f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
@@ -3271,7 +3393,7 @@ async def telegram_webhook(req: Request):
                 
             elif ai_data and ai_data.get("intent") == "loan":
                 amount = int(ai_data.get("amount_khr", 100000))
-                purpose = ai_data.get("purpose") or "សារសំឡេងសុំខ្ចីប្រាក់"
+                purpose = ai_data.get("purpose") or transcription or "សារសំឡេងសុំខ្ចីប្រាក់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 ln_res = loans_collection.insert_one({
@@ -3289,10 +3411,10 @@ async def telegram_webhook(req: Request):
                     ]]
                 }
                 admin_card = (
-                    f"💰 <b>សំណើខ្ចីប្រាក់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
+                    f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                    f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 if is_private_chat:
@@ -3300,7 +3422,7 @@ async def telegram_webhook(req: Request):
                         f"✅ <b>សំណើខ្ចីប្រាក់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {purpose}\n\n"
+                        f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
                         f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
@@ -3314,8 +3436,8 @@ async def telegram_webhook(req: Request):
                 return {"ok": True}
                 
             else:
-                # Fallback if Gemini not available
-                voice_label = caption or "សារសំឡេង (Voice Message)"
+                # Fallback using transcribed Khmer text
+                voice_label = transcription or caption or "សារសំឡេងសុំច្បាប់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 v_res = leaves_collection.insert_one({
@@ -3334,10 +3456,10 @@ async def telegram_webhook(req: Request):
                     ]]
                 }
                 admin_card = (
-                    f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេងថ្មី!</b>\n\n"
+                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"📝 <b>មូលហេតុ:</b> {voice_label}\n"
                     f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
@@ -3346,7 +3468,7 @@ async def telegram_webhook(req: Request):
                         f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {voice_label}\n\n"
+                        f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
                         f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
@@ -3385,7 +3507,9 @@ async def telegram_webhook(req: Request):
                 f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនថ្ងៃឈប់សម្រាក» ខាងក្រោម៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
+            sent_res = send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
+            if not is_private_chat and message.get("message_id"):
+                delete_telegram_message(chat_id_str, message.get("message_id"))
             return {"ok": True}
 
         # 5. Smart AI Understanding with Google Gemini for free-form text:
@@ -3576,7 +3700,9 @@ async def telegram_webhook(req: Request):
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
+            sent_res = send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
+            if not is_private_chat and message.get("message_id"):
+                delete_telegram_message(chat_id_str, message.get("message_id"))
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
@@ -4270,11 +4396,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>ម៉ូដែល AI (AI Model)</span>
               </label>
               <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
-                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Ultra Fast 0.7s - ណែនាំ)</option>
-                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Fast 0.8s)</option>
-                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
-                <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash (Advanced)</option>
-                <option value="gemini-3.1-flash-lite">✨ Gemini 3.1 Flash Lite</option>
+                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Ultra Fast - ណែនាំ)</option>
+                <option value="gemini-flash-latest">⚡ Gemini Flash Latest (Fast & Smart)</option>
+                <option value="gemini-2.5-flash-lite">✨ Gemini 2.5 Flash Lite</option>
+                <option value="gemini-2.5-flash">🚀 Gemini 2.5 Flash</option>
+                <option value="gemini-2.0-flash">🔥 Gemini 2.0 Flash</option>
+                <option value="gemini-1.5-flash">💡 Gemini 1.5 Flash</option>
               </select>
             </div>
 
