@@ -3672,7 +3672,7 @@ async def register_webhook_endpoint():
     token = (s.get("telegram_bot_token", "") if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not token:
         raise HTTPException(status_code=400, detail="រកមិនឃើញ Telegram Bot Token ទេ!")
-    webhook_url = "https://ac-bomlu-administration.onrender.com/api/telegram-webhook"
+    webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://admin.acbomlu.com").rstrip("/") + "/api/telegram-webhook"
     try:
         url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -3690,7 +3690,7 @@ async def startup_event():
         s = settings_collection.find_one({"_id": "app_settings"})
         token = (s.get("telegram_bot_token", "") if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
         if token:
-            webhook_url = "https://ac-bomlu-administration.onrender.com/api/telegram-webhook"
+            webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://admin.acbomlu.com").rstrip("/") + "/api/telegram-webhook"
             url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=5) as r:
