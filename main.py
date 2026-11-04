@@ -425,11 +425,17 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
   </div>
 
   <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const nameParam = urlParams.get('name');
+    if (nameParam) {
+      document.getElementById('emp-name').value = decodeURIComponent(nameParam);
+    }
+
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-      if (tgUser) {
+      if (tgUser && !nameParam) {
         const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username;
         if (name) document.getElementById('emp-name').value = name;
       }
@@ -587,11 +593,17 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
   </div>
 
   <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const nameParam = urlParams.get('name');
+    if (nameParam) {
+      document.getElementById('emp-name').value = decodeURIComponent(nameParam);
+    }
+
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-      if (tgUser) {
+      if (tgUser && !nameParam) {
         const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username;
         if (name) document.getElementById('emp-name').value = name;
       }
@@ -1084,12 +1096,13 @@ async def telegram_webhook(req: Request):
 
         # 4. Handle Leave Button or Exact Command -> Show Web App Form Button!
         if is_leave_btn:
+            encoded_name = urllib.parse.quote(sender_name)
             leave_form_btn = {
                 "inline_keyboard": [
                     [
                         {
-                            "text": "📝 បើកទម្រង់សុំច្បាប់ (Form Popup)",
-                            "web_app": {"url": "https://ac-bomlu-administration.onrender.com/form/leave"}
+                            "text": "📝 បើកទម្រង់សុំច្បាប់ (Form)",
+                            "url": f"https://ac-bomlu-administration.onrender.com/form/leave?name={encoded_name}"
                         }
                     ]
                 ]
@@ -1134,12 +1147,13 @@ async def telegram_webhook(req: Request):
 
         # 6. Handle Loan Button or Exact Command -> Show Web App Form Button!
         if is_loan_btn:
+            encoded_name = urllib.parse.quote(sender_name)
             loan_form_btn = {
                 "inline_keyboard": [
                     [
                         {
-                            "text": "💰 បើកទម្រង់ខ្ចីប្រាក់ (Form Popup)",
-                            "web_app": {"url": "https://ac-bomlu-administration.onrender.com/form/loan"}
+                            "text": "💰 បើកទម្រង់ខ្ចីប្រាក់ (Form)",
+                            "url": f"https://ac-bomlu-administration.onrender.com/form/loan?name={encoded_name}"
                         }
                     ]
                 ]
