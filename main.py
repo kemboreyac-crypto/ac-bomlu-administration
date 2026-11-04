@@ -133,8 +133,8 @@ async def create_leave(request: LeaveRequest):
     leave_id = str(result.inserted_id)
     adm_btn = {
         "inline_keyboard": [[
-            {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-            {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+            {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+            {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
         ]]
     }
     send_telegram_notify(
@@ -142,7 +142,7 @@ async def create_leave(request: LeaveRequest):
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត",
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ",
         reply_markup=adm_btn
     )
     return {"message": "Leave request saved!", "id": leave_id}
@@ -159,14 +159,14 @@ async def update_leave_status(leave_id: str, status: str):
                 f"✅ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved)"
+                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)"
             )
         elif status == "rejected":
             send_telegram_notify(
                 f"❌ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected)"
+                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)"
             )
     return {"message": f"Leave updated to {status}"}
 
@@ -187,8 +187,8 @@ async def create_loan(request: LoanRequest):
     formatted_amount = f"{request.amount_khr:,}"
     adm_btn = {
         "inline_keyboard": [[
-            {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
-            {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+            {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+            {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
         ]]
     }
     send_telegram_notify(
@@ -196,7 +196,7 @@ async def create_loan(request: LoanRequest):
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
         f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត",
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ",
         reply_markup=adm_btn
     )
     return {"message": "Loan request saved!", "id": loan_id}
@@ -213,14 +213,14 @@ async def update_loan_status(loan_id: str, status: str):
                 f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved)"
+                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)"
             )
         elif status == "rejected":
             send_telegram_notify(
                 f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                f"🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected)"
+                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)"
             )
     return {"message": f"Loan updated to {status}"}
 
@@ -414,8 +414,8 @@ async def telegram_webhook(req: Request):
                 leave_id = str(l_res.inserted_id)
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
                 reply = (
@@ -423,7 +423,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {rsn}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -477,8 +477,8 @@ async def telegram_webhook(req: Request):
                 loan_id = str(ln_res.inserted_id)
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
                 reply = (
@@ -486,7 +486,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {pur}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -504,7 +504,7 @@ async def telegram_webhook(req: Request):
                     ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                     ans_data = json.dumps({
                         "callback_query_id": cq_id,
-                        "text": "⚠️ សុំទោស! លោកអ្នកជាបុគ្គលិកធម្មតា មិនមានសិទ្ធិអនុម័តឡើយ។ មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចចុចបាន!",
+                        "text": "⚠️ សុំទោស! លោកអ្នកជាបុគ្គលិកធម្មតា មិនមានសិទ្ធិចុចអនុញ្ញាតិឡើយ។ មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចចុចបាន!",
                         "show_alert": True
                     }).encode('utf-8')
                     urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
@@ -524,7 +524,7 @@ async def telegram_webhook(req: Request):
                         status_str = "approved" if is_approve else "rejected"
                         leaves_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
                         
-                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected) ❌"
+                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
                         edit_text = (
                             f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
                             f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
@@ -551,7 +551,7 @@ async def telegram_webhook(req: Request):
                         status_str = "approved" if is_approve else "rejected"
                         loans_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
                         
-                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected) ❌"
+                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
                         edit_text = (
                             f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                             f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
@@ -572,7 +572,7 @@ async def telegram_webhook(req: Request):
                 ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                 ans_data = json.dumps({
                     "callback_query_id": cq_id,
-                    "text": "✅ បានអនុម័តជោគជ័យ!" if is_approve else "❌ បានបដិសេធសំណើ!"
+                    "text": "✅ បានអនុញ្ញាតិជោគជ័យ!" if is_approve else "❌ មិនអនុញ្ញាតិ!"
                 }).encode('utf-8')
                 urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
                 return {"ok": True}
@@ -628,8 +628,8 @@ async def telegram_webhook(req: Request):
                 
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
                 reply = (
@@ -637,7 +637,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {content}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -655,8 +655,8 @@ async def telegram_webhook(req: Request):
                 
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
                 reply = (
@@ -664,7 +664,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {content}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -680,8 +680,8 @@ async def telegram_webhook(req: Request):
                 leave_id = str(recent_leave["_id"])
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
                 reply = (
@@ -689,7 +689,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -703,8 +703,8 @@ async def telegram_webhook(req: Request):
                 loan_id = str(recent_loan["_id"])
                 adm_btn = {
                     "inline_keyboard": [[
-                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
-                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
                 reply = (
@@ -712,7 +712,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
@@ -729,8 +729,8 @@ async def telegram_webhook(req: Request):
             leave_id = str(v_res.inserted_id)
             adm_btn = {
                 "inline_keyboard": [[
-                    {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-                    {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                    {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                    {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                 ]]
             }
             reply = (
@@ -738,7 +738,7 @@ async def telegram_webhook(req: Request):
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {caption}\n"
                 f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
@@ -791,8 +791,8 @@ async def telegram_webhook(req: Request):
             leave_id = str(l_res.inserted_id)
             adm_btn = {
                 "inline_keyboard": [[
-                    {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
-                    {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                    {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                    {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                 ]]
             }
             reply = (
@@ -800,7 +800,7 @@ async def telegram_webhook(req: Request):
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
@@ -846,8 +846,8 @@ async def telegram_webhook(req: Request):
             loan_id = str(ln_res.inserted_id)
             adm_btn = {
                 "inline_keyboard": [[
-                    {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
-                    {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                    {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                    {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                 ]]
             }
             reply = (
@@ -855,7 +855,7 @@ async def telegram_webhook(req: Request):
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
@@ -865,8 +865,8 @@ async def telegram_webhook(req: Request):
             help_msg = (
                 f"👋 <b>ជម្រាបសួរ {sender_name}!</b>\n\n"
                 f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ក្នុងគ្រុបនេះ:</b>\n"
-                f"• ចុចប៊ូតុង <b>[ 📝 សុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
-                f"• ចុចប៊ូតុង <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
+                f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
+                f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
                 f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
                 f"🚀 ប្រព័ន្ធនឹងកត់ត្រាចូល Dashboard របស់ AC BOMLU ដោយស្វ័យប្រវត្តិ!"
             )
@@ -1125,7 +1125,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span class="material-symbols-outlined icon-fill text-green-600 text-2xl">check_circle</span>
           </div>
           <div>
-            <p class="text-xs text-gray-500 mb-0.5">ខ្ចីប្រាក់អនុម័ត</p>
+            <p class="text-xs text-gray-500 mb-0.5">ខ្ចីប្រាក់អនុញ្ញាតិ</p>
             <p id="stat-approved" class="text-2xl font-bold text-gray-800">—</p>
           </div>
         </div>
@@ -1181,8 +1181,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex gap-2 mb-4 text-sm flex-wrap">
         <button onclick="filterLeaves('all')" class="px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lf-all">ទាំងអស់</button>
         <button onclick="filterLeaves('pending')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-pending">រង់ចាំ</button>
-        <button onclick="filterLeaves('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-approved">អនុម័ត</button>
-        <button onclick="filterLeaves('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-rejected">បដិសេធ</button>
+        <button onclick="filterLeaves('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-approved">អនុញ្ញាតិ</button>
+        <button onclick="filterLeaves('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-rejected">មិនអនុញ្ញាតិ</button>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -1219,8 +1219,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex gap-2 mb-4 text-sm flex-wrap">
         <button onclick="filterLoans('all')" class="px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lnf-all">ទាំងអស់</button>
         <button onclick="filterLoans('pending')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-pending">រង់ចាំ</button>
-        <button onclick="filterLoans('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-approved">អនុម័ត</button>
-        <button onclick="filterLoans('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-rejected">បដិសេធ</button>
+        <button onclick="filterLoans('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-approved">អនុញ្ញាតិ</button>
+        <button onclick="filterLoans('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-rejected">មិនអនុញ្ញាតិ</button>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -1617,7 +1617,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // ===== Badge =====
   function statusBadge(s) {
     const map = { pending:'badge-pending', approved:'badge-approved', rejected:'badge-rejected' };
-    const lbl = { pending:'រង់ចាំ', approved:'អនុម័ត', rejected:'បដិសេធ' };
+    const lbl = { pending:'រង់ចាំ', approved:'អនុញ្ញាតិ', rejected:'មិនអនុញ្ញាតិ' };
     return `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${map[s]||'bg-gray-100 text-gray-500'}">${lbl[s]||s}</span>`;
   }
 
@@ -1666,11 +1666,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <td class="px-5 py-3.5 text-right">
           <div class="flex items-center justify-end gap-1">
             ${l.status === 'pending' ? `
-            <button onclick="updateLeave('${l._id}','approved')" title="អនុម័ត"
+            <button onclick="updateLeave('${l._id}','approved')" title="អនុញ្ញាតិ"
               class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
               <span class="material-symbols-outlined text-base">check</span>
             </button>
-            <button onclick="updateLeave('${l._id}','rejected')" title="បដិសេធ"
+            <button onclick="updateLeave('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
               class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
               <span class="material-symbols-outlined text-base">close</span>
             </button>` : ''}
@@ -1715,7 +1715,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   async function updateLeave(id, status) {
     await fetch(`/api/leave/${id}/status?status=${status}`, { method: 'PATCH' });
-    showToast(status === 'approved' ? 'បានអនុម័ត!' : 'បានបដិសេធ!');
+    showToast(status === 'approved' ? 'បានអនុញ្ញាតិ!' : 'មិនអនុញ្ញាតិ!');
     await loadLeaves(); await loadStats();
   }
 
@@ -1767,11 +1767,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <td class="px-5 py-3.5 text-right">
           <div class="flex items-center justify-end gap-1">
             ${l.status === 'pending' ? `
-            <button onclick="updateLoan('${l._id}','approved')" title="អនុម័ត"
+            <button onclick="updateLoan('${l._id}','approved')" title="អនុញ្ញាតិ"
               class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
               <span class="material-symbols-outlined text-base">check</span>
             </button>
-            <button onclick="updateLoan('${l._id}','rejected')" title="បដិសេធ"
+            <button onclick="updateLoan('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
               class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
               <span class="material-symbols-outlined text-base">close</span>
             </button>` : ''}
@@ -1816,7 +1816,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   async function updateLoan(id, status) {
     await fetch(`/api/loan/${id}/status?status=${status}`, { method: 'PATCH' });
-    showToast(status === 'approved' ? 'បានអនុម័ត!' : 'បានបដិសេធ!');
+    showToast(status === 'approved' ? 'បានអនុញ្ញាតិ!' : 'មិនអនុញ្ញាតិ!');
     await loadLoans(); await loadStats();
   }
 
