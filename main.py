@@ -3915,44 +3915,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <main class="flex-1 overflow-auto">
 
     <!-- ===== DASHBOARD TAB ===== -->
-    <div id="tab-dashboard" class="p-6 animate-fadeIn">
+    <div id="tab-dashboard" class="p-3 sm:p-6 animate-fadeIn">
 
       <!-- Stat Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <span class="material-symbols-outlined icon-fill text-blue-600 text-2xl">group</span>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6">
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100 flex items-center gap-2.5 sm:gap-4">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined icon-fill text-blue-600 text-xl sm:text-2xl">group</span>
           </div>
-          <div>
-            <p class="text-xs text-gray-500 mb-0.5">បុគ្គលិកសរុប</p>
-            <p id="stat-employees" class="text-2xl font-bold text-gray-800">—</p>
-          </div>
-        </div>
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
-            <span class="material-symbols-outlined icon-fill text-orange-500 text-2xl">pending_actions</span>
-          </div>
-          <div>
-            <p class="text-xs text-gray-500 mb-0.5">ច្បាប់រង់ចាំ</p>
-            <p id="stat-leaves" class="text-2xl font-bold text-gray-800">—</p>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs text-gray-500 mb-0.5 truncate">បុគ្គលិកសរុប</p>
+            <p id="stat-employees" class="text-lg sm:text-2xl font-bold text-gray-800 leading-tight">—</p>
           </div>
         </div>
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
-            <span class="material-symbols-outlined icon-fill text-red-500 text-2xl">account_balance_wallet</span>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100 flex items-center gap-2.5 sm:gap-4">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined icon-fill text-orange-500 text-xl sm:text-2xl">pending_actions</span>
           </div>
-          <div>
-            <p class="text-xs text-gray-500 mb-0.5">ខ្ចីប្រាក់រង់ចាំ</p>
-            <p id="stat-loans" class="text-2xl font-bold text-gray-800">—</p>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs text-gray-500 mb-0.5 truncate">ច្បាប់រង់ចាំ</p>
+            <p id="stat-leaves" class="text-lg sm:text-2xl font-bold text-gray-800 leading-tight">—</p>
           </div>
         </div>
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-            <span class="material-symbols-outlined icon-fill text-green-600 text-2xl">check_circle</span>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100 flex items-center gap-2.5 sm:gap-4">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined icon-fill text-red-500 text-xl sm:text-2xl">account_balance_wallet</span>
           </div>
-          <div>
-            <p class="text-xs text-gray-500 mb-0.5">ខ្ចីប្រាក់អនុញ្ញាតិ</p>
-            <p id="stat-approved" class="text-2xl font-bold text-gray-800">—</p>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs text-gray-500 mb-0.5 truncate">ខ្ចីប្រាក់រង់ចាំ</p>
+            <p id="stat-loans" class="text-lg sm:text-2xl font-bold text-gray-800 leading-tight">—</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100 flex items-center gap-2.5 sm:gap-4">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined icon-fill text-green-600 text-xl sm:text-2xl">check_circle</span>
+          </div>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs text-gray-500 mb-0.5 truncate">ខ្ចីប្រាក់អនុញ្ញាតិ</p>
+            <p id="stat-approved" class="text-lg sm:text-2xl font-bold text-gray-800 leading-tight">—</p>
           </div>
         </div>
       </div>
@@ -3994,33 +3994,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <!-- ===== LEAVES TAB ===== -->
-    <div id="tab-leaves" class="p-6 animate-fadeIn hidden">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-lg font-semibold text-gray-800">ការគ្រប់គ្រងច្បាប់ឈប់សម្រាក</h2>
+    <div id="tab-leaves" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex items-center justify-between mb-4 sm:mb-5">
+        <h2 class="text-base sm:text-lg font-bold text-gray-800">ការគ្រប់គ្រងច្បាប់ឈប់សម្រាក</h2>
         <button onclick="openModal('leave-modal')"
-          class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
-          <span class="material-symbols-outlined text-lg">add</span> បន្ថែម
+          class="btn-primary flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition">
+          <span class="material-symbols-outlined text-base sm:text-lg">add</span> បន្ថែម
         </button>
       </div>
 
       <!-- Filter bar -->
-      <div class="flex gap-2 mb-4 text-sm flex-wrap">
-        <button onclick="filterLeaves('all')" class="px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lf-all">ទាំងអស់</button>
-        <button onclick="filterLeaves('pending')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-pending">រង់ចាំ</button>
-        <button onclick="filterLeaves('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-approved">អនុញ្ញាតិ</button>
-        <button onclick="filterLeaves('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-rejected">មិនអនុញ្ញាតិ</button>
+      <div class="flex gap-1.5 sm:gap-2 mb-4 text-xs sm:text-sm flex-wrap">
+        <button onclick="filterLeaves('all')" class="px-3 sm:px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lf-all">ទាំងអស់</button>
+        <button onclick="filterLeaves('pending')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-pending">រង់ចាំ</button>
+        <button onclick="filterLeaves('approved')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-approved">អនុញ្ញាតិ</button>
+        <button onclick="filterLeaves('rejected')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lf-rejected">មិនអនុញ្ញាតិ</button>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="overflow-x-auto">
+        <!-- Desktop Table View (>= md) -->
+        <div class="hidden md:block overflow-x-auto">
           <table class="w-full text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100">
               <tr>
-                <th class="px-5 py-3 font-medium">ឈ្មោះ</th>
-                <th class="px-5 py-3 font-medium">មូលហេតុ</th>
-                <th class="px-5 py-3 font-medium">ថ្ងៃ</th>
-                <th class="px-5 py-3 font-medium">ស្ថានភាព</th>
-                <th class="px-5 py-3 font-medium text-right">សកម្មភាព</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ឈ្មោះ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">មូលហេតុ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ថ្ងៃ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ស្ថានភាព</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="leaves-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -4028,37 +4029,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </tbody>
           </table>
         </div>
+
+        <!-- Mobile Cards View (< md) -->
+        <div id="leaves-mobile-cards" class="md:hidden p-3 space-y-3 bg-slate-50/50">
+          <div class="text-center py-8 text-gray-400 text-sm">កំពុងទាញទិន្នន័យ...</div>
+        </div>
       </div>
     </div>
 
     <!-- ===== LOANS TAB ===== -->
-    <div id="tab-loans" class="p-6 animate-fadeIn hidden">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-lg font-semibold text-gray-800">ការគ្រប់គ្រងខ្ចីប្រាក់ / បុរេប្រទាន</h2>
+    <div id="tab-loans" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex items-center justify-between mb-4 sm:mb-5">
+        <h2 class="text-base sm:text-lg font-bold text-gray-800">ការគ្រប់គ្រងខ្ចីប្រាក់ / បុរេប្រទាន</h2>
         <button onclick="openModal('loan-modal')"
-          class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
-          <span class="material-symbols-outlined text-lg">add</span> បន្ថែម
+          class="btn-primary flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition">
+          <span class="material-symbols-outlined text-base sm:text-lg">add</span> បន្ថែម
         </button>
       </div>
 
       <!-- Filter bar -->
-      <div class="flex gap-2 mb-4 text-sm flex-wrap">
-        <button onclick="filterLoans('all')" class="px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lnf-all">ទាំងអស់</button>
-        <button onclick="filterLoans('pending')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-pending">រង់ចាំ</button>
-        <button onclick="filterLoans('approved')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-approved">អនុញ្ញាតិ</button>
-        <button onclick="filterLoans('rejected')" class="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-rejected">មិនអនុញ្ញាតិ</button>
+      <div class="flex gap-1.5 sm:gap-2 mb-4 text-xs sm:text-sm flex-wrap">
+        <button onclick="filterLoans('all')" class="px-3 sm:px-4 py-1.5 rounded-full bg-blue-600 text-white font-medium" id="lnf-all">ទាំងអស់</button>
+        <button onclick="filterLoans('pending')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-pending">រង់ចាំ</button>
+        <button onclick="filterLoans('approved')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-approved">អនុញ្ញាតិ</button>
+        <button onclick="filterLoans('rejected')" class="px-3 sm:px-4 py-1.5 rounded-full bg-white border border-slate-200 text-gray-600 hover:bg-slate-50" id="lnf-rejected">មិនអនុញ្ញាតិ</button>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="overflow-x-auto">
+        <!-- Desktop Table View (>= md) -->
+        <div class="hidden md:block overflow-x-auto">
           <table class="w-full text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100">
               <tr>
-                <th class="px-5 py-3 font-medium">ឈ្មោះ</th>
-                <th class="px-5 py-3 font-medium">ចំនួនទឹកប្រាក់</th>
-                <th class="px-5 py-3 font-medium">គោលបំណង</th>
-                <th class="px-5 py-3 font-medium">ស្ថានភាព</th>
-                <th class="px-5 py-3 font-medium text-right">សកម្មភាព</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ឈ្មោះ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">គោលបំណង</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ស្ថានភាព</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="loans-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -4066,11 +4073,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </tbody>
           </table>
         </div>
+
+        <!-- Mobile Cards View (< md) -->
+        <div id="loans-mobile-cards" class="md:hidden p-3 space-y-3 bg-slate-50/50">
+          <div class="text-center py-8 text-gray-400 text-sm">កំពុងទាញទិន្នន័យ...</div>
+        </div>
       </div>
     </div>
 
     <!-- ===== EMPLOYEES TAB ===== -->
-    <div id="tab-employees" class="p-6 animate-fadeIn hidden">
+    <div id="tab-employees" class="p-3 sm:p-6 animate-fadeIn hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h2 class="text-lg font-semibold text-gray-800">បុគ្គលិកទាំងអស់</h2>
@@ -4108,7 +4120,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <!-- ===== SETTINGS TAB ===== -->
-    <div id="tab-settings" class="p-6 animate-fadeIn hidden">
+    <div id="tab-settings" class="p-3 sm:p-6 animate-fadeIn hidden">
       <div class="max-w-4xl mx-auto space-y-6">
 
         <!-- Title -->
@@ -5128,33 +5140,77 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function renderLeaves() {
     const filtered = currentLeaveFilter === 'all' ? leavesData : leavesData.filter(l => l.status === currentLeaveFilter);
     const tbody = document.getElementById('leaves-tbody');
+    const mobileContainer = document.getElementById('leaves-mobile-cards');
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400">គ្មានទិន្នន័យ</td></tr>'; return;
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400">គ្មានទិន្នន័យ</td></tr>';
+      if (mobileContainer) mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">គ្មានទិន្នន័យ</div>';
+      return;
     }
-    tbody.innerHTML = filtered.map(l => `
-      <tr class="hover:bg-slate-50 transition">
-        <td class="px-5 py-3.5 font-medium">${l.employee_name}</td>
-        <td class="px-5 py-3.5 text-gray-500">${l.reason}</td>
-        <td class="px-5 py-3.5">${l.days || 1} ថ្ងៃ</td>
-        <td class="px-5 py-3.5">${statusBadge(l.status)}</td>
-        <td class="px-5 py-3.5 text-right">
-          <div class="flex items-center justify-end gap-1">
+    if (tbody) {
+      tbody.innerHTML = filtered.map(l => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="px-5 py-3.5 font-medium whitespace-nowrap">${escapeHtml(l.employee_name)}</td>
+          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">${escapeHtml(l.reason)}</td>
+          <td class="px-5 py-3.5 whitespace-nowrap"><span class="font-bold text-blue-600">${l.days || 1}</span> ថ្ងៃ</td>
+          <td class="px-5 py-3.5 whitespace-nowrap">${statusBadge(l.status)}</td>
+          <td class="px-5 py-3.5 text-right whitespace-nowrap">
+            <div class="flex items-center justify-end gap-1">
+              ${l.status === 'pending' ? `
+              <button onclick="updateLeave('${l._id}','approved')" title="អនុញ្ញាតិ"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
+                <span class="material-symbols-outlined text-base">check</span>
+              </button>
+              <button onclick="updateLeave('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
+                <span class="material-symbols-outlined text-base">close</span>
+              </button>` : ''}
+              <button onclick="deleteLeave('${l._id}')" title="លុប"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition">
+                <span class="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          </td>
+        </tr>`).join('');
+    }
+    if (mobileContainer) {
+      mobileContainer.innerHTML = filtered.map(l => `
+        <div class="bg-white rounded-xl p-3.5 shadow-sm border border-slate-100 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-sm flex-shrink-0">
+                ${(l.employee_name || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div class="min-w-0">
+                <p class="font-bold text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
+                <p class="text-[11px] text-gray-400">${l.date || 'ច្បាប់ឈប់សម្រាក'}</p>
+              </div>
+            </div>
+            <div class="flex-shrink-0">${statusBadge(l.status)}</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2.5 flex items-center justify-between text-xs sm:text-sm">
+            <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.reason)}</span>
+            <span class="font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
+              ${l.days || 1} ថ្ងៃ
+            </span>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-50">
             ${l.status === 'pending' ? `
-            <button onclick="updateLeave('${l._id}','approved')" title="អនុញ្ញាតិ"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
-              <span class="material-symbols-outlined text-base">check</span>
-            </button>
-            <button onclick="updateLeave('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
-              <span class="material-symbols-outlined text-base">close</span>
-            </button>` : ''}
-            <button onclick="deleteLeave('${l._id}')" title="លុប"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition">
-              <span class="material-symbols-outlined text-base">delete</span>
+              <button onclick="updateLeave('${l._id}','approved')"
+                class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:scale-95 transition shadow-sm">
+                <span class="material-symbols-outlined text-sm">check</span> អនុញ្ញាតិ
+              </button>
+              <button onclick="updateLeave('${l._id}','rejected')"
+                class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 active:scale-95 transition">
+                <span class="material-symbols-outlined text-sm">close</span> បដិសេធ
+              </button>
+            ` : ''}
+            <button onclick="deleteLeave('${l._id}')"
+              class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 active:scale-95 transition" title="លុប">
+              <span class="material-symbols-outlined text-lg">delete</span>
             </button>
           </div>
-        </td>
-      </tr>`).join('');
+        </div>`).join('');
+    }
   }
 
   function renderDashLeaves() {
@@ -5162,17 +5218,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const recent = leavesData.slice(0, 5);
     if (!recent.length) { el.innerHTML = '<div class="p-4 text-gray-400 text-center text-sm">គ្មានទិន្នន័យ</div>'; return; }
     el.innerHTML = recent.map(l => `
-      <div class="px-5 py-3 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
+      <div class="px-3.5 sm:px-5 py-3 flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 text-xs font-bold flex-shrink-0">
             ${l.employee_name.charAt(0)}
           </div>
-          <div>
-            <p class="font-medium text-gray-800 text-sm">${l.employee_name}</p>
-            <p class="text-xs text-gray-400">${l.reason} · ${l.days||1} ថ្ងៃ</p>
+          <div class="min-w-0">
+            <p class="font-medium text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
+            <p class="text-xs text-gray-400 truncate">${escapeHtml(l.reason)} · ${l.days||1} ថ្ងៃ</p>
           </div>
         </div>
-        ${statusBadge(l.status)}
+        <div class="flex-shrink-0">${statusBadge(l.status)}</div>
       </div>`).join('');
   }
 
@@ -5229,33 +5285,77 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function renderLoans() {
     const filtered = currentLoanFilter === 'all' ? loansData : loansData.filter(l => l.status === currentLoanFilter);
     const tbody = document.getElementById('loans-tbody');
+    const mobileContainer = document.getElementById('loans-mobile-cards');
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400">គ្មានទិន្នន័យ</td></tr>'; return;
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400">គ្មានទិន្នន័យ</td></tr>';
+      if (mobileContainer) mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">គ្មានទិន្នន័យ</div>';
+      return;
     }
-    tbody.innerHTML = filtered.map(l => `
-      <tr class="hover:bg-slate-50 transition">
-        <td class="px-5 py-3.5 font-medium">${l.employee_name}</td>
-        <td class="px-5 py-3.5 font-bold text-blue-700">${Number(l.amount_khr).toLocaleString('km-KH')} ៛</td>
-        <td class="px-5 py-3.5 text-gray-500">${l.purpose || '—'}</td>
-        <td class="px-5 py-3.5">${statusBadge(l.status)}</td>
-        <td class="px-5 py-3.5 text-right">
-          <div class="flex items-center justify-end gap-1">
+    if (tbody) {
+      tbody.innerHTML = filtered.map(l => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="px-5 py-3.5 font-medium whitespace-nowrap">${escapeHtml(l.employee_name)}</td>
+          <td class="px-5 py-3.5 font-bold text-blue-700 whitespace-nowrap">${Number(l.amount_khr).toLocaleString('km-KH')} ៛</td>
+          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">${escapeHtml(l.purpose || '—')}</td>
+          <td class="px-5 py-3.5 whitespace-nowrap">${statusBadge(l.status)}</td>
+          <td class="px-5 py-3.5 text-right whitespace-nowrap">
+            <div class="flex items-center justify-end gap-1">
+              ${l.status === 'pending' ? `
+              <button onclick="updateLoan('${l._id}','approved')" title="អនុញ្ញាតិ"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
+                <span class="material-symbols-outlined text-base">check</span>
+              </button>
+              <button onclick="updateLoan('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
+                <span class="material-symbols-outlined text-base">close</span>
+              </button>` : ''}
+              <button onclick="deleteLoan('${l._id}')" title="លុប"
+                class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition">
+                <span class="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          </td>
+        </tr>`).join('');
+    }
+    if (mobileContainer) {
+      mobileContainer.innerHTML = filtered.map(l => `
+        <div class="bg-white rounded-xl p-3.5 shadow-sm border border-slate-100 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-sm flex-shrink-0">
+                ${(l.employee_name || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div class="min-w-0">
+                <p class="font-bold text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
+                <p class="text-[11px] text-gray-400">${l.date || 'ស្នើសុំខ្ចីប្រាក់'}</p>
+              </div>
+            </div>
+            <div class="flex-shrink-0">${statusBadge(l.status)}</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2.5 flex items-center justify-between text-xs sm:text-sm">
+            <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.purpose || 'ខ្ចីប្រាក់ / បុរេប្រទាន')}</span>
+            <span class="font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
+              ${Number(l.amount_khr).toLocaleString('km-KH')} ៛
+            </span>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-50">
             ${l.status === 'pending' ? `
-            <button onclick="updateLoan('${l._id}','approved')" title="អនុញ្ញាតិ"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
-              <span class="material-symbols-outlined text-base">check</span>
-            </button>
-            <button onclick="updateLoan('${l._id}','rejected')" title="មិនអនុញ្ញាតិ"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
-              <span class="material-symbols-outlined text-base">close</span>
-            </button>` : ''}
-            <button onclick="deleteLoan('${l._id}')" title="លុប"
-              class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition">
-              <span class="material-symbols-outlined text-base">delete</span>
+              <button onclick="updateLoan('${l._id}','approved')"
+                class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:scale-95 transition shadow-sm">
+                <span class="material-symbols-outlined text-sm">check</span> អនុញ្ញាតិ
+              </button>
+              <button onclick="updateLoan('${l._id}','rejected')"
+                class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 active:scale-95 transition">
+                <span class="material-symbols-outlined text-sm">close</span> បដិសេធ
+              </button>
+            ` : ''}
+            <button onclick="deleteLoan('${l._id}')"
+              class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 active:scale-95 transition" title="លុប">
+              <span class="material-symbols-outlined text-lg">delete</span>
             </button>
           </div>
-        </td>
-      </tr>`).join('');
+        </div>`).join('');
+    }
   }
 
   function renderDashLoans() {
@@ -5263,17 +5363,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const recent = loansData.slice(0, 5);
     if (!recent.length) { el.innerHTML = '<div class="p-4 text-gray-400 text-center text-sm">គ្មានទិន្នន័យ</div>'; return; }
     el.innerHTML = recent.map(l => `
-      <div class="px-5 py-3 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
+      <div class="px-3.5 sm:px-5 py-3 flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs font-bold flex-shrink-0">
             ${l.employee_name.charAt(0)}
           </div>
-          <div>
-            <p class="font-medium text-gray-800 text-sm">${l.employee_name}</p>
-            <p class="text-xs text-blue-600 font-semibold">${Number(l.amount_khr).toLocaleString()} ៛</p>
+          <div class="min-w-0">
+            <p class="font-medium text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
+            <p class="text-xs text-blue-600 font-semibold truncate">${Number(l.amount_khr).toLocaleString()} ៛</p>
           </div>
         </div>
-        ${statusBadge(l.status)}
+        <div class="flex-shrink-0">${statusBadge(l.status)}</div>
       </div>`).join('');
   }
 
