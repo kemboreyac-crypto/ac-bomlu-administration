@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 # ===== FastAPI App =====
-app = FastAPI(title="AC Bank HR Dashboard", version="2.0")
+app = FastAPI(title="AC BOMLU HR Dashboard", version="2.0")
 
 # ===== Static Files (logo, assets) =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -277,7 +277,7 @@ async def test_telegram(payload: TelegramTestRequest):
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         test_msg = (
-            "🔔 <b>AC Bank HR System</b>\n\n"
+            "🔔 <b>AC BOMLU HR System</b>\n\n"
             "✅ <b>ការតេស្ត Telegram Bot ទទួលបានជោគជ័យ ១០០%!</b>\n"
             "🛡️ <b>ប្រព័ន្ធសុវត្ថិភាព:</b> Token របស់អ្នកត្រូវបានការពារដោយសុវត្ថិភាព (Secured & Masked)។"
         )
@@ -311,7 +311,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AC Bank — ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក</title>
+  <title>AC BOMLU — ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក</title>
 
   <!-- Favicon: AC Logo -->
   <link rel="icon" type="image/jpeg" href="/static/ac_logo.jpg" />
@@ -396,7 +396,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <img src="/static/ac_logo.jpg" alt="AC Logo"
       class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0" />
     <div class="leading-tight">
-      <p class="text-xs text-blue-300 font-medium">AC Bank</p>
+      <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
       <p class="text-sm font-bold">HR Dashboard</p>
     </div>
   </div>
@@ -440,7 +440,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- Footer -->
   <div class="p-4 border-t border-blue-800 text-xs text-blue-400 flex items-center gap-2">
     <span class="material-symbols-outlined text-base">info</span>
-    AC Bank © 2026 v2.0
+    AC BOMLU © 2026 v2.0
   </div>
 </aside>
 
