@@ -62,7 +62,7 @@ class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
     gemini_api_key: Optional[str] = ""
-    gemini_model: Optional[str] = "gemini-2.5-flash"
+    gemini_model: Optional[str] = "gemini-3.5-flash"
     notify_on_leave: bool = True
     notify_on_loan: bool = True
 
@@ -72,7 +72,7 @@ class TelegramTestRequest(BaseModel):
 
 class GeminiTestRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
-    gemini_model: Optional[str] = "gemini-2.5-flash"
+    gemini_model: Optional[str] = "gemini-3.5-flash"
 
 # ===== Helper =====
 def fix_id(doc):
@@ -384,7 +384,7 @@ async def get_settings():
     token = ""
     chat_id = ""
     gemini_key = ""
-    gemini_model = "gemini-2.5-flash"
+    gemini_model = "gemini-3.5-flash"
     notify_leave = True
     notify_loan = True
     
@@ -392,14 +392,14 @@ async def get_settings():
         token = s.get("telegram_bot_token", "")
         chat_id = s.get("telegram_chat_id", "")
         gemini_key = s.get("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
-        gemini_model = s.get("gemini_model", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+        gemini_model = s.get("gemini_model", os.getenv("GEMINI_MODEL", "gemini-3.5-flash"))
         notify_leave = s.get("notify_on_leave", True)
         notify_loan = s.get("notify_on_loan", True)
     else:
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         gemini_key = os.getenv("GEMINI_API_KEY", "")
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         
     return {
         "telegram_bot_token": mask_token(token),
@@ -432,7 +432,7 @@ async def save_settings(payload: SettingsUpdate):
             "telegram_bot_token": token_to_save,
             "telegram_chat_id": (payload.telegram_chat_id or "").strip(),
             "gemini_api_key": gemini_to_save,
-            "gemini_model": (payload.gemini_model or "gemini-2.5-flash").strip(),
+            "gemini_model": (payload.gemini_model or "gemini-3.5-flash").strip(),
             "notify_on_leave": payload.notify_on_leave,
             "notify_on_loan": payload.notify_on_loan
         },
@@ -449,8 +449,8 @@ async def test_gemini(payload: GeminiTestRequest):
     if not key:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូល Google Gemini API Key ជាមុនសិន!")
         
-    model = (payload.gemini_model or "gemini-2.5-flash").strip()
-    candidate_models = [model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+    model = (payload.gemini_model or "gemini-3.5-flash").strip()
+    candidate_models = [model, "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -466,7 +466,7 @@ async def test_gemini(payload: GeminiTestRequest):
                 data=json.dumps(test_payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=15) as r:
                 data = json.loads(r.read().decode('utf-8'))
                 ans = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
                 return {
@@ -885,8 +885,8 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
     if not api_key:
         return None
         
-    model = s.get("gemini_model", "gemini-2.5-flash").strip()
-    candidate_models = [model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+    model = s.get("gemini_model", "gemini-3.5-flash").strip()
+    candidate_models = [model, "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -944,7 +944,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
                 data=json.dumps(payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=12) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 candidates = res_data.get("candidates", [])
                 if candidates:
@@ -2291,9 +2291,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>ម៉ូដែល AI (AI Model)</span>
               </label>
               <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
-                <option value="gemini-2.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
-                <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash</option>
-                <option value="gemini-1.5-flash">🌟 Gemini 1.5 Flash</option>
+                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
+                <option value="gemini-3.8-flash">🚀 Gemini 3.8 Flash (Newest Model)</option>
+                <option value="gemini-flash-latest">🌟 Gemini Flash Latest (Auto-Updated)</option>
               </select>
             </div>
 
