@@ -117,7 +117,25 @@ async def create_leave(request: LeaveRequest):
 
 @app.patch("/api/leave/{leave_id}/status")
 async def update_leave_status(leave_id: str, status: str):
+    leave = leaves_collection.find_one({"_id": ObjectId(leave_id)})
     leaves_collection.update_one({"_id": ObjectId(leave_id)}, {"$set": {"status": status}})
+    if leave:
+        name = leave.get("employee_name", "បុគ្គលិក")
+        days = leave.get("days", 1)
+        if status == "approved":
+            send_telegram_notify(
+                f"✅ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved)"
+            )
+        elif status == "rejected":
+            send_telegram_notify(
+                f"❌ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                f"🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected)"
+            )
     return {"message": f"Leave updated to {status}"}
 
 @app.delete("/api/leave/{leave_id}")
@@ -145,7 +163,25 @@ async def create_loan(request: LoanRequest):
 
 @app.patch("/api/loan/{loan_id}/status")
 async def update_loan_status(loan_id: str, status: str):
+    loan = loans_collection.find_one({"_id": ObjectId(loan_id)})
     loans_collection.update_one({"_id": ObjectId(loan_id)}, {"$set": {"status": status}})
+    if loan:
+        name = loan.get("employee_name", "បុគ្គលិក")
+        amount = f"{loan.get('amount_khr', 0):,}"
+        if status == "approved":
+            send_telegram_notify(
+                f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
+                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved)"
+            )
+        elif status == "rejected":
+            send_telegram_notify(
+                f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
+                f"🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected)"
+            )
     return {"message": f"Loan updated to {status}"}
 
 @app.delete("/api/loan/{loan_id}")
