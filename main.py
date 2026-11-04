@@ -82,6 +82,9 @@ class BulkEmployeeRequest(BaseModel):
     names: List[str]
     position: Optional[str] = "បុគ្គលិក"
 
+class BatchPhoneUpdateRequest(BaseModel):
+    phones: Dict[str, str]
+
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
@@ -1316,6 +1319,38 @@ async def bulk_create_employees(req: BulkEmployeeRequest):
     total_count = employees_collection.count_documents({})
     return {"message": f"បានបញ្ចូលបុគ្គលិកថ្មីចំនួន {created} នាក់ជោគជ័យ! បច្ចុប្បន្នមានសរុប {total_count} នាក់។", "created_count": created, "total_count": total_count}
 
+@app.post("/api/employees/batch-phone")
+async def batch_update_phones(req: BatchPhoneUpdateRequest):
+    updated = 0
+    for emp_id, phone in req.phones.items():
+        clean_p = phone.replace("+855", "0").replace("-", "").replace(" ", "").strip()
+        try:
+            employees_collection.update_one({"_id": ObjectId(emp_id)}, {"$set": {"phone": clean_p}})
+            updated += 1
+        except Exception as e:
+            print("Error updating phone:", e)
+    return {"message": f"បានរក្សាទុកលេខទូរស័ព្ទបុគ្គលិកចំនួន {updated} នាក់ជោគជ័យ!", "updated_count": updated}
+
+@app.post("/api/employees/request-phone-telegram")
+async def api_request_phone_telegram():
+    s = settings_collection.find_one({"_id": "app_settings"})
+    token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+    group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
+    bot_username = "ac_bomlu_administration_bot"
+    
+    inline_btn = {
+        "inline_keyboard": [[
+            {"text": "📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ", "url": f"https://t.me/{bot_username}?start=share_phone"}
+        ]]
+    }
+    msg = (
+        "📢 <b>ជូនដំណឹងដល់បុគ្គលិក AC BOMLU ទាំងអស់៖</b>\n\n"
+        "ដើម្បីឱ្យប្រព័ន្ធគ្រប់គ្រងមានលេខទូរស័ព្ទទំនាក់ទំនងរបស់អ្នក និងបង្ហាញលើ Dashboard ក្រុមហ៊ុន សូមបុគ្គលិកម្នាក់ៗចុចប៊ូតុងខាងក្រោម៖\n\n"
+        "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ (Share Phone) ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
+    )
+    send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=group_chat_id)
+    return {"message": "បានផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់គ្រុប Telegram រួចរាល់!"}
+
 # ===== Settings & Telegram Routes =====
 def mask_token(token: str) -> str:
     if not token:
@@ -2461,7 +2496,13 @@ async def telegram_webhook(req: Request):
                 f"📞 <b>លេខទូរស័ព្ទ:</b> <code>{c_phone}</code>\n\n"
                 f"ប្រព័ន្ធបានធ្វើបច្ចុប្បន្នភាពចូល Dashboard រួចរាល់។"
             )
-            send_telegram_notify(conf_msg, target_chat_id=chat_id_str)
+            done_kb = {
+                "keyboard": [
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
+                ],
+                "resize_keyboard": True
+            }
+            send_telegram_notify(conf_msg, reply_markup=done_kb, target_chat_id=chat_id_str)
             return {"ok": True}
         
         # Check active flow immediately to prevent UnboundLocalError
@@ -2478,7 +2519,41 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+
+        # Private Chat /start or /share_phone prompt with Contact Request Keyboard Button
+        if is_private_chat and (text.startswith("/start") or clean_cmd in ["/share_phone"]):
+            contact_kb = {
+                "keyboard": [
+                    [{"text": "📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone)", "request_contact": True}],
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
+                ],
+                "resize_keyboard": True
+            }
+            welcome_private = (
+                f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"សូមស្វាគមន៍មកកាន់ប្រព័ន្ធរដ្ឋបាល <b>AC BOMLU Staff Control</b>!\n\n"
+                f"📱 <b>ដើម្បីភ្ជាប់លេខទូរស័ព្ទរបស់អ្នកជាមួយកាតបុគ្គលិកស្វ័យប្រវត្តិ៖</b>\n"
+                f"សូមចុចប៊ូតុង <b>[ 📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone) ]</b> ខាងក្រោមតែមួយដង នោះលេខទូរស័ព្ទរបស់អ្នកនឹងត្រូវកត់ត្រាចូលក្នុង Dashboard ដោយស្វ័យប្រវត្តិ។\n\n"
+                f"ក្រៅពីនេះ អ្នកក៏អាចចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
+            )
+            send_telegram_notify(welcome_private, reply_markup=contact_kb, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # /request_phone command in Telegram group or DM
+        if clean_cmd in ["/request_phone", "/phone_request", "/get_phone"]:
+            inline_btn = {
+                "inline_keyboard": [[
+                    {"text": "📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ", "url": f"https://t.me/{bot_username}?start=share_phone"}
+                ]]
+            }
+            msg = (
+                "📢 <b>ជូនដំណឹងដល់បុគ្គលិក AC BOMLU ទាំងអស់៖</b>\n\n"
+                "ដើម្បីឱ្យប្រព័ន្ធគ្រប់គ្រងមានលេខទូរស័ព្ទទំនាក់ទំនងរបស់អ្នក និងបង្ហាញលើ Dashboard ក្រុមហ៊ុន សូមបុគ្គលិកម្នាក់ៗចុចប៊ូតុងខាងក្រោម៖\n\n"
+                "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ (Share Phone) ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
+            )
+            send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=chat_id_str)
+            return {"ok": True}
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
@@ -3709,6 +3784,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <p class="text-xs text-gray-500 mt-0.5">ទិន្នន័យត្រូវបាន Sync ដោយស្វ័យប្រវត្តិជាមួយ Telegram Group</p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="requestPhoneViaTelegram()" id="btn-request-tg-phone"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 shadow-sm transition"
+            title="ផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់ Telegram Group">
+            <span class="material-symbols-outlined text-base">send_to_mobile</span> 📲 ស្នើសុំលេខតាម Telegram
+          </button>
+          <button onclick="openBatchPhoneModal()"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 shadow-sm transition"
+            title="បញ្ចូលលេខទូរស័ព្ទបុគ្គលិកទាំងអស់ក្នុងពេលតែមួយ">
+            <span class="material-symbols-outlined text-base">call</span> 📞 បញ្ចូលលេខទូរស័ព្ទ
+          </button>
           <button id="btn-sync-tg-emp" onclick="syncEmployeesFromTelegram()"
             class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 shadow-sm transition">
             <span class="material-symbols-outlined text-base">sync</span> 🔄 Sync ពី Telegram
@@ -4404,6 +4489,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Batch Phone Update Modal -->
+<div id="batch-phone-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-indigo-50">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
+        <span class="material-symbols-outlined text-indigo-600">call</span> បញ្ចូល / កែសម្រួលលេខទូរស័ព្ទបុគ្គលិកទាំងអស់
+      </h3>
+      <button onclick="closeModal('batch-phone-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitBatchPhoneModal(event)" class="flex flex-col flex-1 overflow-hidden">
+      <div class="p-6 overflow-y-auto flex-1 space-y-4">
+        <div class="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-indigo-800">
+          <span class="material-symbols-outlined text-indigo-600 text-base mt-0.5">info</span>
+          <div>
+            <b>ការណែនាំ៖</b> លោកអ្នកអាចវាយបញ្ចូលលេខទូរស័ព្ទ (ឧទាហរណ៍៖ <code>012345678</code>) សម្រាប់បុគ្គលិកនីមួយៗ ហើយចុច <b>«រក្សាទុកលេខទូរស័ព្ទទាំងអស់»</b> តែមួយដង នោះកាតបុគ្គលិកនឹងលែងបង្ហាញ <span class="text-amber-600 font-medium">⚠️ មិនទាន់មានលេខ</span> ទៀតហើយ។
+          </div>
+        </div>
+        <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-medium">
+              <tr>
+                <th class="py-2.5 px-4">បុគ្គលិក</th>
+                <th class="py-2.5 px-4">លេខទូរស័ព្ទ</th>
+                <th class="py-2.5 px-4 text-center">ស្ថានភាព</th>
+              </tr>
+            </thead>
+            <tbody id="batch-phone-tbody" class="divide-y divide-slate-100">
+              <tr><td colspan="3" class="text-center py-6 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-100">
+        <button type="button" onclick="closeModal('batch-phone-modal')" class="px-4 py-2 rounded-xl text-sm border border-slate-200 text-gray-600 hover:bg-white transition">បោះបង់</button>
+        <button type="submit" id="btn-save-batch-phone" class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+          <span class="material-symbols-outlined text-base">save</span> រក្សាទុកលេខទូរស័ព្ទទាំងអស់
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Compensate Leave Modal -->
 <div id="compensate-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -5037,6 +5166,105 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       await loadStats();
     } catch(err) {
       showToast('Error: ' + err, 'error');
+    }
+  }
+
+  // ===== BATCH PHONE UPDATE & REQUEST VIA TELEGRAM =====
+  async function openBatchPhoneModal() {
+    openModal('batch-phone-modal');
+    const tbody = document.getElementById('batch-phone-tbody');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center py-6 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>';
+    try {
+      const res = await fetch('/api/employees');
+      const emps = await res.json();
+      if (!emps || emps.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-6 text-gray-400">គ្មានបុគ្គលិកក្នុងប្រព័ន្ធទេ</td></tr>';
+        return;
+      }
+      tbody.innerHTML = emps.map(emp => {
+        const hasPhone = emp.phone && emp.phone.trim() !== '';
+        const statusBadge = hasPhone 
+          ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">✓ មានលេខ</span>'
+          : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">⚠️ ខ្វះលេខ</span>';
+        const initial = (emp.name || '?')[0].toUpperCase();
+        return `
+          <tr class="hover:bg-slate-50/70 transition">
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                  ${initial}
+                </div>
+                <div>
+                  <div class="font-semibold text-gray-800 text-xs sm:text-sm">${escapeHtml(emp.name)}</div>
+                  <div class="text-[11px] text-gray-400">${escapeHtml(emp.position || 'បុគ្គលិក')}</div>
+                </div>
+              </div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="relative">
+                <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">phone</span>
+                <input type="tel" data-emp-id="${emp._id}" value="${escapeHtml(emp.phone || '')}" placeholder="ឧ. 012345678"
+                  class="batch-phone-input w-full pl-8 pr-3 py-1.5 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition font-mono" />
+              </div>
+            </td>
+            <td class="py-3 px-4 text-center">
+              ${statusBadge}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="3" class="text-center py-6 text-red-500">Error: ${err}</td></tr>`;
+    }
+  }
+
+  async function submitBatchPhoneModal(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-batch-phone');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">refresh</span> កំពុងរក្សាទុក...';
+    
+    const inputs = document.querySelectorAll('.batch-phone-input');
+    const phones = {};
+    inputs.forEach(inp => {
+      const empId = inp.getAttribute('data-emp-id');
+      if (empId) {
+        phones[empId] = inp.value.trim();
+      }
+    });
+    
+    try {
+      const res = await fetch('/api/employees/batch-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phones: phones })
+      });
+      const data = await res.json();
+      closeModal('batch-phone-modal');
+      showToast(data.message || 'បានរក្សាទុកលេខទូរស័ព្ទជោគជ័យ!');
+      await loadEmployees();
+    } catch (err) {
+      showToast('Error: ' + err, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined text-base">save</span> រក្សាទុកលេខទូរស័ព្ទទាំងអស់';
+    }
+  }
+
+  async function requestPhoneViaTelegram() {
+    const btn = document.getElementById('btn-request-tg-phone');
+    if (!confirm('តើអ្នកពិតជាចង់ផ្ញើសារទៅកាន់គ្រុប Telegram ដើម្បីស្នើសុំឱ្យបុគ្គលិកទាំងអស់បញ្ជូនលេខទូរស័ព្ទមែនទេ?')) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">refresh</span> កំពុងផ្ញើ...';
+    try {
+      const res = await fetch('/api/employees/request-phone-telegram', { method: 'POST' });
+      const data = await res.json();
+      showToast(data.message || 'បានផ្ញើសារទៅ Telegram រួចរាល់!');
+    } catch (err) {
+      showToast('Error: ' + err, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined text-base">send_to_mobile</span> 📲 ស្នើសុំលេខតាម Telegram';
     }
   }
 
