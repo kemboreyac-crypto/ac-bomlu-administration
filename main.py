@@ -241,21 +241,186 @@ def generate_daily_morning_briefing() -> str:
     except Exception as e:
         return f"⚠️ មិនអាចបង្កើតរបាយការណ៍ពេលព្រឹកបានទេ: {e}"
 
+def generate_weekend_leave_report() -> dict:
+    """
+    Weekly Leave Report for staff to compensate (ធ្វើការសង) on Saturday & Sunday.
+    Covers approved/pending leaves within the last 7 days.
+    """
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        start_date = (now_cam - timedelta(days=7)).date()
+        
+        leaves = list(leaves_collection.find({"status": {"$in": ["approved", "pending"]}}).sort("_id", -1))
+        
+        compensate_list = []
+        total_days_to_compensate = 0
+        
+        for l in leaves:
+            doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
+            if doc_date >= start_date:
+                days = l.get("days", 1)
+                total_days_to_compensate += days
+                ename = l.get("employee_name", "បុគ្គលិក")
+                reason = l.get("reason", "មិនបានបញ្ជាក់")
+                status = l.get("status", "approved")
+                date_str = doc_date.strftime("%d/%m/%Y")
+                
+                comp_desc = f"សង {days} ថ្ងៃ (ថ្ងៃសៅរ៍ & អាទិត្យ)" if days >= 2 else "សង ១ ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
+                compensate_list.append({
+                    "id": str(l["_id"]),
+                    "employee_name": ename,
+                    "days": days,
+                    "reason": reason,
+                    "status": status,
+                    "date": date_str,
+                    "compensation": comp_desc
+                })
+                
+        return {
+            "report_type": "weekend_leave",
+            "generated_at": now_cam.strftime("%d/%m/%Y %H:%M"),
+            "total_staff_count": len(compensate_list),
+            "total_days_to_compensate": total_days_to_compensate,
+            "items": compensate_list
+        }
+    except Exception as e:
+        print("generate_weekend_leave_report error:", e)
+        return {"report_type": "weekend_leave", "items": [], "total_staff_count": 0, "total_days_to_compensate": 0}
+
+def format_telegram_weekend_leave_report(data: dict) -> str:
+    now_cam_str = data.get("generated_at", "")
+    items = data.get("items", [])
+    total_staff = data.get("total_staff_count", 0)
+    total_days = data.get("total_days_to_compensate", 0)
+    
+    lines = []
+    for idx, item in enumerate(items, 1):
+        st = "✅" if item["status"] == "approved" else "🟡"
+        lines.append(
+            f"{idx}. <b>{item['employee_name']}</b> ({st})\n"
+            f"   • ច្បាប់ឈប់: <b>{item['days']} ថ្ងៃ</b> (មូលហេតុ: {item['reason']})\n"
+            f"   • <b>កាតព្វកិច្ច:</b> <b>{item['compensation']}</b>"
+        )
+        
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</i>"
+    
+    return (
+        f"📢 <b>របាយការណ៍ច្បាប់ចុងសប្តាហ៍ (បុគ្គលិកត្រូវធ្វើការសង ថ្ងៃសៅរ៍-អាទិត្យ)</b>\n"
+        f"📅 <b>កាលបរិច្ឆេទ:</b> {now_cam_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 <b>បុគ្គលិកត្រូវធ្វើការសង:</b> {total_staff} នាក់ (សរុប {total_days} ថ្ងៃ)\n\n"
+        f"{items_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ <i>សូមបុគ្គលិកដែលមានឈ្មោះខាងលើ មកបំពេញការងារសងនៅថ្ងៃសៅរ៍ និងថ្ងៃអាទិត្យឱ្យបានទៀងទាត់!</i>"
+    )
+
+def generate_monthly_loan_report() -> dict:
+    """
+    Monthly Loan Report for month-end payroll deduction.
+    """
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        cur_year = now_cam.year
+        cur_month = now_cam.month
+        
+        loans = list(loans_collection.find({"status": {"$in": ["approved", "pending"]}}).sort("_id", -1))
+        
+        month_items = []
+        total_amount = 0
+        
+        for ln in loans:
+            doc_dt = ln["_id"].generation_time.astimezone(cambodia_tz)
+            if doc_dt.year == cur_year and doc_dt.month == cur_month:
+                amt = ln.get("amount_khr", 0)
+                total_amount += amt
+                month_items.append({
+                    "id": str(ln["_id"]),
+                    "employee_name": ln.get("employee_name", "បុគ្គលិក"),
+                    "amount_khr": amt,
+                    "purpose": ln.get("purpose", "មិនបានបញ្ជាក់"),
+                    "status": ln.get("status", "approved"),
+                    "date": doc_dt.strftime("%d/%m/%Y")
+                })
+                
+        return {
+            "report_type": "monthly_loan",
+            "month_str": now_cam.strftime("%m/%Y"),
+            "total_borrowers": len(month_items),
+            "total_amount_khr": total_amount,
+            "items": month_items
+        }
+    except Exception as e:
+        print("generate_monthly_loan_report error:", e)
+        return {"report_type": "monthly_loan", "items": [], "total_borrowers": 0, "total_amount_khr": 0}
+
+def format_telegram_monthly_loan_report(data: dict) -> str:
+    month_str = data.get("month_str", "")
+    items = data.get("items", [])
+    total_amt = data.get("total_amount_khr", 0)
+    total_borrowers = data.get("total_borrowers", 0)
+    
+    lines = []
+    for idx, item in enumerate(items, 1):
+        st = "✅" if item["status"] == "approved" else "🟡"
+        lines.append(
+            f"{idx}. <b>{item['employee_name']}</b> ({st})\n"
+            f"   • ទឹកប្រាក់ខ្ចី: <b>{item['amount_khr']:,} រៀល</b>\n"
+            f"   • គោលបំណង: {item['purpose']}"
+        )
+        
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានសំណើខ្ចីប្រាក់ក្នុងខែនេះទេ</i>"
+    
+    return (
+        f"💰 <b>របាយការណ៍ខ្ចីប្រាក់ប្រចាំខែ (សម្រាប់កាត់ប្រាក់ខែចុងខែ {month_str})</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"💵 <b>ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ:</b> <b>{total_amt:,} រៀល</b>\n"
+        f"👥 <b>ចំនួនបុគ្គលិកខ្ចីប្រាក់:</b> {total_borrowers} នាក់\n\n"
+        f"{items_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យដើម្បីកាត់ប្រាក់ខែបុគ្គលិកខាងលើឱ្យបានត្រឹមត្រូវ!</i>"
+    )
+
 async def morning_briefing_scheduler():
-    """Background loop sending briefing at 06:00 AM Cambodia time."""
+    """Background loop sending scheduled daily briefing, weekend leave compensation report, and monthly loan reports."""
     cambodia_tz = timezone(timedelta(hours=7))
-    last_sent_date = ""
+    last_daily_date = ""
+    last_weekend_date = ""
+    last_month_loan_date = ""
+    
     while True:
         try:
             now_cam = datetime.now(cambodia_tz)
             today_str = now_cam.strftime("%Y-%m-%d")
-            # Scheduled at exactly 06:00 AM Cambodia Time
-            if now_cam.hour == 6 and now_cam.minute >= 0 and last_sent_date != today_str:
+            
+            # 1. Daily morning briefing at 06:00 AM
+            if now_cam.hour == 6 and now_cam.minute >= 0 and last_daily_date != today_str:
                 briefing = generate_daily_morning_briefing()
                 send_telegram_notify(briefing)
-                last_sent_date = today_str
+                last_daily_date = today_str
+                
+            # 2. Weekend Leave Compensation Report at 06:00 AM on Friday (4) and Saturday (5)
+            # Sends report so staff know they must compensate on Saturday & Sunday!
+            if now_cam.weekday() in [4, 5] and now_cam.hour == 6 and now_cam.minute >= 0 and last_weekend_date != today_str:
+                rep_data = generate_weekend_leave_report()
+                if rep_data.get("items"):
+                    tg_msg = format_telegram_weekend_leave_report(rep_data)
+                    send_telegram_notify(tg_msg)
+                last_weekend_date = today_str
+                
+            # 3. Monthly Loan Deduction Report on the LAST DAY of every month at 06:00 AM
+            import calendar
+            last_day = calendar.monthrange(now_cam.year, now_cam.month)[1]
+            if now_cam.day == last_day and now_cam.hour == 6 and now_cam.minute >= 0 and last_month_loan_date != today_str:
+                loan_rep_data = generate_monthly_loan_report()
+                if loan_rep_data.get("items"):
+                    loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
+                    send_telegram_notify(loan_tg_msg)
+                last_month_loan_date = today_str
+                
         except Exception as e:
-            print("Morning briefing scheduler error:", e)
+            print("Scheduler error:", e)
         await asyncio.sleep(60)
 
 @app.on_event("startup")
@@ -546,6 +711,28 @@ async def send_briefing_api():
     briefing = generate_daily_morning_briefing()
     send_telegram_notify(briefing)
     return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!"}
+
+@app.get("/api/reports/weekend-leave")
+async def api_get_weekend_leave_report():
+    return generate_weekend_leave_report()
+
+@app.post("/api/reports/send-weekend-leave")
+async def api_send_weekend_leave_report():
+    data = generate_weekend_leave_report()
+    msg = format_telegram_weekend_leave_report(data)
+    send_telegram_notify(msg)
+    return {"message": "បានផ្ញើរបាយការណ៍ច្បាប់ចុងសប្តាហ៍ទៅ Telegram រួចរាល់!"}
+
+@app.get("/api/reports/monthly-loan")
+async def api_get_monthly_loan_report():
+    return generate_monthly_loan_report()
+
+@app.post("/api/reports/send-monthly-loan")
+async def api_send_monthly_loan_report():
+    data = generate_monthly_loan_report()
+    msg = format_telegram_monthly_loan_report(data)
+    send_telegram_notify(msg)
+    return {"message": "បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ប្រចាំខែទៅ Telegram រួចរាល់!"}
 
 # ===== Telegram Mini App Web Forms (Option 4) =====
 LEAVE_FORM_HTML = """<!DOCTYPE html>
@@ -1298,12 +1485,26 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan"] or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan"] or is_leave_btn or is_loan_btn
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
             briefing = generate_daily_morning_briefing()
             send_telegram_notify(briefing, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Weekend Leave Compensation Report Command (/weekend_report, /leave_report)
+        if clean_cmd in ["/weekend_report", "/leave_report", "/weekend"]:
+            rep_data = generate_weekend_leave_report()
+            tg_msg = format_telegram_weekend_leave_report(rep_data)
+            send_telegram_notify(tg_msg, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Monthly Loan Deduction Report Command (/month_report, /loan_report)
+        if clean_cmd in ["/month_report", "/loan_report", "/month_loan"]:
+            loan_rep_data = generate_monthly_loan_report()
+            loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
+            send_telegram_notify(loan_tg_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
@@ -1886,53 +2087,91 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <body class="bg-slate-100 flex h-screen overflow-hidden text-gray-800">
 
+<!-- Mobile Sidebar Backdrop Overlay -->
+<div id="sidebar-backdrop" onclick="closeSidebar()"
+  class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity duration-300"></div>
+
 <!-- ======================================================
      SIDEBAR
 ====================================================== -->
 <aside id="sidebar"
-  class="w-64 flex-shrink-0 bg-gradient-to-b from-blue-900 to-blue-950 text-white flex flex-col shadow-2xl z-30 transition-transform duration-300">
+  class="fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-900 to-blue-950 text-white flex flex-col shadow-2xl transition-transform duration-300 ease-in-out -translate-x-full lg:translate-x-0 lg:static flex-shrink-0">
 
   <!-- Logo -->
-  <div class="h-16 flex items-center px-5 gap-3 border-b border-blue-800">
-    <img src="/static/ac_logo.jpg" alt="AC Logo"
-      class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0" />
-    <div class="leading-tight">
-      <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
-      <p class="text-sm font-bold">HR Dashboard</p>
+  <div class="h-16 flex items-center justify-between px-5 border-b border-blue-800">
+    <div class="flex items-center gap-3">
+      <img src="/static/ac_logo.jpg" alt="AC Logo"
+        class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0" />
+      <div class="leading-tight">
+        <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
+        <p class="text-sm font-bold">HR Dashboard</p>
+      </div>
     </div>
+    <!-- Mobile close button -->
+    <button onclick="closeSidebar()" class="lg:hidden text-blue-300 hover:text-white p-1 rounded-lg">
+      <span class="material-symbols-outlined text-xl">close</span>
+    </button>
   </div>
 
   <!-- Nav -->
-  <nav class="flex-1 p-3 space-y-1 text-sm">
+  <nav class="flex-1 p-3 space-y-1 text-sm overflow-y-auto">
     <button onclick="showTab('dashboard')"
       id="nav-dashboard"
-      class="nav-link active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left">
+      class="nav-link active w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left">
       <span class="material-symbols-outlined text-xl">dashboard</span>
       <span>ផ្ទៃតាប្លូ</span>
     </button>
     <button onclick="showTab('leaves')"
       id="nav-leaves"
-      class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
       <span class="material-symbols-outlined text-xl">event_busy</span>
       <span>ច្បាប់ឈប់សម្រាក</span>
       <span id="badge-leaves" class="ml-auto text-xs bg-orange-400 text-white rounded-full px-2 py-0.5 hidden">0</span>
     </button>
     <button onclick="showTab('loans')"
       id="nav-loans"
-      class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
       <span class="material-symbols-outlined text-xl">payments</span>
       <span>ខ្ចីប្រាក់ / បុរេប្រទាន</span>
       <span id="badge-loans" class="ml-auto text-xs bg-orange-400 text-white rounded-full px-2 py-0.5 hidden">0</span>
     </button>
     <button onclick="showTab('employees')"
       id="nav-employees"
-      class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
       <span class="material-symbols-outlined text-xl">group</span>
       <span>បុគ្គលិកទាំងអស់</span>
     </button>
+
+    <!-- Reports Accordion Group -->
+    <div class="pt-0.5">
+      <button onclick="toggleReportsMenu()"
+        id="nav-reports"
+        class="nav-link w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-xl">analytics</span>
+          <span class="font-medium">របាយការណ៍</span>
+        </div>
+        <span class="material-symbols-outlined text-lg transition-transform duration-200" id="reports-chevron">expand_more</span>
+      </button>
+      <div id="sub-reports-menu" class="pl-6 pr-1 mt-1 space-y-1">
+        <button onclick="showTab('reports-leave')"
+          id="nav-reports-leave"
+          class="nav-link w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs font-medium text-blue-200 hover:text-white transition">
+          <span class="material-symbols-outlined text-base text-amber-300">event_repeat</span>
+          <span>ច្បាប់ (សងចុងសប្តាហ៍)</span>
+        </button>
+        <button onclick="showTab('reports-loan')"
+          id="nav-reports-loan"
+          class="nav-link w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs font-medium text-blue-200 hover:text-white transition">
+          <span class="material-symbols-outlined text-base text-indigo-300">receipt_long</span>
+          <span>ខ្ចីប្រាក់ (កាត់ប្រាក់ខែ)</span>
+        </button>
+      </div>
+    </div>
+
     <button onclick="showTab('settings')"
       id="nav-settings"
-      class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
       <span class="material-symbols-outlined text-xl">settings</span>
       <span>ការកំណត់</span>
     </button>
@@ -1951,11 +2190,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="flex-1 flex flex-col overflow-hidden">
 
   <!-- TOP BAR -->
-  <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm flex-shrink-0">
+  <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shadow-sm flex-shrink-0">
     <div class="flex items-center gap-3">
       <!-- Hamburger (mobile) -->
-      <button onclick="toggleSidebar()" class="text-gray-500 hover:text-blue-700 lg:hidden">
-        <span class="material-symbols-outlined">menu</span>
+      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition">
+        <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
       <div>
         <h1 id="page-title" class="text-base font-semibold text-gray-800">ផ្ទៃតាប្លូ</h1>
@@ -2388,6 +2627,188 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- ===== REPORTS: WEEKEND LEAVE COMPENSATION TAB ===== -->
+    <div id="tab-reports-leave" class="p-4 sm:p-6 animate-fadeIn hidden">
+      <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Header & Quick Action -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-sm border border-amber-100">
+              <span class="material-symbols-outlined text-2xl">event_repeat</span>
+            </div>
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-gray-800">របាយការណ៍ច្បាប់ (សម្រាប់ធ្វើការសង ថ្ងៃសៅរ៍-អាទិត្យ)</h2>
+              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ដែលត្រូវបំពេញការងារសងនៅចុងសប្តាហ៍ (ស្វ័យប្រវត្តិតាម Telegram រៀងរាល់ថ្ងៃសុក្រ និងសៅរ៍ ម៉ោង ៦:០០ ព្រឹក)</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="sendWeekendLeaveReportTelegram()" id="btn-send-tg-leave"
+              class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
+              <span class="material-symbols-outlined text-lg" id="icon-send-tg-leave">send</span>
+              <span>ផ្ញើទៅ Telegram ឥឡូវនេះ</span>
+            </button>
+            <button onclick="loadWeekendLeaveReport()"
+              class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition" title="Refresh">
+              <span class="material-symbols-outlined text-lg">refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">group_off</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">បុគ្គលិកត្រូវធ្វើការសង</p>
+              <p class="text-xl font-bold text-gray-800" id="rep-leave-staff-count">0 នាក់</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">calendar_month</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">ចំនួនថ្ងៃសរុបត្រូវធ្វើការសង</p>
+              <p class="text-xl font-bold text-amber-600" id="rep-leave-days-count">0 ថ្ងៃ</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">alarm_on</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">កាលវិភាគស្វ័យប្រវត្តិ</p>
+              <p class="text-xs sm:text-sm font-semibold text-emerald-600">រៀងរាល់ម៉ោង ០៦:០០ ព្រឹក (ចុងសប្តាហ៍)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
+              <span class="material-symbols-outlined text-amber-600">format_list_bulleted</span>
+              បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ (កាតព្វកិច្ចសងថ្ងៃសៅរ៍ & អាទិត្យ)
+            </h3>
+            <span class="text-xs text-gray-400" id="rep-leave-updated-at"></span>
+          </div>
+          <div class="overflow-x-auto w-full">
+            <table class="w-full text-left text-xs sm:text-sm">
+              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs">
+                <tr>
+                  <th class="py-3 px-4">#</th>
+                  <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+                  <th class="py-3 px-4">ថ្ងៃសុំច្បាប់</th>
+                  <th class="py-3 px-4">ចំនួនថ្ងៃឈប់</th>
+                  <th class="py-3 px-4">មូលហេតុ</th>
+                  <th class="py-3 px-4">កាតព្វកិច្ចធ្វើការសង</th>
+                  <th class="py-3 px-4">ស្ថានភាព</th>
+                </tr>
+              </thead>
+              <tbody id="rep-leave-tbody" class="divide-y divide-slate-100 text-gray-700">
+                <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== REPORTS: MONTHLY LOAN PAYROLL DEDUCTION TAB ===== -->
+    <div id="tab-reports-loan" class="p-4 sm:p-6 animate-fadeIn hidden">
+      <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Header & Quick Action -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 shadow-sm border border-indigo-100">
+              <span class="material-symbols-outlined text-2xl">receipt_long</span>
+            </div>
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-gray-800">របាយការណ៍ខ្ចីប្រាក់ (សម្រាប់កាត់ប្រាក់ខែចុងខែ)</h2>
+              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែដែលត្រូវកាត់ប្រាក់ខែ (ស្វ័យប្រវត្តិតាម Telegram នៅថ្ងៃចុងក្រោយនៃរៀងរាល់ខែ ម៉ោង ៦:០០ ព្រឹក)</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="sendMonthlyLoanReportTelegram()" id="btn-send-tg-loan"
+              class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
+              <span class="material-symbols-outlined text-lg" id="icon-send-tg-loan">send</span>
+              <span>ផ្ញើទៅ Telegram ឥឡូវនេះ</span>
+            </button>
+            <button onclick="loadMonthlyLoanReport()"
+              class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition" title="Refresh">
+              <span class="material-symbols-outlined text-lg">refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">payments</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">ទឹកប្រាក់ខ្ចីសរុបត្រូវកាត់</p>
+              <p class="text-xl font-bold text-emerald-600" id="rep-loan-total-amt">0 ៛</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">account_balance_wallet</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">ចំនួនបុគ្គលិកខ្ចីប្រាក់</p>
+              <p class="text-xl font-bold text-gray-800" id="rep-loan-borrowers-count">0 នាក់</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-2xl">event_repeat</span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-medium">កាលបរិច្ឆេទជូនដំណឹង</p>
+              <p class="text-xs sm:text-sm font-semibold text-purple-600">ថ្ងៃចុងក្រោយនៃរៀងរាល់ខែ (ម៉ោង ០៦:០០ ព្រឹក)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
+              <span class="material-symbols-outlined text-indigo-600">format_list_bulleted</span>
+              បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែនេះ (កាត់ប្រាក់ខែចុងខែ)
+            </h3>
+            <span class="text-xs text-gray-400" id="rep-loan-updated-at"></span>
+          </div>
+          <div class="overflow-x-auto w-full">
+            <table class="w-full text-left text-xs sm:text-sm">
+              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs">
+                <tr>
+                  <th class="py-3 px-4">#</th>
+                  <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+                  <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
+                  <th class="py-3 px-4">ចំនួនទឹកប្រាក់ខ្ចី</th>
+                  <th class="py-3 px-4">គោលបំណង</th>
+                  <th class="py-3 px-4">ចំនួនត្រូវកាត់ប្រាក់ខែ</th>
+                  <th class="py-3 px-4">ស្ថានភាព</th>
+                </tr>
+              </thead>
+              <tbody id="rep-loan-tbody" class="divide-y divide-slate-100 text-gray-700">
+                <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -2554,35 +2975,76 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
   });
 
-  // ===== Sidebar toggle =====
+  // ===== Sidebar toggle & mobile backdrop =====
   function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('-translate-x-full');
+    const s = document.getElementById('sidebar');
+    const b = document.getElementById('sidebar-backdrop');
+    if (!s) return;
+    const isOpen = !s.classList.contains('-translate-x-full');
+    if (isOpen) {
+      closeSidebar();
+    } else {
+      s.classList.remove('-translate-x-full');
+      if (b) b.classList.remove('hidden');
+    }
+  }
+
+  function closeSidebar() {
+    const s = document.getElementById('sidebar');
+    const b = document.getElementById('sidebar-backdrop');
+    if (s) s.classList.add('-translate-x-full');
+    if (b) b.classList.add('hidden');
+  }
+
+  function toggleReportsMenu() {
+    const menu = document.getElementById('sub-reports-menu');
+    const chevron = document.getElementById('reports-chevron');
+    if (menu) menu.classList.toggle('hidden');
+    if (chevron) chevron.classList.toggle('rotate-180');
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   // ===== Tab switching =====
-  const tabs = ['dashboard','leaves','loans','employees','settings'];
-  const titles = { dashboard:'ផ្ទៃតាប្លូ', leaves:'ច្បាប់ឈប់សម្រាក', loans:'ខ្ចីប្រាក់ / បុរេប្រទាន', employees:'បុគ្គលិកទាំងអស់', settings:'ការកំណត់ប្រព័ន្ធ' };
+  const tabs = ['dashboard','leaves','loans','employees','settings','reports-leave','reports-loan'];
+  const titles = {
+    dashboard: 'ផ្ទៃតាប្លូ',
+    leaves: 'ច្បាប់ឈប់សម្រាក',
+    loans: 'ខ្ចីប្រាក់ / បុរេប្រទាន',
+    employees: 'បុគ្គលិកទាំងអស់',
+    settings: 'ការកំណត់ប្រព័ន្ធ',
+    'reports-leave': 'របាយការណ៍ច្បាប់ (សងថ្ងៃសៅរ៍-អាទិត្យ)',
+    'reports-loan': 'របាយការណ៍ខ្ចីប្រាក់ (កាត់ប្រាក់ខែចុងខែ)'
+  };
 
   function showTab(tab) {
+    if (window.innerWidth < 1024) closeSidebar();
     tabs.forEach(t => {
-      document.getElementById('tab-' + t).classList.add('hidden');
+      const el = document.getElementById('tab-' + t);
+      if (el) el.classList.add('hidden');
       const nav = document.getElementById('nav-' + t);
       if (nav) {
         nav.classList.remove('active');
         nav.classList.add('text-blue-200');
       }
     });
-    document.getElementById('tab-' + tab).classList.remove('hidden');
+    const targetTab = document.getElementById('tab-' + tab);
+    if (targetTab) targetTab.classList.remove('hidden');
     const activeNav = document.getElementById('nav-' + tab);
     if (activeNav) {
       activeNav.classList.add('active');
       activeNav.classList.remove('text-blue-200');
     }
-    document.getElementById('page-title').textContent = titles[tab];
+    document.getElementById('page-title').textContent = titles[tab] || 'ផ្ទៃតាប្លូ';
     if (tab === 'leaves') loadLeaves();
     if (tab === 'loans') loadLoans();
     if (tab === 'employees') loadEmployees();
     if (tab === 'settings') loadSettings();
+    if (tab === 'reports-leave') loadWeekendLeaveReport();
+    if (tab === 'reports-loan') loadMonthlyLoanReport();
   }
 
   // ===== Badge =====
@@ -3074,6 +3536,123 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).catch(() => {
       showToast('មិនអាចចម្លងបានទេ', true);
     });
+  }
+
+  // ===== Reports: Weekend Leave Compensation =====
+  async function loadWeekendLeaveReport() {
+    const tbody = document.getElementById('rep-leave-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    try {
+      const res = await fetch('/api/reports/weekend-leave');
+      const data = await res.json();
+      document.getElementById('rep-leave-staff-count').textContent = (data.total_staff_count || 0) + ' នាក់';
+      document.getElementById('rep-leave-days-count').textContent = (data.total_days_to_compensate || 0) + ' ថ្ងៃ';
+      document.getElementById('rep-leave-updated-at').textContent = 'ធ្វើបច្ចុប្បន្នភាព: ' + (data.generated_at || '');
+      
+      const items = data.items || [];
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានបុគ្គលិកសុំច្បាប់ដែលត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map((it, idx) => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+          <td class="py-3 px-4 font-semibold text-amber-600">${it.days} ថ្ងៃ</td>
+          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
+          <td class="py-3 px-4">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+              <span class="material-symbols-outlined text-sm">event_repeat</span>
+              ${it.compensation}
+            </span>
+          </td>
+          <td class="py-3 px-4">${statusBadge(it.status)}</td>
+        </tr>
+      `).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function sendWeekendLeaveReportTelegram() {
+    const btn = document.getElementById('btn-send-tg-leave');
+    const icon = document.getElementById('icon-send-tg-leave');
+    if (icon) icon.classList.add('animate-spin');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/reports/send-weekend-leave', { method: 'POST' });
+      const d = await res.json();
+      if (res.ok) {
+        showToast(d.message || 'បានផ្ញើរបាយការណ៍ច្បាប់ចុងសប្តាហ៍ទៅ Telegram រួចរាល់!');
+      } else {
+        showToast(d.detail || 'បរាជ័យក្នុងការផ្ញើ', true);
+      }
+    } catch(e) {
+      showToast('បរាជ័យ: ' + e.message, true);
+    } finally {
+      if (icon) icon.classList.remove('animate-spin');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ===== Reports: Monthly Loan Payroll Deduction =====
+  async function loadMonthlyLoanReport() {
+    const tbody = document.getElementById('rep-loan-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    try {
+      const res = await fetch('/api/reports/monthly-loan');
+      const data = await res.json();
+      document.getElementById('rep-loan-total-amt').textContent = (data.total_amount_khr || 0).toLocaleString() + ' ៛';
+      document.getElementById('rep-loan-borrowers-count').textContent = (data.total_borrowers || 0) + ' នាក់';
+      document.getElementById('rep-loan-updated-at').textContent = 'ខែ: ' + (data.month_str || '');
+      
+      const items = data.items || [];
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានសំណើខ្ចីប្រាក់ក្នុងខែនេះទេ</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map((it, idx) => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+          <td class="py-3 px-4 font-bold text-emerald-600">${Number(it.amount_khr).toLocaleString()} ៛</td>
+          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
+          <td class="py-3 px-4 font-bold text-indigo-600">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              - ${Number(it.amount_khr).toLocaleString()} ៛
+            </span>
+          </td>
+          <td class="py-3 px-4">${statusBadge(it.status)}</td>
+        </tr>
+      `).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function sendMonthlyLoanReportTelegram() {
+    const btn = document.getElementById('btn-send-tg-loan');
+    const icon = document.getElementById('icon-send-tg-loan');
+    if (icon) icon.classList.add('animate-spin');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/reports/send-monthly-loan', { method: 'POST' });
+      const d = await res.json();
+      if (res.ok) {
+        showToast(d.message || 'បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ប្រចាំខែទៅ Telegram រួចរាល់!');
+      } else {
+        showToast(d.detail || 'បរាជ័យក្នុងការផ្ញើ', true);
+      }
+    } catch(e) {
+      showToast('បរាជ័យ: ' + e.message, true);
+    } finally {
+      if (icon) icon.classList.remove('animate-spin');
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ===== Refresh =====
