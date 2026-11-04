@@ -299,11 +299,138 @@ async def test_telegram(payload: TelegramTestRequest):
 @app.post("/api/telegram-webhook")
 async def telegram_webhook(req: Request):
     try:
-        data = await req.json()
-        print("Telegram Webhook received:", data)
-    except Exception:
-        pass
+        update = await req.json()
+        message = update.get("message") or update.get("channel_post")
+        if not message:
+            return {"ok": True}
+
+        chat = message.get("chat", {})
+        chat_id = str(chat.get("id"))
+        from_user = message.get("from", {})
+        sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
+        
+        text = (message.get("text") or "").strip()
+        has_voice = bool(message.get("voice") or message.get("audio"))
+        
+        # 1. Handle Voice Message for Leave Permission
+        if has_voice:
+            caption = message.get("caption") or "សារសំឡេង (Voice Message)"
+            leaves_collection.insert_one({
+                "employee_name": sender_name,
+                "reason": caption,
+                "days": 1,
+                "status": "pending"
+            })
+            reply = (
+                f"🎙️ <b>បានកត់ត្រាសំណើសុំច្បាប់តាមសំឡេង!</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                f"📝 <b>មូលហេតុ:</b> {caption}\n"
+                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+            )
+            send_telegram_notify(reply)
+            return {"ok": True}
+
+        # 2. Handle Text for Leave Permission (e.g. ស្អែកសុំច្បាប់, /leave, សុំច្បាប់...)
+        if "សុំច្បាប់" in text or text.lower().startswith("/leave") or "ច្បាប់" in text:
+            # Check number of days if mentioned
+            days = 1
+            import re
+            day_match = re.search(r'(\d+)\s*(ថ្ងៃ|day)', text, re.IGNORECASE)
+            if day_match:
+                days = int(day_match.group(1))
+                
+            leaves_collection.insert_one({
+                "employee_name": sender_name,
+                "reason": text,
+                "days": days,
+                "status": "pending"
+            })
+            reply = (
+                f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                f"📝 <b>មូលហេតុ:</b> {text}\n"
+                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+            )
+            send_telegram_notify(reply)
+            return {"ok": True}
+
+        # 3. Handle Loan Request (e.g. ខ្ចីប្រាក់, បុរេប្រទាន, /loan...)
+        if "ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "ខ្ចី" in text or text.lower().startswith("/loan"):
+            import re
+            amount = 100000  # Default amount if not specified
+            numbers = re.findall(r'(\d[\d,]*\d|\d+)', text.replace(' ', ''))
+            if numbers:
+                try:
+                    amount = int(numbers[0].replace(',', ''))
+                except Exception:
+                    amount = 100000
+                    
+            loans_collection.insert_one({
+                "employee_name": sender_name,
+                "amount_khr": amount,
+                "purpose": text,
+                "status": "pending"
+            })
+            reply = (
+                f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ជោគជ័យ!</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                f"🎯 <b>គោលបំណង:</b> {text}\n"
+                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+            )
+            send_telegram_notify(reply)
+            return {"ok": True}
+
+        # 4. Handle Help/Start Command
+        if text.startswith("/help") or text.startswith("/start"):
+            help_msg = (
+                f"👋 <b>ជម្រាបសួរ {sender_name}!</b>\n\n"
+                f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ក្នុងគ្រុបនេះ:</b>\n"
+                f"• <b>សុំច្បាប់:</b> វាយសារ <i>ស្អែកសុំច្បាប់...</i> ឬ <i>សុំច្បាប់ ១ ថ្ងៃ...</i>\n"
+                f"• <b>សារសំឡេង:</b> ផ្ញើសារជា Voice Message សុំច្បាប់\n"
+                f"• <b>ខ្ចីប្រាក់:</b> វាយសារ <i>សុំខ្ចីប្រាក់ ២០០០០០...</i>\n\n"
+                f"🚀 ប្រព័ន្ធនឹងកត់ត្រាចូល Dashboard របស់ AC BOMLU ដោយស្វ័យប្រវត្តិ!"
+            )
+            send_telegram_notify(help_msg)
+            return {"ok": True}
+
+    except Exception as e:
+        print("Telegram Webhook Error:", e)
+        
     return {"ok": True}
+
+@app.post("/api/register-webhook")
+async def register_webhook_endpoint():
+    s = settings_collection.find_one({"_id": "app_settings"})
+    token = (s.get("telegram_bot_token", "") if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        raise HTTPException(status_code=400, detail="រកមិនឃើញ Telegram Bot Token ទេ!")
+    webhook_url = "https://ac-bomlu-administration.onrender.com/api/telegram-webhook"
+    try:
+        url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            res = json.loads(r.read().decode())
+            if res.get("ok"):
+                return {"success": True, "message": "បានភ្ជាប់ Telegram Webhook ជាមួយគ្រុបជោគជ័យ!"}
+            return {"success": False, "message": str(res)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "") if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if token:
+            webhook_url = "https://ac-bomlu-administration.onrender.com/api/telegram-webhook"
+            url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                print("Webhook Auto-Registered:", r.read().decode())
+    except Exception as e:
+        print("Startup webhook error:", e)
 
 # ===== Modern HTML UI =====
 HTML_TEMPLATE = """<!DOCTYPE html>
