@@ -678,6 +678,20 @@ async def get_leave_form():
 async def get_loan_form():
     return HTMLResponse(content=LOAN_FORM_HTML)
 
+REASON_MAP = {
+    "sick": "🤒 ឈឺ / មិនស្រួលខ្លួន",
+    "family": "🏠 រវល់ធុរៈគ្រួសារ",
+    "hometown": "🚗 ទៅស្រុកកំណើត",
+    "ceremony": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ",
+}
+
+PURPOSE_MAP = {
+    "rent": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់",
+    "med": "💊 ទិញថ្នាំពេទ្យ",
+    "util": "⚡ ថ្លៃទឹកភ្លើង",
+    "family": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ",
+}
+
 @app.post("/api/telegram-webhook")
 async def telegram_webhook(req: Request):
     try:
@@ -722,12 +736,12 @@ async def telegram_webhook(req: Request):
                 reason_buttons = {
                     "inline_keyboard": [
                         [
-                            {"text": "🤒 ឈឺ / មិនស្រួលខ្លួន", "callback_data": f"leave_rsn:ឈឺ / មិនស្រួលខ្លួន:{days}"},
-                            {"text": "🏠 រវល់ធុរៈគ្រួសារ", "callback_data": f"leave_rsn:រវល់ធុរៈគ្រួសារ:{days}"}
+                            {"text": "🤒 ឈឺ / មិនស្រួលខ្លួន", "callback_data": f"leave_rsn:sick:{days}"},
+                            {"text": "🏠 រវល់ធុរៈគ្រួសារ", "callback_data": f"leave_rsn:family:{days}"}
                         ],
                         [
-                            {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:ទៅស្រុកកំណើត:{days}"},
-                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ចូលរួមពិធីមង្គលការ/បុណ្យ:{days}"}
+                            {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:hometown:{days}"},
+                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ceremony:{days}"}
                         ]
                     ]
                 }
@@ -742,7 +756,8 @@ async def telegram_webhook(req: Request):
             # 1.1 Callback when clicking a quick Reason button!
             if cq_data.startswith("leave_rsn:"):
                 parts = cq_data.split(":")
-                rsn = parts[1]
+                code = parts[1]
+                rsn = REASON_MAP.get(code, code)
                 days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
                 cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.delete_one({"user_id": cq_user_id})
@@ -785,12 +800,12 @@ async def telegram_webhook(req: Request):
                 purpose_buttons = {
                     "inline_keyboard": [
                         [
-                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:បង់ថ្លៃផ្ទះ / បន្ទប់:{amount}"},
-                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:ទិញថ្នាំពេទ្យ:{amount}"}
+                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:rent:{amount}"},
+                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:med:{amount}"}
                         ],
                         [
-                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:ថ្លៃទឹកភ្លើង:{amount}"},
-                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:ផ្ញើជូនគ្រួសារ:{amount}"}
+                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:util:{amount}"},
+                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:family:{amount}"}
                         ]
                     ]
                 }
@@ -805,7 +820,8 @@ async def telegram_webhook(req: Request):
             # 2.1 Callback when clicking a quick Purpose button!
             if cq_data.startswith("loan_pur:"):
                 parts = cq_data.split(":")
-                pur = parts[1]
+                code = parts[1]
+                pur = PURPOSE_MAP.get(code, code)
                 amt = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 100000
                 cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.delete_one({"user_id": cq_user_id})
@@ -1094,24 +1110,26 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply)
             return {"ok": True}
 
-        # 4. Handle Leave Button or Exact Command -> Show Web App Form Button!
+        # 4. Handle Leave Button -> Step 1: Show Days Selection Buttons (ជម្រើសទី ១)!
         if is_leave_btn:
-            encoded_name = urllib.parse.quote(sender_name)
-            leave_form_btn = {
+            inline_days = {
                 "inline_keyboard": [
                     [
-                        {
-                            "text": "📝 បើកទម្រង់សុំច្បាប់ (Form)",
-                            "url": f"https://ac-bomlu-administration.onrender.com/form/leave?name={encoded_name}"
-                        }
+                        {"text": "១ ថ្ងៃ", "callback_data": "leave_days:1"},
+                        {"text": "២ ថ្ងៃ", "callback_data": "leave_days:2"},
+                        {"text": "៣ ថ្ងៃ", "callback_data": "leave_days:3"}
+                    ],
+                    [
+                        {"text": "៤ ថ្ងៃ", "callback_data": "leave_days:4"},
+                        {"text": "៥ ថ្ងៃ", "callback_data": "leave_days:5"}
                     ]
                 ]
             }
             msg = (
                 f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👉 <b>សូមចុចលើប៊ូតុងខាងក្រោម ដើម្បីបើកទម្រង់បែបបទសុំច្បាប់ (Form)៖</b>"
+                f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនថ្ងៃឈប់សម្រាក» ខាងក្រោម៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=leave_form_btn)
+            send_telegram_notify(msg, reply_markup=inline_days)
             return {"ok": True}
 
         # 5. Handle Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
@@ -1145,24 +1163,25 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
-        # 6. Handle Loan Button or Exact Command -> Show Web App Form Button!
+        # 6. Handle Loan Button -> Step 1: Show Amount Selection Buttons (ជម្រើសទី ១)!
         if is_loan_btn:
-            encoded_name = urllib.parse.quote(sender_name)
-            loan_form_btn = {
+            inline_amounts = {
                 "inline_keyboard": [
                     [
-                        {
-                            "text": "💰 បើកទម្រង់ខ្ចីប្រាក់ (Form)",
-                            "url": f"https://ac-bomlu-administration.onrender.com/form/loan?name={encoded_name}"
-                        }
+                        {"text": "៥០,០០០ ៛", "callback_data": "loan_amt:50000"},
+                        {"text": "១០០,០០០ ៛", "callback_data": "loan_amt:100000"}
+                    ],
+                    [
+                        {"text": "២០០,០០០ ៛", "callback_data": "loan_amt:200000"},
+                        {"text": "៥០០,០០០ ៛", "callback_data": "loan_amt:500000"}
                     ]
                 ]
             }
             msg = (
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👉 <b>សូមចុចលើប៊ូតុងខាងក្រោម ដើម្បីបើកទម្រង់បែបបទខ្ចីប្រាក់ (Form)៖</b>"
+                f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=loan_form_btn)
+            send_telegram_notify(msg, reply_markup=inline_amounts)
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
