@@ -1188,6 +1188,16 @@ async def morning_briefing_scheduler():
 async def on_startup():
     asyncio.create_task(morning_briefing_scheduler())
 
+# ===== Health Check & Keep-Alive Ping Routes =====
+@app.get("/ping")
+@app.get("/healthz")
+async def health_check():
+    return {
+        "status": "ok",
+        "service": "AC BOMLU Administration",
+        "time": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
+    }
+
 # ===== API Routes =====
 @app.get("/api/stats")
 async def get_stats():
