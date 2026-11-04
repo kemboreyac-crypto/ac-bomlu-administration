@@ -74,6 +74,10 @@ class LoanRepaymentRequest(BaseModel):
     admin_name: Optional[str] = "Admin"
     note: Optional[str] = ""
 
+class SendReportRequest(BaseModel):
+    mode: Optional[str] = "summary"
+    employee_name: Optional[str] = ""
+
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
@@ -128,6 +132,29 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
             }
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
+        # Handle messages exceeding Telegram's 4096-char limit by chunking cleanly:
+        if len(text) > 3900:
+            chunks = []
+            curr = ""
+            for line in text.split("\n"):
+                if len(curr) + len(line) + 1 > 3800:
+                    chunks.append(curr)
+                    curr = line
+                else:
+                    curr = (curr + "\n" + line) if curr else line
+            if curr:
+                chunks.append(curr)
+            for idx, ch in enumerate(chunks):
+                p = {
+                    "chat_id": dest_chat_id,
+                    "text": ch,
+                    "parse_mode": "HTML",
+                    "reply_markup": reply_markup if idx == len(chunks) - 1 else None
+                }
+                r = urllib.request.Request(url, data=json.dumps(p).encode("utf-8"), headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(r, timeout=8)
+            return
+
         payload = {
             "chat_id": dest_chat_id,
             "text": text,
@@ -704,6 +731,53 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
         f"⚠️ <i>សូមបុគ្គលិកដែលមានឈ្មោះខាងលើ មកបំពេញការងារសងនៅថ្ងៃសៅរ៍ និងថ្ងៃអាទិត្យឱ្យបានទៀងទាត់!</i>"
     )
 
+def format_telegram_weekend_leave_report_detailed(data: dict, filter_employee: str = None) -> str:
+    now_cam_str = data.get("generated_at", "")
+    records = data.get("raw_records", [])
+    
+    if filter_employee and filter_employee.strip():
+        records = [r for r in records if r.get("employee_name", "").strip().lower() == filter_employee.strip().lower()]
+        
+    active_records = [r for r in records if r.get("raw_remaining_days", 0) > 0]
+    display_records = active_records if active_records else records
+    
+    total_days = sum(r.get("raw_remaining_days", 0) for r in active_records)
+    tot_days_disp = int(total_days) if total_days.is_integer() else total_days
+    
+    lines = []
+    for idx, r in enumerate(display_records, 1):
+        emp = r.get("employee_name", "បុគ្គលិក")
+        d_disp = r.get("days", "1 ថ្ងៃ")
+        rsn = r.get("reason", "មិនបានបញ្ជាក់")
+        dt = r.get("date", "")
+        rem_disp = r.get("remaining_days", "0 ថ្ងៃ")
+        comp_disp = r.get("compensated_days", "0 ថ្ងៃ")
+        rem_raw = r.get("raw_remaining_days", 0)
+        comp_raw = r.get("raw_compensated_days", 0)
+        
+        status_label = "✅ សងរួចរាល់" if rem_raw <= 0 else ("🟡 សងបានខ្លះ" if comp_raw > 0 else "🔴 មិនទាន់សង")
+        
+        lines.append(
+            f"{idx}. <b>{emp}</b> (ថ្ងៃស្នើសុំ: <code>{dt}</code>)\n"
+            f"   • ច្បាប់សុំ: <b>{d_disp}</b> | បានសង: {comp_disp}\n"
+            f"   • <b>នៅសល់ត្រូវសង:</b> <b>{rem_disp}</b>\n"
+            f"   • មូលហេតុ: {rsn}\n"
+            f"   • ស្ថានភាព: {status_label}"
+        )
+        
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានទិន្នន័យច្បាប់ត្រូវសងទេ (សងរួចរាល់គ្រប់ករណី) 🎉</i>"
+    
+    filter_label = f"\n👤 <b>បុគ្គលិក:</b> {filter_employee}" if filter_employee else ""
+    return (
+        f"📑 <b>របាយការណ៍ច្បាប់ត្រូវសងលម្អិត (គ្រប់ប្រតិបត្តិការ)</b>{filter_label}\n"
+        f"📅 <b>កាលបរិច្ឆេទ:</b> {now_cam_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"📋 <b>សរុបករណីត្រូវសង:</b> {len(active_records)} ករណី (សរុប {tot_days_disp} ថ្ងៃ - អនុញ្ញាតប៉ុណ្ណោះ ✅)\n\n"
+        f"{items_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ <i>សូមបុគ្គលិកដែលមានឈ្មោះខាងលើ មកបំពេញការងារសងនៅថ្ងៃសៅរ៍ និងថ្ងៃអាទិត្យឱ្យបានទៀងទាត់!</i>"
+    )
+
 def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional[str] = None, amount_to_repay: int = 0, admin_name: str = "Admin", note: str = "") -> dict:
     try:
         cambodia_tz = timezone(timedelta(hours=7))
@@ -969,6 +1043,51 @@ def format_telegram_monthly_loan_report(data: dict) -> str:
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យដើម្បីកាត់ប្រាក់ខែបុគ្គលិកខាងលើឱ្យបានត្រឹមត្រូវ!</i>"
+    )
+
+def format_telegram_monthly_loan_report_detailed(data: dict, filter_employee: str = None) -> str:
+    month_str = data.get("month_str", "")
+    items = data.get("items", [])
+    
+    if filter_employee and filter_employee.strip():
+        items = [it for it in items if it.get("employee_name", "").strip().lower() == filter_employee.strip().lower()]
+        
+    active_items = [it for it in items if it.get("remaining_amount_khr", 0) > 0]
+    display_items = active_items if active_items else items
+    
+    total_rem = sum(it.get("remaining_amount_khr", 0) for it in active_items)
+    
+    lines = []
+    for idx, it in enumerate(display_items, 1):
+        emp = it.get("employee_name", "បុគ្គលិក")
+        amt = it.get("amount_khr", 0)
+        paid = it.get("paid_amount_khr", 0)
+        rem = it.get("remaining_amount_khr", 0)
+        pur = it.get("purpose", "មិនបានបញ្ជាក់")
+        dt = it.get("date", "")
+        
+        status_label = "✅ កាត់/សងដាច់" if rem <= 0 else ("🟡 បានកាត់ខ្លះ" if paid > 0 else "🔴 មិនទាន់កាត់")
+        
+        lines.append(
+            f"{idx}. <b>{emp}</b> (ថ្ងៃខ្ចី: <code>{dt}</code>)\n"
+            f"   • ចំនួនខ្ចី: <b>{amt:,} ៛</b> | បានកាត់/សង: {paid:,} ៛\n"
+            f"   • <b>នៅសល់ត្រូវកាត់ប្រាក់ខែ:</b> <b>{rem:,} រៀល</b>\n"
+            f"   • គោលបំណង: {pur}\n"
+            f"   • ស្ថានភាព: {status_label}"
+        )
+        
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានទិន្នន័យកម្ចីជំពាក់ក្នុងខែនេះទេ (កាត់ដាច់គ្រប់ករណី) 🎉</i>"
+    
+    filter_label = f"\n👤 <b>បុគ្គលិក:</b> {filter_employee}" if filter_employee else ""
+    return (
+        f"📑 <b>របាយការណ៍ខ្ចីប្រាក់លម្អិតប្រចាំខែ (គ្រប់ប្រតិបត្តិការ)</b>{filter_label}\n"
+        f"📅 <b>សម្រាប់កាត់ប្រាក់ខែចុងខែ:</b> {month_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"💵 <b>ទឹកប្រាក់សរុបនៅសល់ត្រូវកាត់:</b> <b>{total_rem:,} រៀល</b> (អនុញ្ញាតប៉ុណ្ណោះ ✅)\n"
+        f"📋 <b>សរុបប្រតិបត្តិការត្រូវកាត់:</b> {len(active_items)} ករណី\n\n"
+        f"{items_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យប្រតិបត្តិការលម្អិតខាងលើដើម្បីកាត់ប្រាក់ខែឱ្យបានត្រឹមត្រូវ!</i>"
     )
 
 async def morning_briefing_scheduler():
@@ -1331,22 +1450,38 @@ async def api_get_weekend_leave_report():
     return generate_weekend_leave_report()
 
 @app.post("/api/reports/send-weekend-leave")
-async def api_send_weekend_leave_report():
+async def api_send_weekend_leave_report(req: Optional[SendReportRequest] = None):
+    mode = req.mode if req else "summary"
+    emp_filter = (req.employee_name or "").strip() if req else ""
     data = generate_weekend_leave_report()
-    msg = format_telegram_weekend_leave_report(data)
+    if mode == "detailed":
+        msg = format_telegram_weekend_leave_report_detailed(data, filter_employee=emp_filter)
+    else:
+        msg = format_telegram_weekend_leave_report(data)
     send_telegram_notify(msg)
-    return {"message": "បានផ្ញើរបាយការណ៍ច្បាប់ចុងសប្តាហ៍ទៅ Telegram រួចរាល់!"}
+    title = "របាយការណ៍ច្បាប់លម្អិត" if mode == "detailed" else "របាយការណ៍ច្បាប់សង្ខេប"
+    if emp_filter:
+        title += f" ({emp_filter})"
+    return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.get("/api/reports/monthly-loan")
 async def api_get_monthly_loan_report():
     return generate_monthly_loan_report()
 
 @app.post("/api/reports/send-monthly-loan")
-async def api_send_monthly_loan_report():
+async def api_send_monthly_loan_report(req: Optional[SendReportRequest] = None):
+    mode = req.mode if req else "summary"
+    emp_filter = (req.employee_name or "").strip() if req else ""
     data = generate_monthly_loan_report()
-    msg = format_telegram_monthly_loan_report(data)
+    if mode == "detailed":
+        msg = format_telegram_monthly_loan_report_detailed(data, filter_employee=emp_filter)
+    else:
+        msg = format_telegram_monthly_loan_report(data)
     send_telegram_notify(msg)
-    return {"message": "បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ប្រចាំខែទៅ Telegram រួចរាល់!"}
+    title = "របាយការណ៍ខ្ចីប្រាក់លម្អិត" if mode == "detailed" else "របាយការណ៍ខ្ចីប្រាក់សង្ខេប"
+    if emp_filter:
+        title += f" ({emp_filter})"
+    return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.post("/api/reports/compensate-leave")
 async def api_compensate_leave(req: LeaveCompensationRequest):
@@ -2292,7 +2427,7 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan", "/sync", "/sync_members", "/sync_telegram"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
@@ -2300,17 +2435,25 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(briefing, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        # Weekend Leave Compensation Report Command (/weekend_report, /leave_report)
-        if clean_cmd in ["/weekend_report", "/leave_report", "/weekend"]:
+        # Weekend Leave Compensation Report Command (/weekend_report, /leave_report, /leave_detail)
+        if clean_cmd in ["/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail"]:
+            is_detailed = "detail" in text.lower() or "លម្អិត" in text or clean_cmd in ["/leave_detail", "/weekend_detail"]
             rep_data = generate_weekend_leave_report()
-            tg_msg = format_telegram_weekend_leave_report(rep_data)
+            if is_detailed:
+                tg_msg = format_telegram_weekend_leave_report_detailed(rep_data)
+            else:
+                tg_msg = format_telegram_weekend_leave_report(rep_data)
             send_telegram_notify(tg_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        # Monthly Loan Deduction Report Command (/month_report, /loan_report)
-        if clean_cmd in ["/month_report", "/loan_report", "/month_loan"]:
+        # Monthly Loan Deduction Report Command (/month_report, /loan_report, /loan_detail)
+        if clean_cmd in ["/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail"]:
+            is_detailed = "detail" in text.lower() or "លម្អិត" in text or clean_cmd in ["/loan_detail", "/month_detail"]
             loan_rep_data = generate_monthly_loan_report()
-            loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
+            if is_detailed:
+                loan_tg_msg = format_telegram_monthly_loan_report_detailed(loan_rep_data)
+            else:
+                loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
             send_telegram_notify(loan_tg_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
@@ -3769,11 +3912,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <button onclick="sendWeekendLeaveReportTelegram()" id="btn-send-tg-leave"
-              class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
-              <span class="material-symbols-outlined text-lg" id="icon-send-tg-leave">send</span>
-              <span>ផ្ញើទៅ Telegram ឥឡូវនេះ</span>
-            </button>
+            <!-- Dropdown Menu for Sending to Telegram -->
+            <div class="relative inline-block text-left" id="leave-send-menu-container">
+              <button onclick="toggleLeaveSendMenu(event)" id="btn-send-tg-leave"
+                class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
+                <span class="material-symbols-outlined text-lg" id="icon-send-tg-leave">send</span>
+                <span>ផ្ញើទៅ Telegram</span>
+                <span class="material-symbols-outlined text-base">expand_more</span>
+              </button>
+              <div id="menu-send-leave" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fadeIn">
+                <div class="px-4 py-2 border-b border-slate-100">
+                  <p class="text-xs font-bold text-gray-700">ជម្រើសផ្ញើរបាយការណ៍ច្បាប់</p>
+                  <p class="text-[11px] text-gray-400">ជ្រើសរើសទម្រង់ដែលត្រូវផ្ញើ</p>
+                </div>
+                <div class="p-1 space-y-1">
+                  <button onclick="sendWeekendLeaveReportTelegram('summary')"
+                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-600 flex items-start gap-2.5 transition">
+                    <span class="material-symbols-outlined text-blue-600 text-xl mt-0.5">summarize</span>
+                    <div>
+                      <p class="text-xs sm:text-sm font-semibold">១. របាយការណ៍សង្ខេប (តាមឈ្មោះ)</p>
+                      <p class="text-[11px] text-gray-400">សរុបថ្ងៃត្រូវសងតាមឈ្មោះបុគ្គលិកម្នាក់ៗ</p>
+                    </div>
+                  </button>
+                  <button onclick="sendWeekendLeaveReportTelegram('detailed')"
+                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 flex items-start gap-2.5 transition">
+                    <span class="material-symbols-outlined text-indigo-600 text-xl mt-0.5">receipt_long</span>
+                    <div>
+                      <p class="text-xs sm:text-sm font-semibold">២. របាយការណ៍លម្អិត (គ្រប់ករណី)</p>
+                      <p class="text-[11px] text-gray-400">បង្ហាញរាល់ករណី ថ្ងៃសុំ មូលហេតុ និងការសង</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
             <button onclick="loadWeekendLeaveReport()"
               class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition" title="Refresh">
               <span class="material-symbols-outlined text-lg">refresh</span>
@@ -3882,11 +4053,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <button onclick="sendMonthlyLoanReportTelegram()" id="btn-send-tg-loan"
-              class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
-              <span class="material-symbols-outlined text-lg" id="icon-send-tg-loan">send</span>
-              <span>ផ្ញើទៅ Telegram ឥឡូវនេះ</span>
-            </button>
+            <!-- Dropdown Menu for Sending to Telegram -->
+            <div class="relative inline-block text-left" id="loan-send-menu-container">
+              <button onclick="toggleLoanSendMenu(event)" id="btn-send-tg-loan"
+                class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
+                <span class="material-symbols-outlined text-lg" id="icon-send-tg-loan">send</span>
+                <span>ផ្ញើទៅ Telegram</span>
+                <span class="material-symbols-outlined text-base">expand_more</span>
+              </button>
+              <div id="menu-send-loan" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fadeIn">
+                <div class="px-4 py-2 border-b border-slate-100">
+                  <p class="text-xs font-bold text-gray-700">ជម្រើសផ្ញើរបាយការណ៍ខ្ចីប្រាក់</p>
+                  <p class="text-[11px] text-gray-400">ជ្រើសរើសទម្រង់ដែលត្រូវផ្ញើ</p>
+                </div>
+                <div class="p-1 space-y-1">
+                  <button onclick="sendMonthlyLoanReportTelegram('summary')"
+                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-600 flex items-start gap-2.5 transition">
+                    <span class="material-symbols-outlined text-blue-600 text-xl mt-0.5">summarize</span>
+                    <div>
+                      <p class="text-xs sm:text-sm font-semibold">១. របាយការណ៍សង្ខេប (តាមឈ្មោះ)</p>
+                      <p class="text-[11px] text-gray-400">សរុបប្រាក់ត្រូវកាត់តាមឈ្មោះបុគ្គលិកម្នាក់ៗ</p>
+                    </div>
+                  </button>
+                  <button onclick="sendMonthlyLoanReportTelegram('detailed')"
+                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 flex items-start gap-2.5 transition">
+                    <span class="material-symbols-outlined text-indigo-600 text-xl mt-0.5">receipt_long</span>
+                    <div>
+                      <p class="text-xs sm:text-sm font-semibold">២. របាយការណ៍លម្អិត (គ្រប់ប្រតិបត្តិការ)</p>
+                      <p class="text-[11px] text-gray-400">បង្ហាញរាល់ប្រតិបត្តិការ ថ្ងៃខ្ចី គោលបំណង និងការកាត់</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
             <button onclick="loadMonthlyLoanReport()"
               class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition" title="Refresh">
               <span class="material-symbols-outlined text-lg">refresh</span>
@@ -5162,16 +5361,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function sendWeekendLeaveReportTelegram() {
+  function toggleLeaveSendMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('menu-send-leave');
+    if (menu) menu.classList.toggle('hidden');
+    const loanMenu = document.getElementById('menu-send-loan');
+    if (loanMenu) loanMenu.classList.add('hidden');
+  }
+
+  async function sendWeekendLeaveReportTelegram(mode = 'summary') {
+    const menu = document.getElementById('menu-send-leave');
+    if (menu) menu.classList.add('hidden');
     const btn = document.getElementById('btn-send-tg-leave');
     const icon = document.getElementById('icon-send-tg-leave');
     if (icon) icon.classList.add('animate-spin');
     if (btn) btn.disabled = true;
     try {
-      const res = await fetch('/api/reports/send-weekend-leave', { method: 'POST' });
+      const selectedEmp = (document.getElementById('rep-leave-emp-filter')?.value || '').trim();
+      const res = await fetch('/api/reports/send-weekend-leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode, employee_name: selectedEmp })
+      });
       const d = await res.json();
       if (res.ok) {
-        showToast(d.message || 'បានផ្ញើរបាយការណ៍ច្បាប់ចុងសប្តាហ៍ទៅ Telegram រួចរាល់!');
+        showToast(d.message || 'បានផ្ញើរបាយការណ៍ច្បាប់ទៅ Telegram រួចរាល់!');
       } else {
         showToast(d.detail || 'បរាជ័យក្នុងការផ្ញើ', true);
       }
@@ -5420,16 +5634,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function sendMonthlyLoanReportTelegram() {
+  function toggleLoanSendMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('menu-send-loan');
+    if (menu) menu.classList.toggle('hidden');
+    const leaveMenu = document.getElementById('menu-send-leave');
+    if (leaveMenu) leaveMenu.classList.add('hidden');
+  }
+
+  async function sendMonthlyLoanReportTelegram(mode = 'summary') {
+    const menu = document.getElementById('menu-send-loan');
+    if (menu) menu.classList.add('hidden');
     const btn = document.getElementById('btn-send-tg-loan');
     const icon = document.getElementById('icon-send-tg-loan');
     if (icon) icon.classList.add('animate-spin');
     if (btn) btn.disabled = true;
     try {
-      const res = await fetch('/api/reports/send-monthly-loan', { method: 'POST' });
+      const selectedEmp = (document.getElementById('rep-loan-emp-filter')?.value || '').trim();
+      const res = await fetch('/api/reports/send-monthly-loan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode, employee_name: selectedEmp })
+      });
       const d = await res.json();
       if (res.ok) {
-        showToast(d.message || 'បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ប្រចាំខែទៅ Telegram រួចរាល់!');
+        showToast(d.message || 'បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ទៅ Telegram រួចរាល់!');
       } else {
         showToast(d.detail || 'បរាជ័យក្នុងការផ្ញើ', true);
       }
@@ -5440,6 +5669,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (btn) btn.disabled = false;
     }
   }
+
+  // Close Telegram send dropdown menus when clicking outside
+  document.addEventListener('click', function(e) {
+    const leaveMenu = document.getElementById('menu-send-leave');
+    const leaveWrap = document.getElementById('leave-send-menu-container');
+    if (leaveMenu && leaveWrap && !leaveWrap.contains(e.target)) {
+      leaveMenu.classList.add('hidden');
+    }
+    const loanMenu = document.getElementById('menu-send-loan');
+    const loanWrap = document.getElementById('loan-send-menu-container');
+    if (loanMenu && loanWrap && !loanWrap.contains(e.target)) {
+      loanMenu.classList.add('hidden');
+    }
+  });
 
   // ===== Refresh =====
   async function refreshAll() {
