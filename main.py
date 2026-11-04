@@ -336,6 +336,336 @@ async def test_telegram(payload: TelegramTestRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"មិនអាចផ្ញើសារបាន: {str(e)}")
 
+# ===== Telegram Mini App Web Forms (Option 4) =====
+LEAVE_FORM_HTML = """<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ទម្រង់សុំច្បាប់ - AC BOMLU</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <style>
+    body { font-family: 'Kantumruy Pro', sans-serif; background: #0b1329; color: #f8fafc; }
+    .glass-card { background: rgba(23, 37, 84, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(59, 130, 246, 0.2); }
+  </style>
+</head>
+<body class="p-4 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md glass-card rounded-3xl p-6 shadow-2xl">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6 pb-4 border-b border-blue-900/50">
+      <img src="/static/ac_logo.jpg" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover ring-2 ring-blue-500/40" />
+      <div>
+        <h1 class="text-base font-bold text-white flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-blue-400 text-lg">event_available</span>
+          ទម្រង់ស្នើសុំច្បាប់ឈប់សម្រាក
+        </h1>
+        <p class="text-xs text-blue-300/80">AC BOMLU Staff Control</p>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <form id="leave-form" onsubmit="submitForm(event)" class="space-y-4">
+      <!-- Employee Name -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">ឈ្មោះបុគ្គលិក</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-lg">person</span>
+          <input type="text" id="emp-name" required placeholder="ឈ្មោះបុគ្គលិក"
+            class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+
+      <!-- Days Selection -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">ចំនួនថ្ងៃឈប់សម្រាក</label>
+        <div class="grid grid-cols-5 gap-1.5">
+          <button type="button" onclick="selectDay(1)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white" id="d-1">១ ថ្ងៃ</button>
+          <button type="button" onclick="selectDay(2)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-2">២ ថ្ងៃ</button>
+          <button type="button" onclick="selectDay(3)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-3">៣ ថ្ងៃ</button>
+          <button type="button" onclick="selectDay(4)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-4">៤ ថ្ងៃ</button>
+          <button type="button" onclick="selectDay(5)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-5">៥ ថ្ងៃ</button>
+        </div>
+        <input type="hidden" id="leave-days" value="1" />
+      </div>
+
+      <!-- Quick Reasons -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">មូលហេតុនៃការសុំច្បាប់</label>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button type="button" onclick="setReason('🤒 ឈឺ / មិនស្រួលខ្លួន')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🤒 ឈឺ</button>
+          <button type="button" onclick="setReason('🏠 រវល់ធុរៈគ្រួសារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏠 រវល់ផ្ទះ</button>
+          <button type="button" onclick="setReason('🚗 ទៅស្រុកកំណើត')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🚗 ទៅស្រុក</button>
+          <button type="button" onclick="setReason('💍 ចូលរួមពិធីមង្គលការ/បុណ្យ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">💍 ទៅការ/បុណ្យ</button>
+        </div>
+        <textarea id="leave-reason" rows="3" required placeholder="វាយបញ្ជាក់មូលហេតុនៅទីនេះ..."
+          class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500"></textarea>
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" id="submit-btn"
+        class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-semibold text-white shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition active:scale-95">
+        <span class="material-symbols-outlined text-lg">send</span>
+        <span>ដាក់ស្នើពាក្យសុំច្បាប់</span>
+      </button>
+    </form>
+
+    <!-- Success View -->
+    <div id="success-view" class="hidden text-center py-6">
+      <div class="w-16 h-16 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center mx-auto mb-3 ring-4 ring-green-500/10">
+        <span class="material-symbols-outlined text-4xl">check_circle</span>
+      </div>
+      <h2 class="text-lg font-bold text-white mb-1">បានដាក់ស្នើជោគជ័យ!</h2>
+      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និង Admin រួចរាល់</p>
+    </div>
+  </div>
+
+  <script>
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+      if (tgUser) {
+        const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username;
+        if (name) document.getElementById('emp-name').value = name;
+      }
+    }
+
+    function selectDay(n) {
+      document.getElementById('leave-days').value = n;
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById('d-' + i);
+        if (i === n) {
+          btn.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white';
+        } else {
+          btn.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+        }
+      }
+    }
+
+    function setReason(txt) {
+      document.getElementById('leave-reason').value = txt;
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">progress_activity</span> កំពុងបញ្ជូន...';
+
+      const payload = {
+        employee_name: document.getElementById('emp-name').value.trim(),
+        days: parseInt(document.getElementById('leave-days').value) || 1,
+        reason: document.getElementById('leave-reason').value.trim()
+      };
+
+      try {
+        const r = await fetch('/api/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (r.ok) {
+          document.getElementById('leave-form').classList.add('hidden');
+          document.getElementById('success-view').classList.remove('hidden');
+          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+          }
+          setTimeout(() => {
+            if (window.Telegram && window.Telegram.WebApp) {
+              window.Telegram.WebApp.close();
+            }
+          }, 1200);
+        } else {
+          alert('មានបញ្ហាក្នុងការដាក់ស្នើ សូមព្យាយាមម្ដងទៀត!');
+          btn.disabled = false;
+          btn.innerHTML = '<span>ដាក់ស្នើពាក្យសុំច្បាប់</span>';
+        }
+      } catch(err) {
+        alert('មិនអាចភ្ជាប់ទៅកាន់ប្រព័ន្ធបាន: ' + err);
+        btn.disabled = false;
+        btn.innerHTML = '<span>ដាក់ស្នើពាក្យសុំច្បាប់</span>';
+      }
+    }
+  </script>
+</body>
+</html>
+"""
+
+LOAN_FORM_HTML = """<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ទម្រង់ខ្ចីប្រាក់ - AC BOMLU</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <style>
+    body { font-family: 'Kantumruy Pro', sans-serif; background: #061e1b; color: #f8fafc; }
+    .glass-card { background: rgba(6, 78, 59, 0.45); backdrop-filter: blur(16px); border: 1px solid rgba(16, 185, 129, 0.25); }
+  </style>
+</head>
+<body class="p-4 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md glass-card rounded-3xl p-6 shadow-2xl">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6 pb-4 border-b border-emerald-900/60">
+      <img src="/static/ac_logo.jpg" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover ring-2 ring-emerald-500/40" />
+      <div>
+        <h1 class="text-base font-bold text-white flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-emerald-400 text-lg">payments</span>
+          ទម្រង់ស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន
+        </h1>
+        <p class="text-xs text-emerald-300/80">AC BOMLU Staff Control</p>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <form id="loan-form" onsubmit="submitForm(event)" class="space-y-4">
+      <!-- Employee Name -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">ឈ្មោះបុគ្គលិក</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-lg">person</span>
+          <input type="text" id="emp-name" required placeholder="ឈ្មោះបុគ្គលិក"
+            class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+      </div>
+
+      <!-- Amount Selection -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី (រៀល)</label>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <button type="button" onclick="selectAmt(50000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-50000">៥០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(100000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-emerald-500 bg-emerald-600 text-white" id="a-100000">១០០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(200000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-200000">២០០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(500000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-500000">៥០០,០០០ ៛</button>
+        </div>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-emerald-400 text-lg">attach_money</span>
+          <input type="number" id="custom-amt" value="100000" min="10000" step="5000" required
+            class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm font-bold text-emerald-400 focus:outline-none focus:border-emerald-500" />
+        </div>
+      </div>
+
+      <!-- Quick Purpose -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">គោលបំណង ឬមូលហេតុនៃការខ្ចី</label>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button type="button" onclick="setPurpose('🏠 បង់ថ្លៃផ្ទះ / បន្ទប់')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏠 បង់ថ្លៃផ្ទះ</button>
+          <button type="button" onclick="setPurpose('💊 ទិញថ្នាំពេទ្យ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">💊 ថ្នាំពេទ្យ</button>
+          <button type="button" onclick="setPurpose('⚡ ថ្លៃទឹកភ្លើង / ម្ហូបអាហារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">⚡ ទឹកភ្លើង</button>
+          <button type="button" onclick="setPurpose('👨‍👩‍👧 ផ្ញើជូនគ្រួសារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">👨‍👩‍👧 ផ្ញើគ្រួសារ</button>
+        </div>
+        <textarea id="loan-purpose" rows="3" required placeholder="វាយបញ្ជាក់គោលបំណងនៅទីនេះ..."
+          class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-emerald-500"></textarea>
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" id="submit-btn"
+        class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-semibold text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 transition active:scale-95">
+        <span class="material-symbols-outlined text-lg">payments</span>
+        <span>ដាក់ស្នើសុំខ្ចីប្រាក់</span>
+      </button>
+    </form>
+
+    <!-- Success View -->
+    <div id="success-view" class="hidden text-center py-6">
+      <div class="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 ring-4 ring-emerald-500/10">
+        <span class="material-symbols-outlined text-4xl">check_circle</span>
+      </div>
+      <h2 class="text-lg font-bold text-white mb-1">បានដាក់ស្នើជោគជ័យ!</h2>
+      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និង Admin រួចរាល់</p>
+    </div>
+  </div>
+
+  <script>
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+      if (tgUser) {
+        const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username;
+        if (name) document.getElementById('emp-name').value = name;
+      }
+    }
+
+    function selectAmt(amt) {
+      document.getElementById('custom-amt').value = amt;
+      [50000, 100000, 200000, 500000].forEach(a => {
+        const btn = document.getElementById('a-' + a);
+        if (a === amt) {
+          btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-emerald-500 bg-emerald-600 text-white';
+        } else {
+          btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+        }
+      });
+    }
+
+    function setPurpose(txt) {
+      document.getElementById('loan-purpose').value = txt;
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">progress_activity</span> កំពុងបញ្ជូន...';
+
+      const payload = {
+        employee_name: document.getElementById('emp-name').value.trim(),
+        amount_khr: parseInt(document.getElementById('custom-amt').value) || 100000,
+        purpose: document.getElementById('loan-purpose').value.trim()
+      };
+
+      try {
+        const r = await fetch('/api/loan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (r.ok) {
+          document.getElementById('loan-form').classList.add('hidden');
+          document.getElementById('success-view').classList.remove('hidden');
+          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+          }
+          setTimeout(() => {
+            if (window.Telegram && window.Telegram.WebApp) {
+              window.Telegram.WebApp.close();
+            }
+          }, 1200);
+        } else {
+          alert('មានបញ្ហាក្នុងការដាក់ស្នើ សូមព្យាយាមម្ដងទៀត!');
+          btn.disabled = false;
+          btn.innerHTML = '<span>ដាក់ស្នើសុំខ្ចីប្រាក់</span>';
+        }
+      } catch(err) {
+        alert('មិនអាចភ្ជាប់ទៅកាន់ប្រព័ន្ធបាន: ' + err);
+        btn.disabled = false;
+        btn.innerHTML = '<span>ដាក់ស្នើសុំខ្ចីប្រាក់</span>';
+      }
+    }
+  </script>
+</body>
+</html>
+"""
+
+@app.get("/form/leave", response_class=HTMLResponse)
+async def get_leave_form():
+    return HTMLResponse(content=LEAVE_FORM_HTML)
+
+@app.get("/form/loan", response_class=HTMLResponse)
+async def get_loan_form():
+    return HTMLResponse(content=LOAN_FORM_HTML)
+
 @app.post("/api/telegram-webhook")
 async def telegram_webhook(req: Request):
     try:
@@ -752,26 +1082,23 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply)
             return {"ok": True}
 
-        # 4. Handle Leave Button or Exact Command -> Show Days Selection (Inline Buttons)!
+        # 4. Handle Leave Button or Exact Command -> Show Web App Form Button!
         if is_leave_btn:
-            inline_days = {
+            leave_form_btn = {
                 "inline_keyboard": [
                     [
-                        {"text": "១ ថ្ងៃ", "callback_data": f"leave_days:1:{sender_name}"},
-                        {"text": "២ ថ្ងៃ", "callback_data": f"leave_days:2:{sender_name}"},
-                        {"text": "៣ ថ្ងៃ", "callback_data": f"leave_days:3:{sender_name}"}
-                    ],
-                    [
-                        {"text": "៤ ថ្ងៃ", "callback_data": f"leave_days:4:{sender_name}"},
-                        {"text": "៥ ថ្ងៃ", "callback_data": f"leave_days:5:{sender_name}"}
+                        {
+                            "text": "📝 បើកទម្រង់សុំច្បាប់ (Form Popup)",
+                            "web_app": {"url": "https://ac-bomlu-administration.onrender.com/form/leave"}
+                        }
                     ]
                 ]
             }
             msg = (
                 f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👉 <b>សូមចុចជ្រើសរើស ចំនួនថ្ងៃឈប់សម្រាក ខាងក្រោម៖</b>"
+                f"👉 <b>សូមចុចលើប៊ូតុងខាងក្រោម ដើម្បីបើកទម្រង់បែបបទសុំច្បាប់ (Form)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_days)
+            send_telegram_notify(msg, reply_markup=leave_form_btn)
             return {"ok": True}
 
         # 5. Handle Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
@@ -805,25 +1132,23 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
-        # 6. Handle Loan Button or Exact Command -> Show Amount Selection (Inline Buttons)!
+        # 6. Handle Loan Button or Exact Command -> Show Web App Form Button!
         if is_loan_btn:
-            inline_amounts = {
+            loan_form_btn = {
                 "inline_keyboard": [
                     [
-                        {"text": "៥០,០០០ ៛", "callback_data": f"loan_amt:50000:{sender_name}"},
-                        {"text": "១០០,០០០ ៛", "callback_data": f"loan_amt:100000:{sender_name}"}
-                    ],
-                    [
-                        {"text": "២០០,០០០ ៛", "callback_data": f"loan_amt:200000:{sender_name}"},
-                        {"text": "៥០០,០០០ ៛", "callback_data": f"loan_amt:500000:{sender_name}"}
+                        {
+                            "text": "💰 បើកទម្រង់ខ្ចីប្រាក់ (Form Popup)",
+                            "web_app": {"url": "https://ac-bomlu-administration.onrender.com/form/loan"}
+                        }
                     ]
                 ]
             }
             msg = (
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👉 <b>សូមចុចជ្រើសរើស ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី (រៀល)៖</b>"
+                f"👉 <b>សូមចុចលើប៊ូតុងខាងក្រោម ដើម្បីបើកទម្រង់បែបបទខ្ចីប្រាក់ (Form)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_amounts)
+            send_telegram_notify(msg, reply_markup=loan_form_btn)
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
