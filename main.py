@@ -1,5 +1,8 @@
 import os
-from fastapi import FastAPI, HTTPException
+import json
+import urllib.request
+import urllib.parse
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
@@ -29,6 +32,7 @@ db = client["acbank_db"]
 leaves_collection = db["leaves"]
 loans_collection = db["loans"]
 employees_collection = db["employees"]
+settings_collection = db["settings"]
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -49,10 +53,40 @@ class Employee(BaseModel):
     phone: Optional[str] = ""
     phone2: Optional[str] = ""
 
+class SettingsUpdate(BaseModel):
+    telegram_bot_token: Optional[str] = ""
+    telegram_chat_id: Optional[str] = ""
+    notify_on_leave: bool = True
+    notify_on_loan: bool = True
+
+class TelegramTestRequest(BaseModel):
+    bot_token: Optional[str] = ""
+    chat_id: Optional[str] = ""
+
 # ===== Helper =====
 def fix_id(doc):
     doc["_id"] = str(doc["_id"])
     return doc
+
+def send_telegram_notify(text: str):
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        if not s:
+            return
+        token = s.get("telegram_bot_token", "").strip()
+        chat_id = s.get("telegram_chat_id", "").strip()
+        if not token or not chat_id:
+            return
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = json.dumps({
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML"
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=8)
+    except Exception as e:
+        print(f"Telegram notify error: {e}")
 
 # ===== API Routes =====
 @app.get("/api/stats")
@@ -72,6 +106,13 @@ async def get_leaves():
 @app.post("/api/leave")
 async def create_leave(request: LeaveRequest):
     result = leaves_collection.insert_one(request.dict())
+    send_telegram_notify(
+        f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
+        f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
+        f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
+        f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំការអនុម័ត"
+    )
     return {"message": "Leave request saved!", "id": str(result.inserted_id)}
 
 @app.patch("/api/leave/{leave_id}/status")
@@ -92,6 +133,14 @@ async def get_loans():
 @app.post("/api/loan")
 async def create_loan(request: LoanRequest):
     result = loans_collection.insert_one(request.dict())
+    formatted_amount = f"{request.amount_khr:,}"
+    send_telegram_notify(
+        f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
+        f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
+        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
+        f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំការអនុម័ត"
+    )
     return {"message": "Loan request saved!", "id": str(result.inserted_id)}
 
 @app.patch("/api/loan/{loan_id}/status")
@@ -118,6 +167,84 @@ async def create_employee(emp: Employee):
 async def delete_employee(emp_id: str):
     employees_collection.delete_one({"_id": ObjectId(emp_id)})
     return {"message": "Deleted"}
+
+# ===== Settings & Telegram Routes =====
+@app.get("/api/settings")
+async def get_settings():
+    s = settings_collection.find_one({"_id": "app_settings"})
+    if not s:
+        return {
+            "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
+            "notify_on_leave": True,
+            "notify_on_loan": True
+        }
+    return {
+        "telegram_bot_token": s.get("telegram_bot_token", ""),
+        "telegram_chat_id": s.get("telegram_chat_id", ""),
+        "notify_on_leave": s.get("notify_on_leave", True),
+        "notify_on_loan": s.get("notify_on_loan", True)
+    }
+
+@app.post("/api/settings")
+async def save_settings(payload: SettingsUpdate):
+    settings_collection.update_one(
+        {"_id": "app_settings"},
+        {"$set": {
+            "telegram_bot_token": payload.telegram_bot_token,
+            "telegram_chat_id": payload.telegram_chat_id,
+            "notify_on_leave": payload.notify_on_leave,
+            "notify_on_loan": payload.notify_on_loan
+        }},
+        upsert=True
+    )
+    return {"message": "ការកំណត់ត្រូវបានរក្សាទុកជោគជ័យ!"}
+
+@app.post("/api/test-telegram")
+async def test_telegram(payload: TelegramTestRequest):
+    token = (payload.bot_token or "").strip()
+    chat_id = (payload.chat_id or "").strip()
+    
+    # Fallback to saved settings if not provided
+    if not token or not chat_id:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        if s:
+            token = token or s.get("telegram_bot_token", "").strip()
+            chat_id = chat_id or s.get("telegram_chat_id", "").strip()
+            
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូល Telegram Bot Token និង Chat ID ជាមុនសិន!")
+        
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        test_msg = (
+            "🔔 <b>AC Bank HR System</b>\n\n"
+            "✅ <b>ការតេស្ត Telegram Bot ទទួលបានជោគជ័យ ១០០%!</b>\n"
+            "🚀 ប្រព័ន្ធត្រៀមទទួលការជូនដំណឹងស្វ័យប្រវត្តិហើយ។"
+        )
+        post_data = json.dumps({
+            "chat_id": chat_id,
+            "text": test_msg,
+            "parse_mode": "HTML"
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=post_data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp_body = json.loads(resp.read().decode())
+            if resp_body.get("ok"):
+                return {"success": True, "message": "បានផ្ញើសារតេស្តទៅ Telegram ជោគជ័យ!"}
+            else:
+                return {"success": False, "message": f"Telegram API error: {resp_body}"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"មិនអាចផ្ញើសារបាន: {str(e)}")
+
+@app.post("/api/telegram-webhook")
+async def telegram_webhook(req: Request):
+    try:
+        data = await req.json()
+        print("Telegram Webhook received:", data)
+    except Exception:
+        pass
+    return {"ok": True}
 
 # ===== Modern HTML UI =====
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -242,6 +369,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
       <span class="material-symbols-outlined text-xl">group</span>
       <span>បុគ្គលិកទាំងអស់</span>
+    </button>
+    <button onclick="showTab('settings')"
+      id="nav-settings"
+      class="nav-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-blue-200">
+      <span class="material-symbols-outlined text-xl">settings</span>
+      <span>ការកំណត់</span>
     </button>
   </nav>
 
@@ -461,6 +594,157 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- ===== SETTINGS TAB ===== -->
+    <div id="tab-settings" class="p-6 animate-fadeIn hidden">
+      <div class="max-w-4xl mx-auto space-y-6">
+
+        <!-- Title -->
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <span class="material-symbols-outlined text-blue-600 text-2xl">settings</span> ការកំណត់ប្រព័ន្ធ
+            </h2>
+            <p class="text-xs text-gray-500 mt-1">គ្រប់គ្រង Telegram Bot API, Webhook និងការជូនដំណឹងស្វ័យប្រវត្តិ</p>
+          </div>
+        </div>
+
+        <!-- Telegram Bot Settings Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow">
+                <span class="material-symbols-outlined text-2xl">smart_toy</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-gray-800">ការកំណត់ Telegram Bot</h3>
+                <p class="text-xs text-gray-500">ទទួលការជូនដំណឹងពេលបុគ្គលិកសុំច្បាប់ ឬខ្ចីប្រាក់</p>
+              </div>
+            </div>
+            <span class="text-xs px-3 py-1 bg-blue-100 text-blue-700 font-semibold rounded-full flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span> Telegram API
+            </span>
+          </div>
+
+          <form onsubmit="saveSettings(event)" class="p-6 space-y-5">
+            <!-- Bot Token -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <span>Telegram Bot Token</span>
+                <span class="text-xs text-gray-400 font-normal">ទទួលបានពី @BotFather</span>
+              </label>
+              <div class="relative">
+                <input id="setting-bot-token" type="password" placeholder="ឧទាហរណ៍: 123456789:ABCdefGhIJKlmNoPQ..."
+                  class="w-full border border-slate-200 rounded-xl pl-4 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
+                <button type="button" onclick="toggleTokenVisibility()"
+                  class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition">
+                  <span id="eye-icon" class="material-symbols-outlined text-xl">visibility</span>
+                </button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">ឧ. <code>7234567890:AAH...</code> (រក្សាសម្ងាត់សម្រាប់សុវត្ថិភាព)</p>
+            </div>
+
+            <!-- Chat ID -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <span>Telegram Chat ID / Group ID</span>
+                <span class="text-xs text-gray-400 font-normal">ទទួលបានពី @userinfobot</span>
+              </label>
+              <input id="setting-chat-id" type="text" placeholder="ឧទាហរណ៍: 987654321 ឬ -1001234567890"
+                class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
+              <p class="text-xs text-gray-400 mt-1">ប្រសិនបើចង់ផ្ញើចូល Group សូមបញ្ចូល ID របស់ Group ដែលផ្ដើមដោយសញ្ញាដក <code>-100...</code></p>
+            </div>
+
+            <!-- Notifications Toggles -->
+            <div class="pt-2 border-t border-slate-100 space-y-3">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input id="setting-notify-leave" type="checkbox" checked
+                  class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-400" />
+                <span class="text-sm text-gray-700">🔔 ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិពេលមាន <b>សំណើសុំច្បាប់ថ្មី</b></span>
+              </label>
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input id="setting-notify-loan" type="checkbox" checked
+                  class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-400" />
+                <span class="text-sm text-gray-700">🔔 ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិពេលមាន <b>សំណើខ្ចីប្រាក់ថ្មី</b></span>
+              </label>
+            </div>
+
+            <!-- Buttons -->
+            <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-3">
+              <button type="submit" id="btn-save-settings"
+                class="btn-primary flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold shadow transition">
+                <span class="material-symbols-outlined text-lg">save</span> រក្សាទុកការកំណត់
+              </button>
+              <button type="button" onclick="testTelegramBot()" id="btn-test-bot"
+                class="btn-secondary flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-blue-200 transition">
+                <span class="material-symbols-outlined text-lg" id="test-bot-icon">send</span>
+                <span>សាកល្បងផ្ញើសារ (Test Bot)</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- API & Webhook Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <span class="material-symbols-outlined text-2xl">webhook</span>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800">API Webhook Endpoints</h3>
+              <p class="text-xs text-gray-500">សម្រាប់ Telegram Bot បាញ់ទិន្នន័យចូលប្រព័ន្ធដោយស្វ័យប្រវត្តិ</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <span class="text-green-600 font-bold">POST</span> <span class="text-gray-700">/api/leave</span>
+                <p class="text-gray-400 font-sans text-xs mt-0.5">សម្រាប់បាញ់សំណើសុំច្បាប់</p>
+              </div>
+              <button onclick="copyToClipboard(window.location.origin + '/api/leave')" class="p-1.5 hover:bg-slate-200 rounded text-gray-500" title="Copy URL">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+              </button>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <span class="text-green-600 font-bold">POST</span> <span class="text-gray-700">/api/loan</span>
+                <p class="text-gray-400 font-sans text-xs mt-0.5">សម្រាប់បាញ់សំណើខ្ចីប្រាក់</p>
+              </div>
+              <button onclick="copyToClipboard(window.location.origin + '/api/loan')" class="p-1.5 hover:bg-slate-200 rounded text-gray-500" title="Copy URL">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- System & Database Info -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 class="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-gray-500">info</span> ព័ត៌មានប្រព័ន្ធ
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <p class="text-gray-400 mb-1">Database</p>
+              <p class="font-semibold text-emerald-600 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> MongoDB Atlas Connected
+              </p>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <p class="text-gray-400 mb-1">Server Host</p>
+              <p class="font-semibold text-blue-600 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-blue-500"></span> Render Cloud Live
+              </p>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <p class="text-gray-400 mb-1">Python Runtime</p>
+              <p class="font-semibold text-gray-700">Python 3.11 / FastAPI</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -633,24 +917,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== Tab switching =====
-  const tabs = ['dashboard','leaves','loans','employees'];
-  const titles = { dashboard:'ផ្ទៃតាប្លូ', leaves:'ច្បាប់ឈប់សម្រាក', loans:'ខ្ចីប្រាក់ / បុរេប្រទាន', employees:'បុគ្គលិកទាំងអស់' };
+  const tabs = ['dashboard','leaves','loans','employees','settings'];
+  const titles = { dashboard:'ផ្ទៃតាប្លូ', leaves:'ច្បាប់ឈប់សម្រាក', loans:'ខ្ចីប្រាក់ / បុរេប្រទាន', employees:'បុគ្គលិកទាំងអស់', settings:'ការកំណត់ប្រព័ន្ធ' };
 
   function showTab(tab) {
     tabs.forEach(t => {
       document.getElementById('tab-' + t).classList.add('hidden');
       const nav = document.getElementById('nav-' + t);
-      nav.classList.remove('active');
-      nav.classList.add('text-blue-200');
+      if (nav) {
+        nav.classList.remove('active');
+        nav.classList.add('text-blue-200');
+      }
     });
     document.getElementById('tab-' + tab).classList.remove('hidden');
     const activeNav = document.getElementById('nav-' + tab);
-    activeNav.classList.add('active');
-    activeNav.classList.remove('text-blue-200');
+    if (activeNav) {
+      activeNav.classList.add('active');
+      activeNav.classList.remove('text-blue-200');
+    }
     document.getElementById('page-title').textContent = titles[tab];
     if (tab === 'leaves') loadLeaves();
     if (tab === 'loans') loadLoans();
     if (tab === 'employees') loadEmployees();
+    if (tab === 'settings') loadSettings();
   }
 
   // ===== Badge =====
@@ -932,6 +1221,98 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.target.reset();
     showToast('បានបន្ថែមបុគ្គលិក!');
     await loadEmployees(); await loadStats();
+  }
+
+  // ===== SETTINGS & TELEGRAM =====
+  async function loadSettings() {
+    try {
+      const r = await fetch('/api/settings');
+      const data = await r.json();
+      document.getElementById('setting-bot-token').value = data.telegram_bot_token || '';
+      document.getElementById('setting-chat-id').value = data.telegram_chat_id || '';
+      document.getElementById('setting-notify-leave').checked = data.notify_on_leave !== false;
+      document.getElementById('setting-notify-loan').checked = data.notify_on_loan !== false;
+    } catch(e) {
+      showToast('មិនអាចទាញយកការកំណត់បានទេ', true);
+    }
+  }
+
+  async function saveSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-settings');
+    btn.disabled = true;
+    btn.classList.add('opacity-70');
+    try {
+      const payload = {
+        telegram_bot_token: document.getElementById('setting-bot-token').value.trim(),
+        telegram_chat_id: document.getElementById('setting-chat-id').value.trim(),
+        notify_on_leave: document.getElementById('setting-notify-leave').checked,
+        notify_on_loan: document.getElementById('setting-notify-loan').checked
+      };
+      const r = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      showToast(data.message || 'បានរក្សាទុកការកំណត់ជោគជ័យ!');
+    } catch(err) {
+      showToast('មានបញ្ហាក្នុងការរក្សាទុក', true);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('opacity-70');
+    }
+  }
+
+  async function testTelegramBot() {
+    const token = document.getElementById('setting-bot-token').value.trim();
+    const chatId = document.getElementById('setting-chat-id').value.trim();
+    if (!token || !chatId) {
+      showToast('សូមបញ្ចូល Bot Token និង Chat ID ជាមុនសិន!', true);
+      return;
+    }
+    const icon = document.getElementById('test-bot-icon');
+    const btn = document.getElementById('btn-test-bot');
+    icon.classList.add('animate-spin');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/test-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_token: token, chat_id: chatId })
+      });
+      const res = await r.json();
+      if (r.ok) {
+        showToast(res.message || 'ផ្ញើសារតេស្តជោគជ័យ!');
+      } else {
+        showToast(res.detail || 'បរាជ័យក្នុងការតេស្ត', true);
+      }
+    } catch(e) {
+      showToast('បរាជ័យក្នុងការតេស្ត: ' + e.message, true);
+    } finally {
+      icon.classList.remove('animate-spin');
+      btn.disabled = false;
+    }
+  }
+
+  function toggleTokenVisibility() {
+    const input = document.getElementById('setting-bot-token');
+    const icon = document.getElementById('eye-icon');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility_off';
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility';
+    }
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('បានចម្លង (Copied)!');
+    }).catch(() => {
+      showToast('មិនអាចចម្លងបានទេ', true);
+    });
   }
 
   // ===== Refresh =====
