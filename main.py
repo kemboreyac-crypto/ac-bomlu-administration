@@ -211,18 +211,33 @@ def generate_daily_morning_briefing() -> str:
         
         total_emp = employees_collection.count_documents({})
         
-        all_leaves = list(leaves_collection.find({"status": {"$in": ["approved", "pending"]}}))
-        today_leaves = []
-        for l in all_leaves:
+        # Only include APPROVED leaves! Unapproved, pending, or rejected leaves are excluded.
+        approved_leaves = list(leaves_collection.find({"status": "approved"}))
+        emp_leaves = {}  # ename -> total_days
+        for l in approved_leaves:
             doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
             if doc_date == today_date or l.get("date") == now_cam.strftime("%Y-%m-%d"):
-                ename = l.get("employee_name", "")
-                days = l.get("days", 1)
-                st = "✅" if l.get("status") == "approved" else "🟡"
-                today_leaves.append(f"{ename} ({days} ថ្ងៃ {st})")
+                ename = (l.get("employee_name") or "").strip()
+                if not ename:
+                    continue
+                try:
+                    days = float(l.get("days", 1))
+                except (ValueError, TypeError):
+                    days = 1.0
+                emp_leaves[ename] = emp_leaves.get(ename, 0.0) + days
                 
+        today_leaves = []
+        for ename, total_days in emp_leaves.items():
+            if total_days == 0.5:
+                days_label = "កន្លះថ្ងៃ"
+            elif total_days.is_integer():
+                days_label = f"{int(total_days)} ថ្ងៃ"
+            else:
+                days_label = f"{total_days} ថ្ងៃ"
+            today_leaves.append(f"{ename} ({days_label} ✅)")
+            
         leave_count = len(today_leaves)
-        leave_list_str = "\n  • " + "\n  • ".join(today_leaves) if today_leaves else " គ្មានទេ"
+        leave_list_str = "\n  • " + "\n  • ".join(today_leaves) if today_leaves else " គ្មានទេ (មកធ្វើការគ្រប់គ្នា)"
         
         pending_loans = list(loans_collection.find({"status": "pending"}))
         pending_loan_count = len(pending_loans)
@@ -244,44 +259,71 @@ def generate_daily_morning_briefing() -> str:
 def generate_weekend_leave_report() -> dict:
     """
     Weekly Leave Report for staff to compensate (ធ្វើការសង) on Saturday & Sunday.
-    Covers approved/pending leaves within the last 7 days.
+    Covers APPROVED leaves within the last 7 days.
     """
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         start_date = (now_cam - timedelta(days=7)).date()
         
-        leaves = list(leaves_collection.find({"status": {"$in": ["approved", "pending"]}}).sort("_id", -1))
+        # Only approved leaves must compensate on weekends
+        leaves = list(leaves_collection.find({"status": "approved"}).sort("_id", -1))
         
-        compensate_list = []
-        total_days_to_compensate = 0
-        
+        emp_comp = {}  # ename -> {"total_days": float, "reasons": list, "dates": list}
         for l in leaves:
             doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
             if doc_date >= start_date:
-                days = l.get("days", 1)
-                total_days_to_compensate += days
-                ename = l.get("employee_name", "បុគ្គលិក")
-                reason = l.get("reason", "មិនបានបញ្ជាក់")
-                status = l.get("status", "approved")
+                ename = (l.get("employee_name") or "").strip() or "បុគ្គលិក"
+                try:
+                    days = float(l.get("days", 1))
+                except (ValueError, TypeError):
+                    days = 1.0
+                rsn = l.get("reason", "មិនបានបញ្ជាក់")
                 date_str = doc_date.strftime("%d/%m/%Y")
                 
-                comp_desc = f"សង {days} ថ្ងៃ (ថ្ងៃសៅរ៍ & អាទិត្យ)" if days >= 2 else "សង ១ ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
-                compensate_list.append({
-                    "id": str(l["_id"]),
-                    "employee_name": ename,
-                    "days": days,
-                    "reason": reason,
-                    "status": status,
-                    "date": date_str,
-                    "compensation": comp_desc
-                })
+                if ename not in emp_comp:
+                    emp_comp[ename] = {"total_days": 0.0, "reasons": [], "dates": []}
+                emp_comp[ename]["total_days"] += days
+                if rsn not in emp_comp[ename]["reasons"]:
+                    emp_comp[ename]["reasons"].append(rsn)
+                if date_str not in emp_comp[ename]["dates"]:
+                    emp_comp[ename]["dates"].append(date_str)
+                    
+        compensate_list = []
+        total_days_to_compensate = 0.0
+        
+        for ename, info in emp_comp.items():
+            tot = info["total_days"]
+            total_days_to_compensate += tot
+            if tot <= 0.5:
+                comp_desc = "សង កន្លះថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
+                days_label = "កន្លះថ្ងៃ"
+            elif tot == 1.0:
+                comp_desc = "សង ១ ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
+                days_label = "១ ថ្ងៃ"
+            elif tot >= 2.0:
+                comp_desc = f"សង {int(tot) if tot.is_integer() else tot} ថ្ងៃ (ថ្ងៃសៅរ៍ & អាទិត្យ)"
+                days_label = f"{int(tot) if tot.is_integer() else tot} ថ្ងៃ"
+            else:
+                comp_desc = f"សង {tot} ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
+                days_label = f"{tot} ថ្ងៃ"
                 
+            compensate_list.append({
+                "employee_name": ename,
+                "days": days_label,
+                "raw_days": tot,
+                "reason": ", ".join(info["reasons"]),
+                "status": "approved",
+                "date": ", ".join(info["dates"]),
+                "compensation": comp_desc
+            })
+            
+        tot_days_display = int(total_days_to_compensate) if total_days_to_compensate.is_integer() else total_days_to_compensate
         return {
             "report_type": "weekend_leave",
             "generated_at": now_cam.strftime("%d/%m/%Y %H:%M"),
             "total_staff_count": len(compensate_list),
-            "total_days_to_compensate": total_days_to_compensate,
+            "total_days_to_compensate": tot_days_display,
             "items": compensate_list
         }
     except Exception as e:
@@ -296,10 +338,9 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
     
     lines = []
     for idx, item in enumerate(items, 1):
-        st = "✅" if item["status"] == "approved" else "🟡"
         lines.append(
-            f"{idx}. <b>{item['employee_name']}</b> ({st})\n"
-            f"   • ច្បាប់ឈប់: <b>{item['days']} ថ្ងៃ</b> (មូលហេតុ: {item['reason']})\n"
+            f"{idx}. <b>{item['employee_name']}</b> (✅)\n"
+            f"   • ច្បាប់ឈប់: <b>{item['days']}</b> (មូលហេតុ: {item['reason']})\n"
             f"   • <b>កាតព្វកិច្ច:</b> <b>{item['compensation']}</b>"
         )
         
@@ -638,8 +679,8 @@ async def test_gemini(payload: GeminiTestRequest):
     if not key:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូល Google Gemini API Key ជាមុនសិន!")
         
-    model = (payload.gemini_model or "gemini-flash-lite-latest").strip()
-    candidate_models = [model, "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"]
+    model = (payload.gemini_model or "gemini-3.5-flash-lite").strip()
+    candidate_models = [model, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.1-flash-lite"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -655,7 +696,7 @@ async def test_gemini(payload: GeminiTestRequest):
                 data=json.dumps(test_payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=8) as r:
+            with urllib.request.urlopen(req, timeout=4) as r:
                 data = json.loads(r.read().decode('utf-8'))
                 cand_list = data.get("candidates", [])
                 if cand_list:
@@ -792,7 +833,8 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
       <!-- Days Selection -->
       <div>
         <label class="block text-xs font-medium text-slate-300 mb-1.5">ចំនួនថ្ងៃឈប់សម្រាក</label>
-        <div class="grid grid-cols-5 gap-1.5">
+        <div class="grid grid-cols-6 gap-1">
+          <button type="button" onclick="selectDay(0.5)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-05">កន្លះថ្ងៃ</button>
           <button type="button" onclick="selectDay(1)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white" id="d-1">១ ថ្ងៃ</button>
           <button type="button" onclick="selectDay(2)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-2">២ ថ្ងៃ</button>
           <button type="button" onclick="selectDay(3)" class="day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="d-3">៣ ថ្ងៃ</button>
@@ -852,13 +894,13 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
 
     function selectDay(n) {
       document.getElementById('leave-days').value = n;
-      for (let i = 1; i <= 5; i++) {
-        const btn = document.getElementById('d-' + i);
-        if (i === n) {
-          btn.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white';
-        } else {
-          btn.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
-        }
+      document.querySelectorAll('.day-btn').forEach(b => {
+        b.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+      });
+      const activeId = n === 0.5 ? 'd-05' : 'd-' + n;
+      const activeBtn = document.getElementById(activeId);
+      if (activeBtn) {
+        activeBtn.className = 'day-btn py-2 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-500/20';
       }
     }
 
@@ -1107,8 +1149,8 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
     if not api_key:
         return None
         
-    model = (s.get("gemini_model", "") or "gemini-flash-lite-latest").strip()
-    candidate_models = [model, "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"]
+    model = (s.get("gemini_model", "") or "gemini-3.5-flash-lite").strip()
+    candidate_models = [model, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.1-flash-lite"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -1152,7 +1194,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
         "   - 'self_query': Staff is inquiring about their personal records, leave count, loan balance, or status (e.g. 'ខែនេះខ្ញុំសុំច្បាប់ប៉ុន្មានថ្ងៃហើយ?', 'តើខ្ញុំនៅសល់លុយខ្ចីប៉ុន្មាន?', 'ច្បាប់ខ្ញុំ')\n"
         "   - 'hr_query': Questions about company rules, working hours, procedures, or general advice\n"
         "   - 'general_chat': Greetings, thank-you messages, casual friendly talk\n"
-        "2. If intent is 'leave', extract: days (integer, default 1), reason (concise Khmer reason).\n"
+        "2. If intent is 'leave', extract: days (number, 0.5 for 'កន្លះថ្ងៃ' / half-day, or 1, 2, 3), reason (concise Khmer reason).\n"
         "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (concise Khmer purpose).\n"
         "4. In 'response_text': Always compose an exceptionally smart, warm, polite, and helpful response in natural Khmer (using 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n"
         "   - For 'self_query': Answer their question directly with their exact live data numbers, followed by an encouraging note.\n"
@@ -1193,7 +1235,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
                 data=json.dumps(payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 candidates = res_data.get("candidates", [])
                 if candidates:
@@ -1249,29 +1291,56 @@ async def telegram_webhook(req: Request):
             if cq_data.startswith("leave_days:"):
                 parts = cq_data.split(":")
                 days_str = parts[1]
-                days = int(days_str) if days_str.isdigit() else 1
+                try:
+                    days = float(days_str)
+                except (ValueError, TypeError):
+                    days = 1.0
+                    
+                initiator_user_id = parts[2] if len(parts) > 2 else ""
+                initiator_name = parts[3] if len(parts) > 3 else cq_name
+                
+                # Security Check: Prevent other staff from hijacking another person's request!
+                if initiator_user_id and cq_user_id != initiator_user_id:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": f"⚠️ ប៊ូតុងនេះសម្រាប់តែ [{initiator_name}] ប៉ុណ្ណោះ! ប្រសិនបើលោកអ្នកចង់សុំច្បាប់ សូមចុចប៊ូតុង [ 📝 ស្នើសុំច្បាប់ ] ខាងក្រោមដោយខ្លួនឯង។",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                    
+                if days == 0.5:
+                    days_display = "កន្លះថ្ងៃ (0.5 ថ្ងៃ)"
+                elif days.is_integer():
+                    days_display = f"{int(days)} ថ្ងៃ"
+                else:
+                    days_display = f"{days} ថ្ងៃ"
                 
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
-                    {"user_id": cq_user_id, "type": "leave", "days": days, "name": cq_name, "is_private": is_cq_private},
+                    {"user_id": cq_user_id, "type": "leave", "days": days, "days_display": days_display, "name": cq_name, "is_private": is_cq_private},
                     upsert=True
                 )
                 
                 reason_buttons = {
                     "inline_keyboard": [
                         [
-                            {"text": "🤒 ឈឺ / មិនស្រួលខ្លួន", "callback_data": f"leave_rsn:sick:{days}"},
-                            {"text": "🏠 រវល់ធុរៈគ្រួសារ", "callback_data": f"leave_rsn:family:{days}"}
+                            {"text": "🤒 ឈឺ / មិនស្រួលខ្លួន", "callback_data": f"leave_rsn:sick:{days}:{cq_user_id}"},
+                            {"text": "🏠 រវល់ធុរៈគ្រួសារ", "callback_data": f"leave_rsn:family:{days}:{cq_user_id}"}
                         ],
                         [
-                            {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:hometown:{days}"},
-                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ceremony:{days}"}
+                            {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:hometown:{days}:{cq_user_id}"},
+                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ceremony:{days}:{cq_user_id}"}
                         ]
                     ]
                 }
                 ask_reason_msg = (
                     f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days} ថ្ងៃ\n\n"
+                    f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n\n"
                     f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
                 send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
@@ -1282,9 +1351,36 @@ async def telegram_webhook(req: Request):
                 parts = cq_data.split(":")
                 code = parts[1]
                 rsn = REASON_MAP.get(code, code)
-                days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+                days_str = parts[2] if len(parts) > 2 else "1"
+                try:
+                    days = float(days_str)
+                except (ValueError, TypeError):
+                    days = 1.0
+                initiator_user_id = parts[3] if len(parts) > 3 else ""
+                
+                # Security Check: Prevent other staff from hijacking
+                if initiator_user_id and cq_user_id != initiator_user_id:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": "⚠️ ប៊ូតុងនេះសម្រាប់តែម្ចាស់សំណើដើមប៉ុណ្ណោះ! ប្រសិនបើលោកអ្នកចង់សុំច្បាប់ សូមចុចប៊ូតុង [ 📝 ស្នើសុំច្បាប់ ] ខាងក្រោមដោយខ្លួនឯង។",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                    
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
+                if days == 0.5:
+                    days_display = "កន្លះថ្ងៃ"
+                elif days.is_integer():
+                    days_display = f"{int(days)} ថ្ងៃ"
+                else:
+                    days_display = f"{days} ថ្ងៃ"
+                    
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
@@ -1305,7 +1401,7 @@ async def telegram_webhook(req: Request):
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                     f"📝 <b>មូលហេតុ:</b> {rsn}\n"
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
@@ -1314,7 +1410,7 @@ async def telegram_webhook(req: Request):
                     emp_conf = (
                         f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
-                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                         f"📝 <b>មូលហេតុ:</b> {rsn}\n\n"
                         f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
                     )
@@ -1327,8 +1423,28 @@ async def telegram_webhook(req: Request):
             # 2. Callback for Loan Amount selection -> Show Purpose Selection & Allow Direct Typing!
             if cq_data.startswith("loan_amt:"):
                 parts = cq_data.split(":")
-                amount = int(parts[1]) if parts[1].isdigit() else 100000
+                amount_str = parts[1]
+                try:
+                    amount = int(amount_str)
+                except (ValueError, TypeError):
+                    amount = 100000
+                initiator_user_id = parts[2] if len(parts) > 2 else ""
+                initiator_name = parts[3] if len(parts) > 3 else cq_name
                 
+                # Security Check: Prevent other staff from hijacking
+                if initiator_user_id and cq_user_id != initiator_user_id:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": f"⚠️ ប៊ូតុងនេះសម្រាប់តែ [{initiator_name}] ប៉ុណ្ណោះ! ប្រសិនបើលោកអ្នកចង់ខ្ចីប្រាក់ សូមចុចប៊ូតុង [ 💰 ស្នើខ្ចីប្រាក់ ] ខាងក្រោមដោយខ្លួនឯង។",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                    
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
                     {"user_id": cq_user_id, "type": "loan", "amount": amount, "name": cq_name, "is_private": is_cq_private},
@@ -1338,12 +1454,12 @@ async def telegram_webhook(req: Request):
                 purpose_buttons = {
                     "inline_keyboard": [
                         [
-                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:rent:{amount}"},
-                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:med:{amount}"}
+                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:rent:{amount}:{cq_user_id}"},
+                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:med:{amount}:{cq_user_id}"}
                         ],
                         [
-                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:util:{amount}"},
-                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:family:{amount}"}
+                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:util:{amount}:{cq_user_id}"},
+                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:family:{amount}:{cq_user_id}"}
                         ]
                     ]
                 }
@@ -1360,7 +1476,27 @@ async def telegram_webhook(req: Request):
                 parts = cq_data.split(":")
                 code = parts[1]
                 pur = PURPOSE_MAP.get(code, code)
-                amt = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 100000
+                amount_str = parts[2] if len(parts) > 2 else "100000"
+                try:
+                    amt = int(amount_str)
+                except (ValueError, TypeError):
+                    amt = 100000
+                initiator_user_id = parts[3] if len(parts) > 3 else ""
+                
+                # Security Check: Prevent other staff from hijacking
+                if initiator_user_id and cq_user_id != initiator_user_id:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": "⚠️ ប៊ូតុងនេះសម្រាប់តែម្ចាស់សំណើដើមប៉ុណ្ណោះ! ប្រសិនបើលោកអ្នកចង់ខ្ចីប្រាក់ សូមចុចប៊ូតុង [ 💰 ស្នើខ្ចីប្រាក់ ] ខាងក្រោមដោយខ្លួនឯង។",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                    
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
                 cambodia_tz = timezone(timedelta(hours=7))
@@ -1495,6 +1631,9 @@ async def telegram_webhook(req: Request):
         sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
         user_id_str = str(from_user.get("id"))
         
+        # Check active flow immediately to prevent UnboundLocalError
+        active_flow = user_flows_collection.find_one({"user_id": user_id_str})
+        
         # 1. Handle New Member Added to Group -> Welcome & Send 4-corner Keyboard automatically!
         new_members = message.get("new_chat_members", [])
         if new_members:
@@ -1570,7 +1709,6 @@ async def telegram_webhook(req: Request):
                 return {"ok": True}
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
-        active_flow = user_flows_collection.find_one({"user_id": user_id_str})
         if active_flow and not is_system_cmd:
             content = (message.get("caption") or "សារសំឡេង (Voice Message)") if has_voice else text
             flow_type = active_flow.get("type")
@@ -1578,12 +1716,23 @@ async def telegram_webhook(req: Request):
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
+                try:
+                    days_val = float(days)
+                except (ValueError, TypeError):
+                    days_val = 1.0
+                if days_val == 0.5:
+                    days_display = "កន្លះថ្ងៃ"
+                elif days_val.is_integer():
+                    days_display = f"{int(days_val)} ថ្ងៃ"
+                else:
+                    days_display = f"{days_val} ថ្ងៃ"
+                    
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
                     "employee_name": sender_name,
                     "reason": content,
-                    "days": days,
+                    "days": days_val,
                     "status": "pending",
                     "date": today_khr
                 })
@@ -1600,7 +1749,7 @@ async def telegram_webhook(req: Request):
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                     f"📝 <b>មូលហេតុ:</b> {content}\n"
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
@@ -1609,7 +1758,7 @@ async def telegram_webhook(req: Request):
                     emp_conf = (
                         f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                         f"📝 <b>មូលហេតុ:</b> {content}\n\n"
                         f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
                     )
@@ -1900,13 +2049,14 @@ async def telegram_webhook(req: Request):
             inline_days = {
                 "inline_keyboard": [
                     [
-                        {"text": "១ ថ្ងៃ", "callback_data": "leave_days:1"},
-                        {"text": "២ ថ្ងៃ", "callback_data": "leave_days:2"},
-                        {"text": "៣ ថ្ងៃ", "callback_data": "leave_days:3"}
+                        {"text": "🌗 កន្លះថ្ងៃ", "callback_data": f"leave_days:0.5:{user_id_str}:{sender_name}"},
+                        {"text": "១ ថ្ងៃ", "callback_data": f"leave_days:1:{user_id_str}:{sender_name}"},
+                        {"text": "២ ថ្ងៃ", "callback_data": f"leave_days:2:{user_id_str}:{sender_name}"}
                     ],
                     [
-                        {"text": "៤ ថ្ងៃ", "callback_data": "leave_days:4"},
-                        {"text": "៥ ថ្ងៃ", "callback_data": "leave_days:5"}
+                        {"text": "៣ ថ្ងៃ", "callback_data": f"leave_days:3:{user_id_str}:{sender_name}"},
+                        {"text": "៤ ថ្ងៃ", "callback_data": f"leave_days:4:{user_id_str}:{sender_name}"},
+                        {"text": "៥ ថ្ងៃ", "callback_data": f"leave_days:5:{user_id_str}:{sender_name}"}
                     ]
                 ]
             }
@@ -1936,7 +2086,11 @@ async def telegram_webhook(req: Request):
                     return {"ok": True}
 
                 elif intent == "leave":
-                    days = int(ai_data.get("days", 1))
+                    try:
+                        days = float(ai_data.get("days", 1))
+                    except (ValueError, TypeError):
+                        days = 1.0
+                    days_display = "កន្លះថ្ងៃ" if days == 0.5 else (f"{int(days)} ថ្ងៃ" if days.is_integer() else f"{days} ថ្ងៃ")
                     reason = ai_data.get("reason") or text
                     l_res = leaves_collection.insert_one({
                         "employee_name": sender_name,
@@ -1956,7 +2110,7 @@ async def telegram_webhook(req: Request):
                     admin_card = (
                         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាក (វិភាគដោយ AI)!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                         f"📝 <b>មូលហេតុ:</b> {reason}\n"
                         f"{conflict_alert}"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
@@ -1965,7 +2119,7 @@ async def telegram_webhook(req: Request):
                         emp_conf = (
                             f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                             f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                            f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                             f"📝 <b>មូលហេតុ:</b> {reason}\n\n"
                             f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
                         )
@@ -1976,7 +2130,10 @@ async def telegram_webhook(req: Request):
                     return {"ok": True}
 
                 elif intent == "loan":
-                    amount = int(ai_data.get("amount_khr", 100000))
+                    try:
+                        amount = int(ai_data.get("amount_khr", 100000))
+                    except (ValueError, TypeError):
+                        amount = 100000
                     purpose = ai_data.get("purpose") or text
                     ln_res = loans_collection.insert_one({
                         "employee_name": sender_name,
@@ -2018,14 +2175,21 @@ async def telegram_webhook(req: Request):
                     send_telegram_notify(f"🤖 <b>ជំនួយការ AI:</b>\n{clean_res}", target_chat_id=chat_id_str)
                     return {"ok": True}
 
-        # 6. Fallback: Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
+        # 6. Fallback: Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ កន្លះថ្ងៃ / ២ ថ្ងៃ ឈឺក្បាល...)
         if ("សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower()) and not is_leave_btn and not is_loan_btn:
-            days = 1
-            import re
-            day_match = re.search(r'(\d+)\s*(ថ្ងៃ|day)', text, re.IGNORECASE)
-            if day_match:
-                days = int(day_match.group(1))
-                
+            days = 1.0
+            if "កន្លះ" in text or "half" in text.lower() or "0.5" in text:
+                days = 0.5
+            else:
+                import re
+                day_match = re.search(r'(\d+(?:\.\d+)?)\s*(ថ្ងៃ|day)', text, re.IGNORECASE)
+                if day_match:
+                    try:
+                        days = float(day_match.group(1))
+                    except Exception:
+                        days = 1.0
+                        
+            days_display = "កន្លះថ្ងៃ" if days == 0.5 else (f"{int(days)} ថ្ងៃ" if days.is_integer() else f"{days} ថ្ងៃ")
             cambodia_tz = timezone(timedelta(hours=7))
             today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
             l_res = leaves_collection.insert_one({
@@ -2046,8 +2210,8 @@ async def telegram_webhook(req: Request):
             admin_card = (
                 f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
-                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                 f"{conflict_alert}"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
@@ -2055,7 +2219,7 @@ async def telegram_webhook(req: Request):
                 emp_conf = (
                     f"✅ <b>សំណើសុំច្បាប់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n\n"
                     f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
                 )
@@ -2070,15 +2234,21 @@ async def telegram_webhook(req: Request):
             inline_amounts = {
                 "inline_keyboard": [
                     [
-                        {"text": "៥០,០០០ ៛", "callback_data": "loan_amt:50000"},
-                        {"text": "១០០,០០០ ៛", "callback_data": "loan_amt:100000"}
+                        {"text": "៥០,០០០ ៛", "callback_data": f"loan_amt:50000:{user_id_str}:{sender_name}"},
+                        {"text": "១០០,០០០ ៛", "callback_data": f"loan_amt:100000:{user_id_str}:{sender_name}"}
                     ],
                     [
-                        {"text": "២០០,០០០ ៛", "callback_data": "loan_amt:200000"},
-                        {"text": "៥០០,០០០ ៛", "callback_data": "loan_amt:500000"}
+                        {"text": "២០០,០០០ ៛", "callback_data": f"loan_amt:200000:{user_id_str}:{sender_name}"},
+                        {"text": "៥០០,០០០ ៛", "callback_data": f"loan_amt:500000:{user_id_str}:{sender_name}"}
                     ]
                 ]
             }
+            msg = (
+                f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
+            )
+            send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
+            return {"ok": True}
             msg = (
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
@@ -2734,10 +2904,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>ម៉ូដែល AI (AI Model)</span>
               </label>
               <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
-                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Super Fast 0.7s - ណែនាំ)</option>
-                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Ultra Fast)</option>
-                <option value="gemini-3.5-flash">🌟 Gemini 3.5 Flash (Balanced)</option>
+                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Ultra Fast 0.7s - ណែនាំ)</option>
+                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Fast 0.8s)</option>
+                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
                 <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash (Advanced)</option>
+                <option value="gemini-3.1-flash-lite">✨ Gemini 3.1 Flash Lite</option>
               </select>
             </div>
 
