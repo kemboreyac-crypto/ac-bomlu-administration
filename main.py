@@ -30,7 +30,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
 
 # ===== MongoDB Connection =====
-MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+DEFAULT_MONGO_URI = "mongodb+srv://acbomlu_admin:092673641@acbomlo.gclkugi.mongodb.net/acbank_db?retryWrites=true&w=majority"
+MONGO_URI = os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or DEFAULT_MONGO_URI
 client = MongoClient(MONGO_URI)
 db = client["acbank_db"]
 leaves_collection = db["leaves"]

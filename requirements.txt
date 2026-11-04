@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
-pymongo
+gunicorn
+pymongo[srv]
+dnspython
 pydantic
 aiofiles
 python-dotenv
+
