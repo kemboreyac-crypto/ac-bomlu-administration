@@ -62,7 +62,7 @@ class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
     gemini_api_key: Optional[str] = ""
-    gemini_model: Optional[str] = "gemini-3.5-flash"
+    gemini_model: Optional[str] = "gemini-flash-lite-latest"
     notify_on_leave: bool = True
     notify_on_loan: bool = True
 
@@ -72,7 +72,7 @@ class TelegramTestRequest(BaseModel):
 
 class GeminiTestRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
-    gemini_model: Optional[str] = "gemini-3.5-flash"
+    gemini_model: Optional[str] = "gemini-flash-lite-latest"
 
 # ===== Helper =====
 def fix_id(doc):
@@ -573,7 +573,7 @@ async def get_settings():
     token = ""
     chat_id = ""
     gemini_key = ""
-    gemini_model = "gemini-3.5-flash"
+    gemini_model = "gemini-flash-lite-latest"
     notify_leave = True
     notify_loan = True
     
@@ -581,14 +581,14 @@ async def get_settings():
         token = s.get("telegram_bot_token", "")
         chat_id = s.get("telegram_chat_id", "")
         gemini_key = s.get("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
-        gemini_model = s.get("gemini_model", os.getenv("GEMINI_MODEL", "gemini-3.5-flash"))
+        gemini_model = s.get("gemini_model", os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest"))
         notify_leave = s.get("notify_on_leave", True)
         notify_loan = s.get("notify_on_loan", True)
     else:
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         gemini_key = os.getenv("GEMINI_API_KEY", "")
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
         
     return {
         "telegram_bot_token": mask_token(token),
@@ -621,7 +621,7 @@ async def save_settings(payload: SettingsUpdate):
             "telegram_bot_token": token_to_save,
             "telegram_chat_id": (payload.telegram_chat_id or "").strip(),
             "gemini_api_key": gemini_to_save,
-            "gemini_model": (payload.gemini_model or "gemini-3.5-flash").strip(),
+            "gemini_model": (payload.gemini_model or "gemini-flash-lite-latest").strip(),
             "notify_on_leave": payload.notify_on_leave,
             "notify_on_loan": payload.notify_on_loan
         },
@@ -638,8 +638,8 @@ async def test_gemini(payload: GeminiTestRequest):
     if not key:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូល Google Gemini API Key ជាមុនសិន!")
         
-    model = (payload.gemini_model or "gemini-3.5-flash").strip()
-    candidate_models = [model, "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
+    model = (payload.gemini_model or "gemini-flash-lite-latest").strip()
+    candidate_models = [model, "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -647,7 +647,7 @@ async def test_gemini(payload: GeminiTestRequest):
     for m in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
         test_payload = {
-            "contents": [{"parts": [{"text": "សូមសួស្តីខ្លីមួយម៉ាត់ជាភាសាខ្មែរ"}]}]
+            "contents": [{"parts": [{"text": "សូមឆ្លើយពាក្យ 'សួស្តី' ខ្លីមួយម៉ាត់ជាភាសាខ្មែរ"}]}]
         }
         try:
             req = urllib.request.Request(
@@ -655,14 +655,25 @@ async def test_gemini(payload: GeminiTestRequest):
                 data=json.dumps(test_payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with urllib.request.urlopen(req, timeout=8) as r:
                 data = json.loads(r.read().decode('utf-8'))
-                ans = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
-                return {
-                    "success": True,
-                    "model_used": m,
-                    "message": f"✅ ជោគជ័យ! Gemini AI ({m}) ឆ្លើយតប: {ans}"
-                }
+                cand_list = data.get("candidates", [])
+                if cand_list:
+                    cand_parts = cand_list[0].get("content", {}).get("parts", [])
+                    if cand_parts:
+                        ans = cand_parts[0].get("text", "").strip()
+                        # Auto-save key to MongoDB Atlas if verified successfully!
+                        if payload.gemini_api_key and "•" not in payload.gemini_api_key:
+                            settings_collection.update_one(
+                                {"_id": "app_settings"},
+                                {"$set": {"gemini_api_key": payload.gemini_api_key.strip(), "gemini_model": m}},
+                                upsert=True
+                            )
+                        return {
+                            "success": True,
+                            "model_used": m,
+                            "message": f"✅ ជោគជ័យ! Gemini AI ({m}) ឆ្លើយតប: {ans}"
+                        }
         except Exception as e:
             last_err = str(e)
             continue
@@ -1096,8 +1107,8 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
     if not api_key:
         return None
         
-    model = s.get("gemini_model", "gemini-3.5-flash").strip()
-    candidate_models = [model, "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
+    model = (s.get("gemini_model", "") or "gemini-flash-lite-latest").strip()
+    candidate_models = [model, "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
     
@@ -1182,7 +1193,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
                 data=json.dumps(payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=15) as response:
+            with urllib.request.urlopen(req, timeout=8) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 candidates = res_data.get("candidates", [])
                 if candidates:
@@ -1207,6 +1218,7 @@ async def telegram_webhook(req: Request):
         # Helper to get bot token
         s = settings_collection.find_one({"_id": "app_settings"})
         token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        admin_group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
 
         # A. Handle Callback Query (When clicking Inline Buttons: Days or Loan Amount)
         callback_query = update.get("callback_query")
@@ -1215,6 +1227,12 @@ async def telegram_webhook(req: Request):
             cq_data = callback_query.get("data", "")
             cq_user = callback_query.get("from", {})
             cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
+            cq_msg = callback_query.get("message", {})
+            cq_chat = cq_msg.get("chat", {})
+            cq_chat_id = str(cq_chat.get("id") or "")
+            cq_chat_type = cq_chat.get("type", "group")
+            is_cq_private = (cq_chat_type == "private")
+            cq_user_id = str(cq_user.get("id") or "")
             
             # Answer callback immediately for selection buttons to remove loading spinner
             if (cq_data.startswith("leave_days:") or cq_data.startswith("loan_amt:") or 
@@ -1233,10 +1251,9 @@ async def telegram_webhook(req: Request):
                 days_str = parts[1]
                 days = int(days_str) if days_str.isdigit() else 1
                 
-                cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
-                    {"user_id": cq_user_id, "type": "leave", "days": days, "name": cq_name},
+                    {"user_id": cq_user_id, "type": "leave", "days": days, "name": cq_name, "is_private": is_cq_private},
                     upsert=True
                 )
                 
@@ -1257,7 +1274,7 @@ async def telegram_webhook(req: Request):
                     f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days} ថ្ងៃ\n\n"
                     f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons)
+                send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
                 return {"ok": True}
 
             # 1.1 Callback when clicking a quick Reason button!
@@ -1266,7 +1283,6 @@ async def telegram_webhook(req: Request):
                 code = parts[1]
                 rsn = REASON_MAP.get(code, code)
                 days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
-                cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
                 cambodia_tz = timezone(timedelta(hours=7))
@@ -1286,7 +1302,7 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
@@ -1294,7 +1310,18 @@ async def telegram_webhook(req: Request):
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_cq_private:
+                    emp_conf = (
+                        f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {rsn}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=cq_chat_id)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=cq_chat_id)
                 return {"ok": True}
 
             # 2. Callback for Loan Amount selection -> Show Purpose Selection & Allow Direct Typing!
@@ -1302,10 +1329,9 @@ async def telegram_webhook(req: Request):
                 parts = cq_data.split(":")
                 amount = int(parts[1]) if parts[1].isdigit() else 100000
                 
-                cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
-                    {"user_id": cq_user_id, "type": "loan", "amount": amount, "name": cq_name},
+                    {"user_id": cq_user_id, "type": "loan", "amount": amount, "name": cq_name, "is_private": is_cq_private},
                     upsert=True
                 )
                 
@@ -1326,7 +1352,7 @@ async def telegram_webhook(req: Request):
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n\n"
                     f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons)
+                send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
                 return {"ok": True}
 
             # 2.1 Callback when clicking a quick Purpose button!
@@ -1335,14 +1361,16 @@ async def telegram_webhook(req: Request):
                 code = parts[1]
                 pur = PURPOSE_MAP.get(code, code)
                 amt = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 100000
-                cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 ln_res = loans_collection.insert_one({
                     "employee_name": cq_name,
                     "amount_khr": amt,
                     "purpose": pur,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 loan_id = str(ln_res.inserted_id)
                 adm_btn = {
@@ -1351,14 +1379,25 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {pur}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_cq_private:
+                    emp_conf = (
+                        f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {pur}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=cq_chat_id)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=cq_chat_id)
                 return {"ok": True}
 
             # 3. Handle Admin Approval / Rejection directly inside Telegram (Option B)
@@ -1468,11 +1507,13 @@ async def telegram_webhook(req: Request):
                     f"👇 <b>ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នកស្វ័យប្រវត្តិ៖</b>\n"
                     f"សូមមើលប៊ូតុងខាងក្រោម៖ ចុចលើ <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
                 )
-                send_telegram_notify(welcome_msg)
+                send_telegram_notify(welcome_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
         chat = message.get("chat", {})
         chat_id_str = str(chat.get("id"))
+        chat_type = chat.get("type", "group")
+        is_private_chat = (chat_type == "private")
         
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
@@ -1524,14 +1565,16 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         # Feature 2: Smart Group Filtering (Quiet Bot in Groups for normal casual chatter)
-        if not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
-            return {"ok": True}
+        if not is_private_chat:
+            if not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
+                return {"ok": True}
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
         active_flow = user_flows_collection.find_one({"user_id": user_id_str})
         if active_flow and not is_system_cmd:
             content = (message.get("caption") or "សារសំឡេង (Voice Message)") if has_voice else text
             flow_type = active_flow.get("type")
+            flow_is_private = active_flow.get("is_private", is_private_chat)
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
@@ -1554,7 +1597,7 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
@@ -1562,7 +1605,18 @@ async def telegram_webhook(req: Request):
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+                if flow_is_private or is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {content}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             elif flow_type == "loan":
@@ -1585,14 +1639,25 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {content}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+                if flow_is_private or is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {content}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
 
         # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
@@ -1610,14 +1675,25 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាក (បានបន្ថែមមូលហេតុ)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើសុំច្បាប់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {text}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
 
             recent_loan = loans_collection.find_one(
@@ -1633,14 +1709,25 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ (បានបន្ថែមគោលបំណង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {text}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {text}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
         
         # 2. Handle Voice Message (Powered by Google Gemini Multimodal Audio)
@@ -1674,37 +1761,56 @@ async def telegram_webhook(req: Request):
             if ai_data and ai_data.get("intent") == "leave":
                 days = int(ai_data.get("days", 1))
                 reason = ai_data.get("reason") or "សារសំឡេងសុំច្បាប់"
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
                     "employee_name": sender_name,
                     "reason": reason,
                     "days": days,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 leave_id = str(l_res.inserted_id)
+                conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
                     "inline_keyboard": [[
                         {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                    f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {reason}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             elif ai_data and ai_data.get("intent") == "loan":
                 amount = int(ai_data.get("amount_khr", 100000))
                 purpose = ai_data.get("purpose") or "សារសំឡេងសុំខ្ចីប្រាក់"
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 ln_res = loans_collection.insert_one({
                     "employee_name": sender_name,
                     "amount_khr": amount,
                     "purpose": purpose,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 loan_id = str(ln_res.inserted_id)
                 adm_btn = {
@@ -1713,44 +1819,71 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {purpose}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើខ្ចីប្រាក់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {purpose}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             elif ai_data and ai_data.get("response_text"):
-                send_telegram_notify(f"🤖 <b>ឆ្លើយតបសារសំឡេង ({sender_name}):</b>\n{ai_data.get('response_text')}")
+                send_telegram_notify(f"🤖 <b>ឆ្លើយតបសារសំឡេង ({sender_name}):</b>\n{ai_data.get('response_text')}", target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             else:
                 # Fallback if Gemini not available
                 voice_label = caption or "សារសំឡេង (Voice Message)"
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 v_res = leaves_collection.insert_one({
                     "employee_name": sender_name,
                     "reason": voice_label,
                     "days": 1,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 leave_id = str(v_res.inserted_id)
+                conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
                     "inline_keyboard": [[
                         {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
-                reply = (
+                admin_card = (
                     f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេងថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"📝 <b>មូលហេតុ:</b> {voice_label}\n"
                     f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
+                    f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                if is_private_chat:
+                    emp_conf = (
+                        f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {voice_label}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    )
+                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                else:
+                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
 
         # 3. Handle Greetings & Casual Messages -> Re-attach 2 Keyboard buttons!
@@ -1759,7 +1892,7 @@ async def telegram_webhook(req: Request):
                 f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👇 ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
             )
-            send_telegram_notify(reply)
+            send_telegram_notify(reply, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 4. Handle Leave Button -> Step 1: Show Days Selection Buttons (ជម្រើសទី ១)!
@@ -1781,7 +1914,7 @@ async def telegram_webhook(req: Request):
                 f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនថ្ងៃឈប់សម្រាក» ខាងក្រោម៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_days)
+            send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 5. Smart AI Understanding with Google Gemini for free-form text:
@@ -1820,7 +1953,7 @@ async def telegram_webhook(req: Request):
                             {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                         ]]
                     }
-                    reply = (
+                    admin_card = (
                         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាក (វិភាគដោយ AI)!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
@@ -1828,7 +1961,18 @@ async def telegram_webhook(req: Request):
                         f"{conflict_alert}"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
-                    send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+                    if is_private_chat:
+                        emp_conf = (
+                            f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                            f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                            f"📝 <b>មូលហេតុ:</b> {reason}\n\n"
+                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        )
+                        send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                        send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                    else:
+                        send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                     return {"ok": True}
 
                 elif intent == "loan":
@@ -1848,14 +1992,25 @@ async def telegram_webhook(req: Request):
                             {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                         ]]
                     }
-                    reply = (
+                    admin_card = (
                         f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (វិភាគដោយ AI)!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                         f"🎯 <b>គោលបំណង:</b> {purpose}\n"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
-                    send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+                    if is_private_chat:
+                        emp_conf = (
+                            f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                            f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                            f"🎯 <b>គោលបំណង:</b> {purpose}\n\n"
+                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        )
+                        send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                        send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                    else:
+                        send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                     return {"ok": True}
 
                 elif intent in ["hr_query", "general_chat"] and ai_data.get("response_text"):
@@ -1888,7 +2043,7 @@ async def telegram_webhook(req: Request):
                     {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                 ]]
             }
-            reply = (
+            admin_card = (
                 f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
@@ -1896,7 +2051,18 @@ async def telegram_webhook(req: Request):
                 f"{conflict_alert}"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
-            send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+            if is_private_chat:
+                emp_conf = (
+                    f"✅ <b>សំណើសុំច្បាប់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {text}\n\n"
+                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                )
+                send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+            else:
+                send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 6. Handle Loan Button -> Step 1: Show Amount Selection Buttons (ជម្រើសទី ១)!
@@ -1917,7 +2083,7 @@ async def telegram_webhook(req: Request):
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_amounts)
+            send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
@@ -1947,27 +2113,51 @@ async def telegram_webhook(req: Request):
                     {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                 ]]
             }
-            reply = (
+            admin_card = (
                 f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ជោគជ័យ!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
-            send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
+            if is_private_chat:
+                emp_conf = (
+                    f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {text}\n\n"
+                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                )
+                send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
+                send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+            else:
+                send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 8. Handle Help/Start Command
         if text.startswith("/help") or text.startswith("/start"):
             help_msg = (
                 f"👋 <b>ជម្រាបសួរ {sender_name}!</b>\n\n"
-                f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ក្នុងគ្រុបនេះ:</b>\n"
+                f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ជាមួយ Bot AC BOMLU:</b>\n"
                 f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
                 f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
                 f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
                 f"🚀 ប្រព័ន្ធនឹងកត់ត្រាចូល Dashboard របស់ AC BOMLU ដោយស្វ័យប្រវត្តិ!"
             )
-            send_telegram_notify(help_msg)
+            send_telegram_notify(help_msg, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # 9. Private Chat Friendly Fallback (Never leave staff hanging in DM!)
+        if is_private_chat and text:
+            fallback_dm = (
+                f"🤖 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"ខ្ញុំជាជំនួយការ AI របស់ក្រុមហ៊ុន <b>AC BOMLU</b>។\n\n"
+                f"លោកអ្នកអាចចុចប៊ូតុងខាងក្រោមដើម្បី៖\n"
+                f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឈប់សម្រាក\n"
+                f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ឬបុរេប្រទាន\n\n"
+                f"ឬអាចវាយសារសួរអំពី <b>ច្បាប់</b>, <b>ប្រាក់ខែ</b> ឬ <b>វត្តមាន</b> ផ្ទាល់ខ្លួនបានគ្រប់ពេល!"
+            )
+            send_telegram_notify(fallback_dm, target_chat_id=chat_id_str)
             return {"ok": True}
 
     except Exception as e:
@@ -2544,9 +2734,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>ម៉ូដែល AI (AI Model)</span>
               </label>
               <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
-                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
-                <option value="gemini-3.8-flash">🚀 Gemini 3.8 Flash (Newest Model)</option>
-                <option value="gemini-flash-latest">🌟 Gemini Flash Latest (Auto-Updated)</option>
+                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Super Fast 0.7s - ណែនាំ)</option>
+                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Ultra Fast)</option>
+                <option value="gemini-3.5-flash">🌟 Gemini 3.5 Flash (Balanced)</option>
+                <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash (Advanced)</option>
               </select>
             </div>
 
