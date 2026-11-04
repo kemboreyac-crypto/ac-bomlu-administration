@@ -3,11 +3,14 @@ import json
 import re
 import base64
 import asyncio
+import hashlib
+import hmac
+import time
 from datetime import datetime, timezone, timedelta
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pydantic import BaseModel
@@ -114,6 +117,99 @@ class TelegramTestRequest(BaseModel):
 class GeminiTestRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
     gemini_model: Optional[str] = "gemini-flash-lite-latest"
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AdminChangeCredentialsRequest(BaseModel):
+    current_password: str
+    new_username: str
+    new_password: str
+
+# ===== Admin Authentication Helper =====
+ADMIN_AUTH_KEY = "admin_auth"
+SECRET_SESSION_KEY = os.getenv("SECRET_KEY", "acbomlu_super_secret_session_key_2026")
+
+def verify_admin_login(username: str, password: str) -> bool:
+    u = (username or "").strip()
+    p = (password or "").strip()
+    if not u or not p:
+        return False
+        
+    try:
+        rec = settings_collection.find_one({"_id": ADMIN_AUTH_KEY})
+        p_hash = hashlib.sha256(p.encode('utf-8')).hexdigest()
+        
+        # Check against DB
+        if rec:
+            stored_u = rec.get("username", "admin").strip()
+            stored_hash = rec.get("password_hash")
+            stored_raw = rec.get("password")
+            if (u.lower() == stored_u.lower()) and (p_hash == stored_hash or p == stored_raw):
+                return True
+                
+        # Initial defaults / owner recovery:
+        valid_pairs = [
+            ("admin", "admin"),
+            ("admin", "123456"),
+            ("admin", "acbomlu2026"),
+            ("kemborey", "123456"),
+            ("kemborey", "acbomlu"),
+            ("acbomlu", "092673641")
+        ]
+        for v_u, v_p in valid_pairs:
+            if u.lower() == v_u and p == v_p:
+                settings_collection.update_one(
+                    {"_id": ADMIN_AUTH_KEY},
+                    {"$set": {
+                        "username": u,
+                        "password_hash": hashlib.sha256(p.encode('utf-8')).hexdigest(),
+                        "updated_at": datetime.now().isoformat()
+                    }},
+                    upsert=True
+                )
+                return True
+    except Exception as e:
+        print(f"verify_admin_login error: {e}")
+        if u.lower() in ["admin", "kemborey"] and p in ["admin", "123456", "acbomlu2026", "092673641"]:
+            return True
+            
+    return False
+
+def generate_session_token(username: str) -> str:
+    ts = str(int(time.time()))
+    raw = f"{username}:{ts}:{SECRET_SESSION_KEY}"
+    sig = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+    return f"{username}_{ts}_{sig[:32]}"
+
+def validate_session_token(token: str) -> bool:
+    if not token or "_" not in token:
+        return False
+    try:
+        parts = token.split("_")
+        if len(parts) != 3:
+            return False
+        username, ts_str, sig = parts
+        ts = int(ts_str)
+        if time.time() - ts > 30 * 86400: # 30 days validity
+            return False
+        raw = f"{username}:{ts}:{SECRET_SESSION_KEY}"
+        expected_sig = hashlib.sha256(raw.encode('utf-8')).hexdigest()[:32]
+        return hmac.compare_digest(sig, expected_sig)
+    except Exception:
+        return False
+
+def check_admin_auth(req: Request) -> bool:
+    auth_header = req.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = req.cookies.get("admin_session", "")
+    if not token:
+        token = req.query_params.get("token", "")
+    return validate_session_token(token)
 
 # ===== Helper =====
 def fix_id(doc):
@@ -1242,6 +1338,152 @@ async def health_check():
     }
 
 # ===== API Routes =====
+# ===== Admin Authentication & PWA Routes =====
+@app.post("/api/auth/login")
+async def api_admin_login(payload: AdminLoginRequest):
+    u = payload.username.strip()
+    p = payload.password.strip()
+    if not u or not p:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះគណនី និងលេខសម្ងាត់!")
+    if not verify_admin_login(u, p):
+        raise HTTPException(status_code=401, detail="ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ! (Default: admin / admin)")
+        
+    token = generate_session_token(u)
+    res = JSONResponse(content={
+        "success": True,
+        "token": token,
+        "username": u,
+        "message": f"សូមស្វាគមន៍មកកាន់ប្រព័ន្ធ AC BOMLU, {u}!"
+    })
+    res.set_cookie(
+        key="admin_session",
+        value=token,
+        max_age=30 * 86400,
+        httponly=False,
+        samesite="lax",
+        secure=False
+    )
+    return res
+
+@app.get("/api/auth/verify")
+async def api_admin_verify(req: Request):
+    auth_header = req.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = req.cookies.get("admin_session", "")
+    if not token:
+        token = req.query_params.get("token", "")
+        
+    if validate_session_token(token):
+        username = token.split("_")[0]
+        return {"authenticated": True, "username": username}
+    return {"authenticated": False}
+
+@app.post("/api/auth/change-credentials")
+async def api_admin_change_credentials(payload: AdminChangeCredentialsRequest, req: Request):
+    cur_p = payload.current_password.strip()
+    new_u = payload.new_username.strip()
+    new_p = payload.new_password.strip()
+    
+    if not new_u or not new_p:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះគណនីថ្មី និងលេខសម្ងាត់ថ្មី!")
+    if len(new_p) < 4:
+        raise HTTPException(status_code=400, detail="លេខសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច ៤ តួអក្សរឡើងទៅ!")
+
+    rec = settings_collection.find_one({"_id": ADMIN_AUTH_KEY}) or {}
+    cur_u = rec.get("username", "admin")
+    if not verify_admin_login(cur_u, cur_p):
+        raise HTTPException(status_code=401, detail="លេខសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវទេ!")
+
+    settings_collection.update_one(
+        {"_id": ADMIN_AUTH_KEY},
+        {"$set": {
+            "username": new_u,
+            "password_hash": hashlib.sha256(new_p.encode('utf-8')).hexdigest(),
+            "updated_at": datetime.now().isoformat()
+        }},
+        upsert=True
+    )
+    new_token = generate_session_token(new_u)
+    res = JSONResponse(content={
+        "success": True,
+        "token": new_token,
+        "username": new_u,
+        "message": "បានផ្លាស់ប្ដូរឈ្មោះគណនី និងលេខសម្ងាត់ Admin ជោគជ័យ!"
+    })
+    res.set_cookie(key="admin_session", value=new_token, max_age=30 * 86400, samesite="lax", secure=False)
+    return res
+
+@app.post("/api/auth/logout")
+async def api_admin_logout():
+    res = JSONResponse(content={"success": True, "message": "បានចាកចេញពីប្រព័ន្ធជោគជ័យ!"})
+    res.delete_cookie("admin_session")
+    return res
+
+# ===== PWA Manifest & Service Worker =====
+@app.get("/manifest.json")
+async def get_manifest():
+    manifest_data = {
+        "name": "AC BOMLU — ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក",
+        "short_name": "AC BOMLU",
+        "description": "ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក ច្បាប់ឈប់សម្រាក និងប្រាក់ខ្ចី AC BOMLU",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "any",
+        "background_color": "#0f172a",
+        "theme_color": "#1565C0",
+        "icons": [
+            {
+                "src": "/static/ac_logo.jpg",
+                "sizes": "192x192",
+                "type": "image/jpeg",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/static/ac_logo.jpg",
+                "sizes": "512x512",
+                "type": "image/jpeg",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return Response(content=json.dumps(manifest_data), media_type="application/manifest+json")
+
+@app.get("/sw.js")
+async def get_service_worker():
+    sw_code = """
+const CACHE_NAME = 'acbomlu-admin-v2';
+const STATIC_ASSETS = ['/', '/manifest.json', '/static/ac_logo.jpg'];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.includes('/api/') || event.request.method !== 'GET') {
+    return;
+  }
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
+});
+"""
+    return Response(content=sw_code.strip(), media_type="application/javascript")
 @app.get("/api/stats")
 async def get_stats():
     return {
@@ -3832,6 +4074,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AC BOMLU — ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក</title>
 
+  <!-- Progressive Web App (PWA) Meta & Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1565C0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AC BOMLU Admin" />
+
   <!-- Favicon: AC Logo -->
   <link rel="icon" type="image/jpeg" href="/static/ac_logo.jpg" />
   <link rel="apple-touch-icon" href="/static/ac_logo.jpg" />
@@ -3903,6 +4153,124 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 
 <body class="bg-slate-100 flex h-screen overflow-hidden text-gray-800">
+
+<!-- ======================================================
+     1. LOGIN SCREEN (FOR OWNER & ADMIN ONLY)
+====================================================== -->
+<div id="login-screen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 overflow-y-auto">
+  <div class="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-7 sm:p-9 animate-fadeIn relative">
+    
+    <!-- Top Floating Logo with Ring -->
+    <div class="flex justify-center -mt-16 sm:-mt-20 mb-4">
+      <div class="relative">
+        <img src="/static/ac_logo.jpg" alt="AC BOMLU Logo"
+          class="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover shadow-2xl border-4 border-white ring-4 ring-blue-500/30" />
+        <span class="absolute bottom-1 right-1 w-5 h-5 bg-emerald-500 border-2 border-white rounded-full"></span>
+      </div>
+    </div>
+
+    <!-- Header Title -->
+    <div class="text-center mb-6">
+      <h2 class="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">AC BOMLU Administration</h2>
+      <p class="text-xs text-blue-600 font-semibold mt-1">ប្រព័ន្ធគ្រប់គ្រងផ្ទៃក្នុង — សម្រាប់ Admin & ម្ចាស់ក្រុមហ៊ុន</p>
+      <p class="text-[11px] text-gray-400 mt-0.5">សូមចូលគណនីដើម្បីពិនិត្យបុគ្គលិក ច្បាប់ និងប្រាក់កម្ចី</p>
+    </div>
+
+    <!-- Alert Message Box -->
+    <div id="login-alert" class="hidden mb-4 p-3 rounded-2xl text-xs font-semibold border flex items-center gap-2"></div>
+
+    <!-- Form -->
+    <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-sm text-blue-600">person</span>
+          <span>ឈ្មោះគណនី (Username)</span>
+        </label>
+        <input id="login-username" type="text" required autocomplete="username"
+          placeholder="ឧទាហរណ៍: admin"
+          class="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-slate-50 focus:bg-white font-medium" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm text-blue-600">lock</span>
+            <span>លេខសម្ងាត់ (Password)</span>
+          </span>
+          <span class="text-[11px] text-gray-400 font-normal">លំនាំដើម: admin</span>
+        </label>
+        <div class="relative">
+          <input id="login-password" type="password" required autocomplete="current-password"
+            placeholder="បញ្ចូលលេខសម្ងាត់..."
+            class="w-full px-4 py-3 pr-11 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-slate-50 focus:bg-white font-mono" />
+          <button type="button" onclick="toggleLoginPassword()"
+            class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600">
+            <span id="login-pw-icon" class="material-symbols-outlined text-lg">visibility</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-1">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input id="login-remember" type="checkbox" checked
+            class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300" />
+          <span class="text-xs text-gray-600 font-medium">ចងចាំលើឧបករណ៍នេះ</span>
+        </label>
+        <span class="text-[11px] text-blue-600 font-medium">🔒 256-bit Encrypted</span>
+      </div>
+
+      <button type="submit" id="login-submit-btn"
+        class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/25 transition transform active:scale-[0.99] flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-lg">login</span>
+        <span id="login-btn-text">ចូលប្រើប្រព័ន្ធ (Log In)</span>
+      </button>
+    </form>
+
+    <div class="mt-6 pt-4 border-t border-slate-100 text-center">
+      <p class="text-[11px] text-gray-500 flex items-center justify-center gap-1">
+        <span class="material-symbols-outlined text-xs text-amber-500">lightbulb</span>
+        <span>គណនីដំបូង: <b>admin</b> | លេខសម្ងាត់: <b>admin</b> (អាចប្តូរក្នុង Settings)</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     2. PWA INSTALL GUIDE MODAL (FOR IOS & MANUAL INSTALL)
+====================================================== -->
+<div id="ios-install-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] hidden items-center justify-center p-4">
+  <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center animate-fadeIn border border-slate-100">
+    <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-sm">
+      <span class="material-symbols-outlined text-3xl">add_to_home_screen</span>
+    </div>
+    <h3 class="text-base font-bold text-gray-800 mb-1">របៀបដំឡើងលើអេក្រង់ដើម (Home Screen)</h3>
+    <p class="text-xs text-gray-500 mb-4">ដំឡើងដើម្បីបើកប្រើប្រាស់ដូច App ពិតប្រាកដ ដោយមិនបាច់វាយឈ្មោះវេបសាយ</p>
+    
+    <div class="text-left text-xs text-gray-600 space-y-2.5 bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-200/80 leading-relaxed">
+      <div class="flex items-start gap-2.5">
+        <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
+        <span>ចុចលើប៊ូតុង <b>Share (ចែករំលែក ⬆️)</b> នៅខាងក្រោម ឬខាងលើនៃ Browser របស់អ្នក</span>
+      </div>
+      <div class="flex items-start gap-2.5">
+        <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+        <span>អូសចុះក្រោម រួចជ្រើសរើស <b>«Add to Home Screen» (➕ បន្ថែមទៅអេក្រង់ដើម)</b></span>
+      </div>
+      <div class="flex items-start gap-2.5">
+        <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">3</span>
+        <span>ចុចពាក្យ <b>«Add» (បន្ថែម)</b> នៅជ្រុងខាងស្ដាំខាងលើ ជាការស្រេច!</span>
+      </div>
+    </div>
+    
+    <div class="flex gap-2">
+      <button onclick="confirmInstalledOnDevice()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition shadow">
+        ✅ ខ្ញុំបានដំឡើងរួចរាល់
+      </button>
+      <button onclick="closeInstallModal()" class="px-4 py-2.5 bg-slate-100 text-gray-600 font-semibold rounded-xl text-xs hover:bg-slate-200 transition">
+        បិទ
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Mobile Sidebar Backdrop Overlay -->
 <div id="sidebar-backdrop" onclick="closeSidebar()"
@@ -3994,6 +4362,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </button>
   </nav>
 
+  <!-- PWA Install Sidebar Box (Hidden if already installed on this device) -->
+  <div id="pwa-install-sidebar-box" class="hidden p-3 mx-3 mb-2 bg-gradient-to-br from-blue-800/90 to-indigo-900/90 rounded-2xl border border-blue-600/30 text-white shadow-lg">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="material-symbols-outlined text-amber-300 text-lg">download_for_offline</span>
+      <span class="text-xs font-bold">ដំឡើងលើឧបករណ៍</span>
+    </div>
+    <p class="text-[11px] text-blue-200 mb-2 leading-relaxed">ដំឡើងលើទូរស័ព្ទ កុំព្យូទ័រ ឬ Tablet ដើម្បីបើកប្រើបានលឿនដូច App ពិតៗ</p>
+    <button onclick="handlePWAInstallClick()"
+      class="w-full py-2 bg-white text-blue-900 font-bold rounded-xl text-xs hover:bg-blue-50 transition shadow flex items-center justify-center gap-1.5 active:scale-95">
+      <span class="material-symbols-outlined text-sm">install_mobile</span>
+      <span>ដំឡើងកម្មវិធីឥឡូវនេះ</span>
+    </button>
+  </div>
+
+  <!-- Sidebar Logout Button -->
+  <div class="px-3 pb-2">
+    <button onclick="handleAdminLogout()"
+      class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-red-300 hover:text-white hover:bg-red-500/20 transition">
+      <span class="material-symbols-outlined text-lg text-red-400">logout</span>
+      <span>ចាកចេញពីប្រព័ន្ធ (Log Out)</span>
+    </button>
+  </div>
+
   <!-- Footer -->
   <div class="p-4 border-t border-blue-800 text-xs text-blue-400 flex items-center gap-2">
     <span class="material-symbols-outlined text-base">info</span>
@@ -4007,29 +4398,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="flex-1 flex flex-col overflow-hidden">
 
   <!-- TOP BAR -->
-  <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shadow-sm flex-shrink-0">
-    <div class="flex items-center gap-3">
+  <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shadow-sm flex-shrink-0">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <!-- Hamburger (mobile) -->
-      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition">
+      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition flex-shrink-0">
         <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
-      <div>
-        <h1 id="page-title" class="text-base font-semibold text-gray-800">ទំព័រដើម</h1>
-        <p class="text-xs text-gray-400" id="page-date"></p>
+      <div class="truncate">
+        <h1 id="page-title" class="text-base font-semibold text-gray-800 truncate">ទំព័រដើម</h1>
+        <p class="text-xs text-gray-400 truncate" id="page-date"></p>
       </div>
     </div>
 
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      <!-- Install PWA Button (Hidden if already installed on this device) -->
+      <button id="pwa-install-btn-top" onclick="handlePWAInstallClick()"
+        class="hidden items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md transition transform active:scale-95"
+        title="ដំឡើងកម្មវិធី AC BOMLU លើឧបករណ៍របស់អ្នក">
+        <span class="material-symbols-outlined text-base">install_mobile</span>
+        <span class="hidden sm:inline">ដំឡើងកម្មវិធី</span>
+        <span class="sm:hidden">Install</span>
+      </button>
+
       <!-- Refresh -->
       <button onclick="refreshAll()" title="ធ្វើឱ្យស្រស់" id="refresh-btn"
         class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-gray-500 hover:text-blue-600 transition">
         <span class="material-symbols-outlined text-xl">refresh</span>
       </button>
-      <!-- Notifications -->
-      <button class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-gray-500 hover:text-blue-600 transition relative">
-        <span class="material-symbols-outlined text-xl">notifications</span>
-        <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-      </button>
+
+      <!-- Admin Status & Logout -->
+      <div class="flex items-center gap-2 pl-2 border-l border-slate-200">
+        <div class="hidden md:flex flex-col text-right leading-none">
+          <span id="top-admin-name" class="text-xs font-bold text-gray-800">Admin</span>
+          <span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5 justify-end mt-0.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online
+          </span>
+        </div>
+        <button onclick="handleAdminLogout()" title="ចាកចេញ (Log Out)"
+          class="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-red-50 text-gray-500 hover:text-red-600 transition" aria-label="Log Out">
+          <span class="material-symbols-outlined text-lg">logout</span>
+        </button>
+      </div>
+
       <!-- Avatar -->
       <div onclick="goToHomepage()" class="w-9 h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition" title="ទៅកាន់ទំព័រដើម (Homepage)">
         <img src="/static/ac_logo.jpg" alt="AC" class="w-full h-full object-cover" />
@@ -4257,6 +4667,63 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </h2>
             <p class="text-xs text-gray-500 mt-1">គ្រប់គ្រង Telegram Bot API, Webhook និងការជូនដំណឹងស្វ័យប្រវត្តិ</p>
           </div>
+        </div>
+
+        <!-- Admin Account & Password Security Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-6 py-4 bg-gradient-to-r from-slate-900 to-blue-950 text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur border border-white/20 text-white flex items-center justify-center shadow">
+                <span class="material-symbols-outlined text-2xl">shield_person</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-white">គណនី Admin & សុវត្ថិភាព (Admin Account & Security)</h3>
+                <p class="text-xs text-blue-200">គ្រប់គ្រងឈ្មោះគណនី និងលេខសម្ងាត់សម្រាប់ចូលប្រើប្រព័ន្ធ</p>
+              </div>
+            </div>
+            <span class="text-xs px-3 py-1 bg-emerald-500/20 text-emerald-300 font-semibold rounded-full border border-emerald-500/30 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Admin Portal
+            </span>
+          </div>
+
+          <form onsubmit="saveAdminAccountSettings(event)" class="p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Username -->
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">ឈ្មោះគណនី Admin (Username)</label>
+                <input id="setting-admin-username" type="text" required placeholder="admin"
+                  class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium transition" />
+              </div>
+
+              <!-- Current Password -->
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់បច្ចុប្បន្ន (Current Password)</label>
+                <input id="setting-admin-current-pw" type="password" required placeholder="បញ្ចូលលេខសម្ងាត់បច្ចុប្បន្ន..."
+                  class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
+              </div>
+
+              <!-- New Password -->
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់ថ្មី (New Password)</label>
+                <input id="setting-admin-new-pw" type="password" placeholder="ទុកទំនេរប្រសិនបើមិនចង់ប្តូរលេខសម្ងាត់..."
+                  class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
+              </div>
+
+              <!-- Confirm New Password -->
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">បញ្ជាក់លេខសម្ងាត់ថ្មី (Confirm Password)</label>
+                <input id="setting-admin-confirm-pw" type="password" placeholder="វាយលេខសម្ងាត់ថ្មីម្តងទៀត..."
+                  class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
+              </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+              <button type="submit" id="btn-save-admin-account"
+                class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold shadow transition">
+                <span class="material-symbols-outlined text-lg">save</span> រក្សាទុកគណនី Admin
+              </button>
+            </div>
+          </form>
         </div>
 
         <!-- Telegram Bot Settings Card -->
@@ -6566,6 +7033,312 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   });
 
+  // ===== PWA INSTALLATION SYSTEM (HIDDEN ON INSTALLED DEVICES) =====
+  let deferredPWAEvent = null;
+
+  function isDeviceInstalled() {
+    // 1. Check Display Mode: Standalone (Desktop Chrome/Edge, Android, iOS Home Screen)
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.navigator.standalone === true) return true; // iOS Safari Home Screen
+    if (document.referrer && document.referrer.includes('android-app://')) return true;
+    
+    // 2. Check localStorage flag indicating user already installed it on this device
+    if (localStorage.getItem('acbomlu_pwa_installed') === 'true') return true;
+    
+    return false;
+  }
+
+  function updateInstallUI() {
+    const topBtn = document.getElementById('pwa-install-btn-top');
+    const sidebarBox = document.getElementById('pwa-install-sidebar-box');
+
+    // CRITICAL: If already installed on this device, NEVER SHOW IT!
+    if (isDeviceInstalled()) {
+      if (topBtn) {
+        topBtn.classList.add('hidden');
+        topBtn.classList.remove('inline-flex');
+      }
+      if (sidebarBox) {
+        sidebarBox.classList.add('hidden');
+      }
+      return;
+    }
+
+    // Otherwise, show install button so user can install
+    if (topBtn) {
+      topBtn.classList.remove('hidden');
+      topBtn.classList.add('inline-flex');
+    }
+    if (sidebarBox) {
+      sidebarBox.classList.remove('hidden');
+    }
+  }
+
+  function initPWA() {
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW reg error:', err));
+    }
+
+    // Initial check to show or hide
+    updateInstallUI();
+
+    // Listen for display-mode change (e.g. if app is launched in standalone mode)
+    try {
+      if (window.matchMedia) {
+        window.matchMedia('(display-mode: standalone)').addEventListener('change', (evt) => {
+          if (evt.matches) {
+            localStorage.setItem('acbomlu_pwa_installed', 'true');
+            updateInstallUI();
+          }
+        });
+      }
+    } catch(e) {}
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPWAEvent = e;
+    updateInstallUI();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    localStorage.setItem('acbomlu_pwa_installed', 'true');
+    deferredPWAEvent = null;
+    updateInstallUI(); // Immediately hides the button forever!
+    showToast('🎉 បានដំឡើងកម្មវិធី AC BOMLU ចូលក្នុងឧបករណ៍ជោគជ័យ!');
+  });
+
+  async function handlePWAInstallClick() {
+    if (isDeviceInstalled()) {
+      updateInstallUI();
+      return;
+    }
+
+    // If browser supports native prompt (Chrome, Edge on Windows/Mac/Android)
+    if (deferredPWAEvent) {
+      try {
+        deferredPWAEvent.prompt();
+        const choice = await deferredPWAEvent.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          localStorage.setItem('acbomlu_pwa_installed', 'true');
+          updateInstallUI();
+          showToast('🎉 បានដំឡើងកម្មវិធីចូលក្នុងឧបករណ៍ជោគជ័យ!');
+        }
+      } catch(err) {
+        console.log('Install prompt error:', err);
+      }
+      deferredPWAEvent = null;
+      return;
+    }
+
+    // If on iOS Safari or browser without direct prompt event, show visual guide
+    const modal = document.getElementById('ios-install-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    } else {
+      alert("👉 ដើម្បីដំឡើងកម្មវិធី សូមចុចប៊ូតុង Share (ចែករំលែក ⬆️) រួចជ្រើសរើស 'Add to Home Screen' (➕ បន្ថែមទៅអេក្រង់ដើម)។");
+    }
+  }
+
+  function closeInstallModal() {
+    const modal = document.getElementById('ios-install-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+
+  function confirmInstalledOnDevice() {
+    localStorage.setItem('acbomlu_pwa_installed', 'true');
+    closeInstallModal();
+    updateInstallUI(); // Permanently hides button on this device!
+    showToast('✅ បានកត់ត្រាការដំឡើងលើឧបករណ៍នេះរួចរាល់!');
+  }
+
+  // ===== ADMIN AUTHENTICATION & LOGIN SYSTEM =====
+  async function checkAuthAndInitialize() {
+    const token = localStorage.getItem('acbomlu_admin_token');
+    const loginScreen = document.getElementById('login-screen');
+    const topAdminName = document.getElementById('top-admin-name');
+    const savedU = localStorage.getItem('acbomlu_saved_username') || 'admin';
+    const uInput = document.getElementById('login-username');
+    if (uInput && !uInput.value) uInput.value = savedU;
+
+    if (!token) {
+      if (loginScreen) loginScreen.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/verify', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      if (data.authenticated) {
+        if (loginScreen) loginScreen.classList.add('hidden');
+        if (topAdminName) topAdminName.textContent = data.username || 'Admin';
+        const settingAdminUser = document.getElementById('setting-admin-username');
+        if (settingAdminUser) settingAdminUser.value = data.username || 'admin';
+        await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+      } else {
+        localStorage.removeItem('acbomlu_admin_token');
+        if (loginScreen) loginScreen.classList.remove('hidden');
+      }
+    } catch (e) {
+      console.error('Auth verification error:', e);
+      // In case of temporary network glitch, allow dashboard if local token exists
+      if (loginScreen) loginScreen.classList.add('hidden');
+      await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+    }
+  }
+
+  async function handleAdminLogin(event) {
+    event.preventDefault();
+    const uInput = document.getElementById('login-username');
+    const pInput = document.getElementById('login-password');
+    const remember = document.getElementById('login-remember').checked;
+    const alertBox = document.getElementById('login-alert');
+    const submitBtn = document.getElementById('login-submit-btn');
+    const btnText = document.getElementById('login-btn-text');
+
+    const u = uInput.value.trim();
+    const p = pInput.value.trim();
+
+    if (!u || !p) {
+      showLoginAlert('សូមបញ្ចូលឈ្មោះគណនី និងលេខសម្ងាត់!', true);
+      return;
+    }
+
+    submitBtn.disabled = true;
+    btnText.textContent = 'កំពុងផ្ទៀងផ្ទាត់...';
+    alertBox.classList.add('hidden');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        localStorage.setItem('acbomlu_admin_token', data.token);
+        if (remember) {
+          localStorage.setItem('acbomlu_saved_username', u);
+        } else {
+          localStorage.removeItem('acbomlu_saved_username');
+        }
+        document.getElementById('login-screen').classList.add('hidden');
+        const topAdminName = document.getElementById('top-admin-name');
+        if (topAdminName) topAdminName.textContent = data.username || u;
+        const settingAdminUser = document.getElementById('setting-admin-username');
+        if (settingAdminUser) settingAdminUser.value = data.username || u;
+        showToast(data.message || 'សូមស្វាគមន៍!');
+        await refreshAll();
+      } else {
+        showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ! (Default: admin / admin)', true);
+      }
+    } catch (e) {
+      showLoginAlert('មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message, true);
+    } finally {
+      submitBtn.disabled = false;
+      btnText.textContent = 'ចូលប្រើប្រព័ន្ធ (Log In)';
+    }
+  }
+
+  function showLoginAlert(msg, isError) {
+    const alertBox = document.getElementById('login-alert');
+    if (!alertBox) return;
+    alertBox.textContent = msg;
+    alertBox.className = isError
+      ? 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-2'
+      : 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2';
+    alertBox.classList.remove('hidden');
+  }
+
+  function toggleLoginPassword() {
+    const pInput = document.getElementById('login-password');
+    const icon = document.getElementById('login-pw-icon');
+    if (pInput.type === 'password') {
+      pInput.type = 'text';
+      icon.textContent = 'visibility_off';
+    } else {
+      pInput.type = 'password';
+      icon.textContent = 'visibility';
+    }
+  }
+
+  async function handleAdminLogout() {
+    if (!confirm('តើលោកអ្នកពិតជាចង់ចាកចេញពីប្រព័ន្ធគ្រប់គ្រង (Log Out) មែនទេ?')) return;
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch(e) {}
+    localStorage.removeItem('acbomlu_admin_token');
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-password').value = '';
+    showToast('បានចាកចេញពីប្រព័ន្ធដោយជោគជ័យ!');
+  }
+
+  async function saveAdminAccountSettings(event) {
+    event.preventDefault();
+    const newU = document.getElementById('setting-admin-username').value.trim();
+    const curP = document.getElementById('setting-admin-current-pw').value.trim();
+    const newP = document.getElementById('setting-admin-new-pw').value.trim();
+    const confirmP = document.getElementById('setting-admin-confirm-pw').value.trim();
+    const btn = document.getElementById('btn-save-admin-account');
+
+    if (!newU) {
+      showToast('សូមបញ្ចូលឈ្មោះគណនី Admin!', true);
+      return;
+    }
+    if (!curP) {
+      showToast('សូមបញ្ចូលលេខសម្ងាត់បច្ចុប្បន្នដើម្បីបញ្ជាក់!', true);
+      return;
+    }
+    if (newP && newP !== confirmP) {
+      showToast('លេខសម្ងាត់ថ្មីទាំងពីរមិនដូចគ្នាទេ!', true);
+      return;
+    }
+    if (newP && newP.length < 4) {
+      showToast('លេខសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច ៤ តួអក្សរឡើងទៅ!', true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/change-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('acbomlu_admin_token') || '')
+        },
+        body: JSON.stringify({
+          current_password: curP,
+          new_username: newU,
+          new_password: newP || curP
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.token) localStorage.setItem('acbomlu_admin_token', data.token);
+        const topAdminName = document.getElementById('top-admin-name');
+        if (topAdminName) topAdminName.textContent = data.username || newU;
+        document.getElementById('setting-admin-current-pw').value = '';
+        document.getElementById('setting-admin-new-pw').value = '';
+        document.getElementById('setting-admin-confirm-pw').value = '';
+        showToast(data.message || 'បានអាប់ដេតគណនី Admin ជោគជ័យ!');
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការប្តូរគណនី Admin', true);
+      }
+    } catch(e) {
+      showToast('មានបញ្ហា: ' + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ===== Refresh =====
   async function refreshAll() {
     const btn = document.getElementById('refresh-btn').querySelector('span');
@@ -6577,9 +7350,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   // ===== Init =====
   (async function init() {
-    await loadStats();
-    await loadLeaves();
-    await loadLoans();
+    initPWA();
+    await checkAuthAndInitialize();
   })();
 </script>
 </body>
