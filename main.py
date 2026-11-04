@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from bson import ObjectId
 import uvicorn
 
@@ -79,11 +79,11 @@ class SendReportRequest(BaseModel):
     employee_name: Optional[str] = ""
 
 class BulkEmployeeRequest(BaseModel):
-    names: List[str]
+    names: List[str] = []
     position: Optional[str] = "បុគ្គលិក"
 
 class BatchPhoneUpdateRequest(BaseModel):
-    phones: Dict[str, str]
+    phones: Dict[str, str] = {}
 
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
@@ -5518,6 +5518,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phones: phones })
       });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Server error ${res.status}`);
+      }
       const data = await res.json();
       closeModal('batch-phone-modal');
       showToast(data.message || 'បានរក្សាទុកលេខទូរស័ព្ទជោគជ័យ!');
