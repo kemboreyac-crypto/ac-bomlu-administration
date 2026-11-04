@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pymongo
+pydantic
+aiofiles
+python-dotenv
