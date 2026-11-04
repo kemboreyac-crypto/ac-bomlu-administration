@@ -68,22 +68,32 @@ def fix_id(doc):
     doc["_id"] = str(doc["_id"])
     return doc
 
-def send_telegram_notify(text: str):
+def send_telegram_notify(text: str, reply_markup: dict = None):
     try:
         s = settings_collection.find_one({"_id": "app_settings"})
-        if not s:
-            return
-        token = s.get("telegram_bot_token", "").strip()
-        chat_id = s.get("telegram_chat_id", "").strip()
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
         if not token or not chat_id:
             return
+            
+        # Default persistent 4-corner keyboard buttons if no custom markup provided
+        if reply_markup is None:
+            reply_markup = {
+                "keyboard": [
+                    [{"text": "📝 សុំច្បាប់"}, {"text": "💰 សុំខ្ចីប្រាក់"}]
+                ],
+                "resize_keyboard": True,
+                "is_persistent": True
+            }
+            
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = json.dumps({
+        payload = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML"
-        }).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            "parse_mode": "HTML",
+            "reply_markup": reply_markup
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=8)
     except Exception as e:
         print(f"Telegram notify error: {e}")
@@ -300,19 +310,100 @@ async def test_telegram(payload: TelegramTestRequest):
 async def telegram_webhook(req: Request):
     try:
         update = await req.json()
+        
+        # Helper to get bot token
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+        # A. Handle Callback Query (When clicking Inline Buttons: Days or Loan Amount)
+        callback_query = update.get("callback_query")
+        if callback_query:
+            cq_id = callback_query.get("id")
+            cq_data = callback_query.get("data", "")
+            cq_user = callback_query.get("from", {})
+            cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
+            
+            # Answer callback immediately to remove loading spinner
+            if token and cq_id:
+                try:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_req = urllib.request.Request(ans_url, data=json.dumps({"callback_query_id": cq_id}).encode('utf-8'), headers={"Content-Type": "application/json"})
+                    urllib.request.urlopen(ans_req, timeout=5)
+                except Exception:
+                    pass
+
+            # 1. Callback for Leave Days selection
+            if cq_data.startswith("leave_days:"):
+                parts = cq_data.split(":")
+                days_str = parts[1]
+                days = int(days_str) if days_str.isdigit() else 1
+                
+                leaves_collection.insert_one({
+                    "employee_name": cq_name,
+                    "reason": f"សុំច្បាប់ {days} ថ្ងៃ",
+                    "days": days,
+                    "status": "pending"
+                })
+                
+                confirm_msg = (
+                    f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard\n\n"
+                    f"✍️ <i>(លោកអ្នកអាច Reply ឬផ្ញើសារ/Voice បញ្ជាក់មូលហេតុបន្ថែមបាន)</i>"
+                )
+                send_telegram_notify(confirm_msg)
+                return {"ok": True}
+
+            # 2. Callback for Loan Amount selection
+            if cq_data.startswith("loan_amt:"):
+                parts = cq_data.split(":")
+                amount = int(parts[1]) if parts[1].isdigit() else 100000
+                
+                loans_collection.insert_one({
+                    "employee_name": cq_name,
+                    "amount_khr": amount,
+                    "purpose": "ខ្ចីប្រាក់តាមប៊ូតុង",
+                    "status": "pending"
+                })
+                
+                confirm_msg = (
+                    f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ជោគជ័យ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard\n\n"
+                    f"🎯 <i>(លោកអ្នកអាច Reply ឬផ្ញើសារបញ្ជាក់គោលបំណងបន្ថែមបាន)</i>"
+                )
+                send_telegram_notify(confirm_msg)
+                return {"ok": True}
+
+        # B. Handle Regular Messages
         message = update.get("message") or update.get("channel_post")
         if not message:
             return {"ok": True}
 
-        chat = message.get("chat", {})
-        chat_id = str(chat.get("id"))
         from_user = message.get("from", {})
         sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
         
+        # 1. Handle New Member Added to Group -> Welcome & Send 4-corner Keyboard automatically!
+        new_members = message.get("new_chat_members", [])
+        if new_members:
+            for m in new_members:
+                if m.get("is_bot"):
+                    continue
+                m_name = (m.get("first_name", "") + " " + m.get("last_name", "")).strip() or m.get("username", "បុគ្គលិក")
+                welcome_msg = (
+                    f"👋 <b>សូមស្វាគមន៍ {m_name} មកកាន់គ្រុប សុំច្បាប់ AC BOMLU!</b>\n\n"
+                    f"👇 <b>ក្ដារចុចប៊ូតុង ៤ ជ្រុងត្រូវបានភ្ជាប់ជូនអ្នកស្វ័យប្រវត្តិ៖</b>\n"
+                    f"សូមមើលប៊ូតុងខាងក្រោម៖ ចុចលើ <b>[ 📝 សុំច្បាប់ ]</b> ឬ <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
+                )
+                send_telegram_notify(welcome_msg)
+            return {"ok": True}
+
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
         
-        # 1. Handle Voice Message for Leave Permission
+        # 2. Handle Voice Message for Leave Permission
         if has_voice:
             caption = message.get("caption") or "សារសំឡេង (Voice Message)"
             leaves_collection.insert_one({
@@ -325,14 +416,45 @@ async def telegram_webhook(req: Request):
                 f"🎙️ <b>បានកត់ត្រាសំណើសុំច្បាប់តាមសំឡេង!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {caption}\n"
+                f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
                 f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
             )
             send_telegram_notify(reply)
             return {"ok": True}
 
-        # 2. Handle Text for Leave Permission (e.g. ស្អែកសុំច្បាប់, /leave, សុំច្បាប់...)
-        if "សុំច្បាប់" in text or text.lower().startswith("/leave") or "ច្បាប់" in text:
-            # Check number of days if mentioned
+        # 3. Handle Greetings & Casual Messages -> Re-attach 4-corner Keyboard!
+        if text.lower() in ["hi", "hello", "hey", "សួស្តី", "ជំរាបសួរ", "បាទ", "ចាស", "ok"]:
+            reply = (
+                f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"👇 ក្ដារចុចប៊ូតុង ៤ ជ្រុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 សុំច្បាប់ ]</b> ឬ <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
+            )
+            send_telegram_notify(reply)
+            return {"ok": True}
+
+        # 4. Handle Leave Button or Exact Command -> Show Days Selection (Inline Buttons)!
+        if text in ["📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "leave", "leav", "/leave", "ឈប់"]:
+            inline_days = {
+                "inline_keyboard": [
+                    [
+                        {"text": "១ ថ្ងៃ", "callback_data": f"leave_days:1:{sender_name}"},
+                        {"text": "២ ថ្ងៃ", "callback_data": f"leave_days:2:{sender_name}"},
+                        {"text": "៣ ថ្ងៃ", "callback_data": f"leave_days:3:{sender_name}"}
+                    ],
+                    [
+                        {"text": "៤ ថ្ងៃ", "callback_data": f"leave_days:4:{sender_name}"},
+                        {"text": "៥ ថ្ងៃ", "callback_data": f"leave_days:5:{sender_name}"}
+                    ]
+                ]
+            }
+            msg = (
+                f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"👉 <b>សូមចុចជ្រើសរើស ចំនួនថ្ងៃឈប់សម្រាក ខាងក្រោម៖</b>"
+            )
+            send_telegram_notify(msg, reply_markup=inline_days)
+            return {"ok": True}
+
+        # 5. Handle Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
+        if "សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower() or "leav" in text.lower():
             days = 1
             import re
             day_match = re.search(r'(\d+)\s*(ថ្ងៃ|day)', text, re.IGNORECASE)
@@ -355,10 +477,31 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply)
             return {"ok": True}
 
-        # 3. Handle Loan Request (e.g. ខ្ចីប្រាក់, បុរេប្រទាន, /loan...)
+        # 6. Handle Loan Button or Exact Command -> Show Amount Selection (Inline Buttons)!
+        if text in ["💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន", "loan", "lon", "/loan"]:
+            inline_amounts = {
+                "inline_keyboard": [
+                    [
+                        {"text": "៥០,០០០ ៛", "callback_data": f"loan_amt:50000:{sender_name}"},
+                        {"text": "១០០,០០០ ៛", "callback_data": f"loan_amt:100000:{sender_name}"}
+                    ],
+                    [
+                        {"text": "២០០,០០០ ៛", "callback_data": f"loan_amt:200000:{sender_name}"},
+                        {"text": "៥០០,០០០ ៛", "callback_data": f"loan_amt:500000:{sender_name}"}
+                    ]
+                ]
+            }
+            msg = (
+                f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
+                f"👉 <b>សូមចុចជ្រើសរើស ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី (រៀល)៖</b>"
+            )
+            send_telegram_notify(msg, reply_markup=inline_amounts)
+            return {"ok": True}
+
+        # 7. Handle Detailed Loan Text with custom amount
         if "ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "ខ្ចី" in text or text.lower().startswith("/loan"):
             import re
-            amount = 100000  # Default amount if not specified
+            amount = 100000
             numbers = re.findall(r'(\d[\d,]*\d|\d+)', text.replace(' ', ''))
             if numbers:
                 try:
@@ -382,14 +525,14 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply)
             return {"ok": True}
 
-        # 4. Handle Help/Start Command
+        # 8. Handle Help/Start Command
         if text.startswith("/help") or text.startswith("/start"):
             help_msg = (
                 f"👋 <b>ជម្រាបសួរ {sender_name}!</b>\n\n"
                 f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ក្នុងគ្រុបនេះ:</b>\n"
-                f"• <b>សុំច្បាប់:</b> វាយសារ <i>ស្អែកសុំច្បាប់...</i> ឬ <i>សុំច្បាប់ ១ ថ្ងៃ...</i>\n"
-                f"• <b>សារសំឡេង:</b> ផ្ញើសារជា Voice Message សុំច្បាប់\n"
-                f"• <b>ខ្ចីប្រាក់:</b> វាយសារ <i>សុំខ្ចីប្រាក់ ២០០០០០...</i>\n\n"
+                f"• ចុចប៊ូតុង <b>[ 📝 សុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
+                f"• ចុចប៊ូតុង <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
+                f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
                 f"🚀 ប្រព័ន្ធនឹងកត់ត្រាចូល Dashboard របស់ AC BOMLU ដោយស្វ័យប្រវត្តិ!"
             )
             send_telegram_notify(help_msg)
