@@ -90,11 +90,11 @@ def send_telegram_notify(text: str, reply_markup: dict = None):
         if not token or not chat_id:
             return
             
-        # Default persistent 4-corner keyboard buttons if no custom markup provided
+        # Default persistent keyboard buttons if no custom markup provided
         if reply_markup is None:
             reply_markup = {
                 "keyboard": [
-                    [{"text": "📝 សុំច្បាប់"}, {"text": "💰 សុំខ្ចីប្រាក់"}]
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True
@@ -354,7 +354,8 @@ async def telegram_webhook(req: Request):
             cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
             
             # Answer callback immediately for selection buttons to remove loading spinner
-            if cq_data.startswith("leave_days:") or cq_data.startswith("loan_amt:"):
+            if (cq_data.startswith("leave_days:") or cq_data.startswith("loan_amt:") or 
+                cq_data.startswith("leave_rsn:") or cq_data.startswith("loan_pur:")):
                 if token and cq_id:
                     try:
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -363,7 +364,7 @@ async def telegram_webhook(req: Request):
                     except Exception:
                         pass
 
-            # 1. Callback for Leave Days selection -> Ask for Reason!
+            # 1. Callback for Leave Days selection -> Show Reason Selection & Allow Direct Typing!
             if cq_data.startswith("leave_days:"):
                 parts = cq_data.split(":")
                 days_str = parts[1]
@@ -376,16 +377,58 @@ async def telegram_webhook(req: Request):
                     upsert=True
                 )
                 
+                reason_buttons = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🤒 ឈឺ / មិនស្រួលខ្លួន", "callback_data": f"leave_rsn:ឈឺ / មិនស្រួលខ្លួន:{days}"},
+                            {"text": "🏠 រវល់ធុរៈគ្រួសារ", "callback_data": f"leave_rsn:រវល់ធុរៈគ្រួសារ:{days}"}
+                        ],
+                        [
+                            {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:ទៅស្រុកកំណើត:{days}"},
+                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ចូលរួមពិធីមង្គលការ/បុណ្យ:{days}"}
+                        ]
+                    ]
+                }
                 ask_reason_msg = (
                     f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"⏱️ <b>ចំនួនថ្ងៃដែលបានរើស:</b> {days} ថ្ងៃ\n\n"
-                    f"✍️ <b>សូមវាយបញ្ជាក់ «មូលហេតុ» នៃការសុំច្បាប់ (ឬផ្ញើសារ Voice ក៏បាន)៖</b>\n"
-                    f"<i>(ឧទាហរណ៍៖ ឈឺក្បាល, ជាប់រវល់ការងារផ្ទះ, ទៅស្រុកកំណើត...)</i>"
+                    f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days} ថ្ងៃ\n\n"
+                    f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_reason_msg)
+                send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons)
                 return {"ok": True}
 
-            # 2. Callback for Loan Amount selection -> Ask for Purpose!
+            # 1.1 Callback when clicking a quick Reason button!
+            if cq_data.startswith("leave_rsn:"):
+                parts = cq_data.split(":")
+                rsn = parts[1]
+                days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+                cq_user_id = str(cq_user.get("id"))
+                user_flows_collection.delete_one({"user_id": cq_user_id})
+                
+                l_res = leaves_collection.insert_one({
+                    "employee_name": cq_name,
+                    "reason": rsn,
+                    "days": days,
+                    "status": "pending"
+                })
+                leave_id = str(l_res.inserted_id)
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                    ]]
+                }
+                reply = (
+                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {rsn}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                )
+                send_telegram_notify(reply, reply_markup=adm_btn)
+                return {"ok": True}
+
+            # 2. Callback for Loan Amount selection -> Show Purpose Selection & Allow Direct Typing!
             if cq_data.startswith("loan_amt:"):
                 parts = cq_data.split(":")
                 amount = int(parts[1]) if parts[1].isdigit() else 100000
@@ -397,13 +440,55 @@ async def telegram_webhook(req: Request):
                     upsert=True
                 )
                 
+                purpose_buttons = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:បង់ថ្លៃផ្ទះ / បន្ទប់:{amount}"},
+                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:ទិញថ្នាំពេទ្យ:{amount}"}
+                        ],
+                        [
+                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:ថ្លៃទឹកភ្លើង:{amount}"},
+                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:ផ្ញើជូនគ្រួសារ:{amount}"}
+                        ]
+                    ]
+                }
                 ask_purpose_msg = (
                     f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"💵 <b>ចំនួនទឹកប្រាក់ដែលបានរើស:</b> {amount:,} រៀល\n\n"
-                    f"🎯 <b>សូមវាយបញ្ជាក់ «គោលបំណង ឬមូលហេតុ» នៃការខ្ចីប្រាក់ (ឬផ្ញើសារ Voice ក៏បាន)៖</b>\n"
-                    f"<i>(ឧទាហរណ៍៖ បង់ថ្លៃផ្ទះ, ទិញថ្នាំពេទ្យ, ថ្លៃទឹកភ្លើង...)</i>"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n\n"
+                    f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_purpose_msg)
+                send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons)
+                return {"ok": True}
+
+            # 2.1 Callback when clicking a quick Purpose button!
+            if cq_data.startswith("loan_pur:"):
+                parts = cq_data.split(":")
+                pur = parts[1]
+                amt = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 100000
+                cq_user_id = str(cq_user.get("id"))
+                user_flows_collection.delete_one({"user_id": cq_user_id})
+                
+                ln_res = loans_collection.insert_one({
+                    "employee_name": cq_name,
+                    "amount_khr": amt,
+                    "purpose": pur,
+                    "status": "pending"
+                })
+                loan_id = str(ln_res.inserted_id)
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                    ]]
+                }
+                reply = (
+                    f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {pur}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
+                )
+                send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
 
             # 3. Handle Admin Approval / Rejection directly inside Telegram (Option B)
@@ -510,18 +595,23 @@ async def telegram_webhook(req: Request):
                 m_name = (m.get("first_name", "") + " " + m.get("last_name", "")).strip() or m.get("username", "បុគ្គលិក")
                 welcome_msg = (
                     f"👋 <b>សូមស្វាគមន៍ {m_name} មកកាន់គ្រុប សុំច្បាប់ AC BOMLU!</b>\n\n"
-                    f"👇 <b>ក្ដារចុចប៊ូតុង ៤ ជ្រុងត្រូវបានភ្ជាប់ជូនអ្នកស្វ័យប្រវត្តិ៖</b>\n"
-                    f"សូមមើលប៊ូតុងខាងក្រោម៖ ចុចលើ <b>[ 📝 សុំច្បាប់ ]</b> ឬ <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
+                    f"👇 <b>ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នកស្វ័យប្រវត្តិ៖</b>\n"
+                    f"សូមមើលប៊ូតុងខាងក្រោម៖ ចុចលើ <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
                 )
                 send_telegram_notify(welcome_msg)
             return {"ok": True}
 
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
+        clean_cmd = text.split('@')[0].strip().lower()
+
+        is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
+        is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
+        is_system_cmd = clean_cmd in ["/start", "/help"] or is_leave_btn or is_loan_btn
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
         active_flow = user_flows_collection.find_one({"user_id": user_id_str})
-        if active_flow and not (text in ["📝 សុំច្បាប់", "សុំច្បាប់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "/leave", "/loan"]):
+        if active_flow and not is_system_cmd:
             content = (message.get("caption") or "សារសំឡេង (Voice Message)") if has_voice else text
             flow_type = active_flow.get("type")
             
@@ -580,12 +670,12 @@ async def telegram_webhook(req: Request):
                 return {"ok": True}
 
         # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
-        if text and not (text in ["📝 សុំច្បាប់", "សុំច្បាប់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "/leave", "/loan"]):
+        if text and not is_system_cmd:
             recent_leave = leaves_collection.find_one(
                 {"employee_name": sender_name, "status": "pending"},
                 sort=[("_id", -1)]
             )
-            if recent_leave and ("សុំច្បាប់" in recent_leave.get("reason", "") or "📝" in recent_leave.get("reason", "")):
+            if recent_leave and ("សុំច្បាប់" in recent_leave.get("reason", "") or "📝" in recent_leave.get("reason", "") or "ស្នើសុំ" in recent_leave.get("reason", "")):
                 leaves_collection.update_one({"_id": recent_leave["_id"]}, {"$set": {"reason": text}})
                 leave_id = str(recent_leave["_id"])
                 adm_btn = {
@@ -608,7 +698,7 @@ async def telegram_webhook(req: Request):
                 {"employee_name": sender_name, "status": "pending"},
                 sort=[("_id", -1)]
             )
-            if recent_loan and ("ខ្ចីប្រាក់" in recent_loan.get("purpose", "") or "💰" in recent_loan.get("purpose", "")):
+            if recent_loan and ("ខ្ចីប្រាក់" in recent_loan.get("purpose", "") or "💰" in recent_loan.get("purpose", "") or "ស្នើ" in recent_loan.get("purpose", "")):
                 loans_collection.update_one({"_id": recent_loan["_id"]}, {"$set": {"purpose": text}})
                 loan_id = str(recent_loan["_id"])
                 adm_btn = {
@@ -653,17 +743,17 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
-        # 3. Handle Greetings & Casual Messages -> Re-attach 4-corner Keyboard!
+        # 3. Handle Greetings & Casual Messages -> Re-attach 2 Keyboard buttons!
         if text.lower() in ["hi", "hello", "hey", "សួស្តី", "ជំរាបសួរ", "បាទ", "ចាស", "ok"]:
             reply = (
                 f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👇 ក្ដារចុចប៊ូតុង ៤ ជ្រុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 សុំច្បាប់ ]</b> ឬ <b>[ 💰 សុំខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
+                f"👇 ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
             )
             send_telegram_notify(reply)
             return {"ok": True}
 
         # 4. Handle Leave Button or Exact Command -> Show Days Selection (Inline Buttons)!
-        if text in ["📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "leave", "leav", "/leave", "ឈប់"]:
+        if is_leave_btn:
             inline_days = {
                 "inline_keyboard": [
                     [
@@ -685,7 +775,7 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         # 5. Handle Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
-        if "សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower() or "leav" in text.lower():
+        if ("សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower()) and not is_leave_btn and not is_loan_btn:
             days = 1
             import re
             day_match = re.search(r'(\d+)\s*(ថ្ងៃ|day)', text, re.IGNORECASE)
@@ -716,7 +806,7 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         # 6. Handle Loan Button or Exact Command -> Show Amount Selection (Inline Buttons)!
-        if text in ["💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន", "loan", "lon", "/loan"]:
+        if is_loan_btn:
             inline_amounts = {
                 "inline_keyboard": [
                     [
@@ -737,7 +827,7 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
-        if "ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "ខ្ចី" in text or text.lower().startswith("/loan"):
+        if ("ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "ខ្ចី" in text) and not is_loan_btn and not is_leave_btn:
             import re
             amount = 100000
             numbers = re.findall(r'(\d[\d,]*\d|\d+)', text.replace(' ', ''))
