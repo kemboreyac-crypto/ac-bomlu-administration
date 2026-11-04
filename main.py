@@ -999,10 +999,15 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
       <!-- Amount Selection -->
       <div>
         <label class="block text-xs font-medium text-slate-300 mb-1.5">ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី (រៀល)</label>
-        <div class="grid grid-cols-2 gap-2 mb-2">
+        <div class="grid grid-cols-3 gap-2 mb-2">
+          <button type="button" onclick="selectAmt(10000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-10000">១០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(20000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-20000">២០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(30000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-30000">៣០,០០០ ៛</button>
           <button type="button" onclick="selectAmt(50000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-50000">៥០,០០០ ៛</button>
           <button type="button" onclick="selectAmt(100000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-emerald-500 bg-emerald-600 text-white" id="a-100000">១០០,០០០ ៛</button>
           <button type="button" onclick="selectAmt(200000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-200000">២០០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(300000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-300000">៣០០,០០០ ៛</button>
+          <button type="button" onclick="selectAmt(400000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-400000">៤០០,០០០ ៛</button>
           <button type="button" onclick="selectAmt(500000)" class="amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300" id="a-500000">៥០០,០០០ ៛</button>
         </div>
         <div class="relative">
@@ -1062,12 +1067,14 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
 
     function selectAmt(amt) {
       document.getElementById('custom-amt').value = amt;
-      [50000, 100000, 200000, 500000].forEach(a => {
+      [10000, 20000, 30000, 50000, 100000, 200000, 300000, 400000, 500000].forEach(a => {
         const btn = document.getElementById('a-' + a);
-        if (a === amt) {
-          btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-emerald-500 bg-emerald-600 text-white';
-        } else {
-          btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+        if (btn) {
+          if (a === amt) {
+            btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-emerald-500 bg-emerald-600 text-white';
+          } else {
+            btn.className = 'amt-btn py-2 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+          }
         }
       });
     }
@@ -2234,21 +2241,22 @@ async def telegram_webhook(req: Request):
             inline_amounts = {
                 "inline_keyboard": [
                     [
-                        {"text": "៥០,០០០ ៛", "callback_data": f"loan_amt:50000:{user_id_str}:{sender_name}"},
-                        {"text": "១០០,០០០ ៛", "callback_data": f"loan_amt:100000:{user_id_str}:{sender_name}"}
+                        {"text": "១០,០០០ ៛", "callback_data": f"loan_amt:10000:{user_id_str}:{sender_name}"},
+                        {"text": "២០,០០០ ៛", "callback_data": f"loan_amt:20000:{user_id_str}:{sender_name}"},
+                        {"text": "៣០,០០០ ៛", "callback_data": f"loan_amt:30000:{user_id_str}:{sender_name}"}
                     ],
                     [
-                        {"text": "២០០,០០០ ៛", "callback_data": f"loan_amt:200000:{user_id_str}:{sender_name}"},
+                        {"text": "៥០,០០០ ៛", "callback_data": f"loan_amt:50000:{user_id_str}:{sender_name}"},
+                        {"text": "១០០,០០០ ៛", "callback_data": f"loan_amt:100000:{user_id_str}:{sender_name}"},
+                        {"text": "២០០,០០០ ៛", "callback_data": f"loan_amt:200000:{user_id_str}:{sender_name}"}
+                    ],
+                    [
+                        {"text": "៣០០,០០០ ៛", "callback_data": f"loan_amt:300000:{user_id_str}:{sender_name}"},
+                        {"text": "៤០០,០០០ ៛", "callback_data": f"loan_amt:400000:{user_id_str}:{sender_name}"},
                         {"text": "៥០០,០០០ ៛", "callback_data": f"loan_amt:500000:{user_id_str}:{sender_name}"}
                     ]
                 ]
             }
-            msg = (
-                f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
-            )
-            send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
-            return {"ok": True}
             msg = (
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
