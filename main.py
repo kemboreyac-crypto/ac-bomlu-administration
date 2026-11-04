@@ -31,8 +31,21 @@ app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
 
 # ===== MongoDB Connection =====
 DEFAULT_MONGO_URI = "mongodb+srv://acbomlu_admin:092673641@acbomlo.gclkugi.mongodb.net/acbank_db?retryWrites=true&w=majority"
-MONGO_URI = os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or DEFAULT_MONGO_URI
-client = MongoClient(MONGO_URI)
+
+def get_sanitized_mongo_uri() -> str:
+    raw = os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or ""
+    cleaned = raw.strip().strip("'\"").strip()
+    if cleaned.startswith("mongodb://") or cleaned.startswith("mongodb+srv://"):
+        return cleaned
+    return DEFAULT_MONGO_URI
+
+MONGO_URI = get_sanitized_mongo_uri()
+try:
+    client = MongoClient(MONGO_URI)
+except Exception as e:
+    print(f"Warning: Primary MongoClient connection failed ({e}). Falling back to DEFAULT_MONGO_URI...")
+    client = MongoClient(DEFAULT_MONGO_URI)
+
 db = client["acbank_db"]
 leaves_collection = db["leaves"]
 loans_collection = db["loans"]
