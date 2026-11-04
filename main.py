@@ -169,9 +169,48 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
             "reply_markup": reply_markup
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=8)
+        resp = urllib.request.urlopen(req, timeout=8)
+        return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"Telegram notify error: {e}")
+        return None
+
+def remove_telegram_inline_keyboard(chat_id: str, message_id: int):
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token or not chat_id or not message_id:
+            return
+        url = f"https://api.telegram.org/bot{token}/editMessageReplyMarkup"
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reply_markup": {"inline_keyboard": []}
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"Error removing inline keyboard: {e}")
+
+def edit_telegram_message(chat_id: str, message_id: int, new_text: str, reply_markup: dict = None):
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token or not chat_id or not message_id:
+            return
+        url = f"https://api.telegram.org/bot{token}/editMessageText"
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": new_text,
+            "parse_mode": "HTML"
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"Error editing telegram message: {e}")
 
 def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, position: str = None) -> dict:
     """
@@ -2078,17 +2117,6 @@ async def telegram_webhook(req: Request):
             is_cq_private = (cq_chat_type == "private")
             cq_user_id = str(cq_user.get("id") or "")
             
-            # Answer callback immediately for selection buttons to remove loading spinner
-            if (cq_data.startswith("leave_days:") or cq_data.startswith("loan_amt:") or 
-                cq_data.startswith("leave_rsn:") or cq_data.startswith("loan_pur:")):
-                if token and cq_id:
-                    try:
-                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
-                        ans_req = urllib.request.Request(ans_url, data=json.dumps({"callback_query_id": cq_id}).encode('utf-8'), headers={"Content-Type": "application/json"})
-                        urllib.request.urlopen(ans_req, timeout=5)
-                    except Exception:
-                        pass
-
             # Callback for Connecting/Registering staff account
             if cq_data.startswith("connect_me"):
                 sync_or_update_employee_from_telegram(cq_user)
@@ -2137,12 +2165,29 @@ async def telegram_webhook(req: Request):
                     days_display = f"{int(days)} ថ្ងៃ"
                 else:
                     days_display = f"{days} ថ្ងៃ"
+
+                # Check and immediately lock/remove buttons from this days message so user cannot click again!
+                cq_msg_id = cq_msg.get("message_id")
+                if cq_msg_id:
+                    edit_telegram_message(
+                        chat_id=cq_chat_id,
+                        message_id=cq_msg_id,
+                        new_text=(
+                            f"📋 <b>សួស្តី {cq_name}!</b>\n\n"
+                            f"✅ <b>ចំនួនថ្ងៃឈប់សម្រាក:</b> {days_display} (បានជ្រើសរើសរួច)\n"
+                            f"🔒 <i>(ទម្រង់នេះបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
                 
-                user_flows_collection.replace_one(
-                    {"user_id": cq_user_id},
-                    {"user_id": cq_user_id, "type": "leave", "days": days, "days_display": days_display, "name": cq_name, "is_private": is_cq_private},
-                    upsert=True
-                )
+                # Acknowledge callback query
+                if token and cq_id:
+                    try:
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({"callback_query_id": cq_id, "text": f"✅ បានជ្រើសរើស {days_display}"}).encode('utf-8')
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
                 
                 reason_buttons = {
                     "inline_keyboard": [
@@ -2161,7 +2206,23 @@ async def telegram_webhook(req: Request):
                     f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n\n"
                     f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
+                sent_res = send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
+                reason_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+                
+                user_flows_collection.replace_one(
+                    {"user_id": cq_user_id},
+                    {
+                        "user_id": cq_user_id,
+                        "type": "leave",
+                        "days": days,
+                        "days_display": days_display,
+                        "name": cq_name,
+                        "is_private": is_cq_private,
+                        "chat_id": cq_chat_id,
+                        "reason_msg_id": reason_msg_id
+                    },
+                    upsert=True
+                )
                 return {"ok": True}
 
             # 1.1 Callback when clicking a quick Reason button!
@@ -2189,7 +2250,26 @@ async def telegram_webhook(req: Request):
                     except Exception:
                         pass
                     return {"ok": True}
-                    
+                
+                active_flow = user_flows_collection.find_one({"user_id": cq_user_id, "type": "leave"})
+                cq_msg_id = cq_msg.get("message_id")
+                
+                # If flow is not active, this form was already used/finished! Reject and remove buttons!
+                if not active_flow:
+                    if cq_msg_id:
+                        remove_telegram_inline_keyboard(cq_chat_id, cq_msg_id)
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានទេ។ សូមចាប់ផ្តើមថ្មីតាមលំដាប់លំដោយដោយចុច [ 📝 ស្នើសុំច្បាប់ ]",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
                 if days == 0.5:
@@ -2198,6 +2278,29 @@ async def telegram_webhook(req: Request):
                     days_display = f"{int(days)} ថ្ងៃ"
                 else:
                     days_display = f"{days} ថ្ងៃ"
+                
+                # Immediately lock this reason message so buttons disappear completely!
+                if cq_msg_id:
+                    edit_telegram_message(
+                        chat_id=cq_chat_id,
+                        message_id=cq_msg_id,
+                        new_text=(
+                            f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
+                            f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n"
+                            f"📝 <b>មូលហេតុ:</b> {rsn} ✅ (បានជ្រើសរើស)\n"
+                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
+                
+                # Acknowledge callback
+                if token and cq_id:
+                    try:
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({"callback_query_id": cq_id, "text": "✅ សំណើសុំច្បាប់ត្រូវបានបញ្ជូន!"}).encode('utf-8')
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
                     
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
@@ -2263,11 +2366,28 @@ async def telegram_webhook(req: Request):
                         pass
                     return {"ok": True}
                     
-                user_flows_collection.replace_one(
-                    {"user_id": cq_user_id},
-                    {"user_id": cq_user_id, "type": "loan", "amount": amount, "name": cq_name, "is_private": is_cq_private},
-                    upsert=True
-                )
+                cq_msg_id = cq_msg.get("message_id")
+                # Immediately remove buttons on this amount message so it cannot be clicked again!
+                if cq_msg_id:
+                    edit_telegram_message(
+                        chat_id=cq_chat_id,
+                        message_id=cq_msg_id,
+                        new_text=(
+                            f"💰 <b>សួស្តី {cq_name}!</b>\n\n"
+                            f"✅ <b>ចំនួនទឹកប្រាក់ស្នើខ្ចី:</b> {amount:,} រៀល (បានជ្រើសរើសរួច)\n"
+                            f"🔒 <i>(ទម្រង់នេះបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
+                
+                # Acknowledge callback
+                if token and cq_id:
+                    try:
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({"callback_query_id": cq_id, "text": f"✅ បានជ្រើសរើស {amount:,} រៀល"}).encode('utf-8')
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
                 
                 purpose_buttons = {
                     "inline_keyboard": [
@@ -2286,7 +2406,22 @@ async def telegram_webhook(req: Request):
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n\n"
                     f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (មិនបាច់ Reply ទេ)៖</b>"
                 )
-                send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
+                sent_res = send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
+                purpose_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+                
+                user_flows_collection.replace_one(
+                    {"user_id": cq_user_id},
+                    {
+                        "user_id": cq_user_id,
+                        "type": "loan",
+                        "amount": amount,
+                        "name": cq_name,
+                        "is_private": is_cq_private,
+                        "chat_id": cq_chat_id,
+                        "purpose_msg_id": purpose_msg_id
+                    },
+                    upsert=True
+                )
                 return {"ok": True}
 
             # 2.1 Callback when clicking a quick Purpose button!
@@ -2314,8 +2449,49 @@ async def telegram_webhook(req: Request):
                     except Exception:
                         pass
                     return {"ok": True}
-                    
+                
+                active_flow = user_flows_collection.find_one({"user_id": cq_user_id, "type": "loan"})
+                cq_msg_id = cq_msg.get("message_id")
+                
+                if not active_flow:
+                    if cq_msg_id:
+                        remove_telegram_inline_keyboard(cq_chat_id, cq_msg_id)
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": "⚠️ ទម្រង់នេះត្រូវបានចុច ឬប្រើប្រាស់រួចរាល់ហើយ! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានទេ។ សូមចាប់ផ្តើមថ្មីតាមលំដាប់លំដោយដោយចុច [ 💰 ស្នើខ្ចីប្រាក់ ]",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                    return {"ok": True}
+                
                 user_flows_collection.delete_one({"user_id": cq_user_id})
+                
+                # Immediately lock this purpose message so buttons disappear!
+                if cq_msg_id:
+                    edit_telegram_message(
+                        chat_id=cq_chat_id,
+                        message_id=cq_msg_id,
+                        new_text=(
+                            f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
+                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
+                            f"🎯 <b>គោលបំណង:</b> {pur} ✅ (បានជ្រើសរើស)\n"
+                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
+                
+                # Acknowledge callback
+                if token and cq_id:
+                    try:
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({"callback_query_id": cq_id, "text": "✅ សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូន!"}).encode('utf-8')
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
                 
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
@@ -2380,64 +2556,127 @@ async def telegram_webhook(req: Request):
                 
                 if "leave" in action:
                     leave = leaves_collection.find_one({"_id": ObjectId(doc_id)})
-                    if leave:
-                        emp_name = leave.get("employee_name", "បុគ្គលិក")
-                        days = leave.get("days", 1)
-                        reason = leave.get("reason", "")
-                        status_str = "approved" if is_approve else "rejected"
-                        leaves_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
-                        
-                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
-                        edit_text = (
-                            f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
-                            f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
-                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                            f"📝 <b>មូលហេតុ:</b> {reason}\n"
-                            f"━━━━━━━━━━━━━━━━━━━\n"
-                            f"{result_text}\n"
-                            f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}"
-                        )
-                        edit_url = f"https://api.telegram.org/bot{token}/editMessageText"
-                        urllib.request.urlopen(urllib.request.Request(edit_url, data=json.dumps({
-                            "chat_id": chat_id_str,
-                            "message_id": msg_id,
-                            "text": edit_text,
-                            "parse_mode": "HTML"
-                        }).encode('utf-8'), headers={"Content-Type": "application/json"}), timeout=8)
-                        
+                    if not leave:
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        return {"ok": True}
+                    
+                    if leave.get("status") in ["approved", "rejected"]:
+                        curr_status = "អនុញ្ញាតិ (Approved)" if leave.get("status") == "approved" else "មិនអនុញ្ញាតិ (Rejected)"
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({
+                            "callback_query_id": cq_id,
+                            "text": f"⚠️ សំណើនេះត្រូវបានសម្រេចរួចហើយ: {curr_status}! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានឡើយ។",
+                            "show_alert": True
+                        }).encode('utf-8')
+                        try:
+                            urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                        except Exception:
+                            pass
+                        return {"ok": True}
+                    
+                    emp_name = leave.get("employee_name", "បុគ្គលិក")
+                    days = leave.get("days", 1)
+                    reason = leave.get("reason", "")
+                    status_str = "approved" if is_approve else "rejected"
+                    
+                    up_res = leaves_collection.update_one({"_id": ObjectId(doc_id), "status": "pending"}, {"$set": {"status": status_str}})
+                    if up_res.modified_count == 0:
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({
+                            "callback_query_id": cq_id,
+                            "text": "⚠️ សំណើនេះទើបតែត្រូវបានសម្រេចដោយ Admin ម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
+                            "show_alert": True
+                        }).encode('utf-8')
+                        try:
+                            urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                        except Exception:
+                            pass
+                        return {"ok": True}
+                    
+                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
+                    edit_text = (
+                        f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"{result_text}\n"
+                        f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}\n"
+                        f"🔒 <i>(ប៊ូតុងត្រូវបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                    )
+                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": []})
+                    
                 elif "loan" in action:
                     loan = loans_collection.find_one({"_id": ObjectId(doc_id)})
-                    if loan:
-                        emp_name = loan.get("employee_name", "បុគ្គលិក")
-                        amount = loan.get("amount_khr", 0)
-                        purpose = loan.get("purpose", "")
-                        status_str = "approved" if is_approve else "rejected"
-                        loans_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
-                        
-                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
-                        edit_text = (
-                            f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
-                            f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
-                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                            f"🎯 <b>គោលបំណង:</b> {purpose}\n"
-                            f"━━━━━━━━━━━━━━━━━━━\n"
-                            f"{result_text}\n"
-                            f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}"
-                        )
-                        edit_url = f"https://api.telegram.org/bot{token}/editMessageText"
-                        urllib.request.urlopen(urllib.request.Request(edit_url, data=json.dumps({
-                            "chat_id": chat_id_str,
-                            "message_id": msg_id,
-                            "text": edit_text,
-                            "parse_mode": "HTML"
-                        }).encode('utf-8'), headers={"Content-Type": "application/json"}), timeout=8)
+                    if not loan:
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        return {"ok": True}
+                    
+                    if loan.get("status") in ["approved", "rejected"]:
+                        curr_status = "អនុញ្ញាតិ (Approved)" if loan.get("status") == "approved" else "មិនអនុញ្ញាតិ (Rejected)"
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({
+                            "callback_query_id": cq_id,
+                            "text": f"⚠️ សំណើខ្ចីប្រាក់នេះត្រូវបានសម្រេចរួចហើយ: {curr_status}! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានឡើយ។",
+                            "show_alert": True
+                        }).encode('utf-8')
+                        try:
+                            urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                        except Exception:
+                            pass
+                        return {"ok": True}
+                    
+                    emp_name = loan.get("employee_name", "បុគ្គលិក")
+                    amount = loan.get("amount_khr", 0)
+                    purpose = loan.get("purpose", "")
+                    status_str = "approved" if is_approve else "rejected"
+                    
+                    up_res = loans_collection.update_one({"_id": ObjectId(doc_id), "status": "pending"}, {"$set": {"status": status_str}})
+                    if up_res.modified_count == 0:
+                        if msg_id:
+                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_data = json.dumps({
+                            "callback_query_id": cq_id,
+                            "text": "⚠️ សំណើខ្ចីប្រាក់នេះទើបតែត្រូវបានសម្រេចដោយ Admin ម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
+                            "show_alert": True
+                        }).encode('utf-8')
+                        try:
+                            urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                        except Exception:
+                            pass
+                        return {"ok": True}
+                    
+                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
+                    edit_text = (
+                        f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"{result_text}\n"
+                        f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}\n"
+                        f"🔒 <i>(ប៊ូតុងត្រូវបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                    )
+                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": []})
 
                 ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                 ans_data = json.dumps({
                     "callback_query_id": cq_id,
                     "text": "✅ បានអនុញ្ញាតិជោគជ័យ!" if is_approve else "❌ មិនអនុញ្ញាតិ!"
                 }).encode('utf-8')
-                urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                try:
+                    urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                except Exception:
+                    pass
                 return {"ok": True}
 
         # B. Handle Regular Messages
@@ -2766,7 +3005,21 @@ async def telegram_webhook(req: Request):
                     "date": today_khr
                 })
                 leave_id = str(l_res.inserted_id)
+                reason_msg_id = active_flow.get("reason_msg_id")
+                flow_chat_id = active_flow.get("chat_id", chat_id_str)
                 user_flows_collection.delete_one({"user_id": user_id_str})
+                if reason_msg_id:
+                    edit_telegram_message(
+                        chat_id=flow_chat_id,
+                        message_id=reason_msg_id,
+                        new_text=(
+                            f"⏱️ <b>បុគ្គលិក:</b> {sender_name}\n"
+                            f"⏱️ <b>ចំនួន:</b> {days_display}\n"
+                            f"📝 <b>មូលហេតុ:</b> {content} ✅ (បានវាយបញ្ចូលផ្ទាល់)\n"
+                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
                 
                 conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
@@ -2809,7 +3062,21 @@ async def telegram_webhook(req: Request):
                     "date": today_khr
                 })
                 loan_id = str(ln_res.inserted_id)
+                purpose_msg_id = active_flow.get("purpose_msg_id")
+                flow_chat_id = active_flow.get("chat_id", chat_id_str)
                 user_flows_collection.delete_one({"user_id": user_id_str})
+                if purpose_msg_id:
+                    edit_telegram_message(
+                        chat_id=flow_chat_id,
+                        message_id=purpose_msg_id,
+                        new_text=(
+                            f"💵 <b>បុគ្គលិក:</b> {sender_name}\n"
+                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                            f"🎯 <b>គោលបំណង:</b> {content} ✅ (បានវាយបញ្ចូលផ្ទាល់)\n"
+                            f"🔒 <i>(សំណើត្រូវបានបញ្ជូនរួចរាល់ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        ),
+                        reply_markup={"inline_keyboard": []}
+                    )
                 
                 adm_btn = {
                     "inline_keyboard": [[
@@ -3075,6 +3342,7 @@ async def telegram_webhook(req: Request):
 
         # 4. Handle Leave Button -> Step 1: Show Days Selection Buttons (ជម្រើសទី ១)!
         if is_leave_btn:
+            user_flows_collection.delete_one({"user_id": user_id_str})
             inline_days = {
                 "inline_keyboard": [
                     [
@@ -3260,6 +3528,7 @@ async def telegram_webhook(req: Request):
 
         # 6. Handle Loan Button -> Step 1: Show Amount Selection Buttons (ជម្រើសទី ១)!
         if is_loan_btn:
+            user_flows_collection.delete_one({"user_id": user_id_str})
             inline_amounts = {
                 "inline_keyboard": [
                     [
