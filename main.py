@@ -448,6 +448,40 @@ async def telegram_webhook(req: Request):
                 )
                 send_telegram_notify(reply)
                 return {"ok": True}
+
+        # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
+        if text and not (text in ["📝 សុំច្បាប់", "សុំច្បាប់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "/leave", "/loan"]):
+            recent_leave = leaves_collection.find_one(
+                {"employee_name": sender_name, "status": "pending"},
+                sort=[("_id", -1)]
+            )
+            if recent_leave and ("សុំច្បាប់" in recent_leave.get("reason", "") or "📝" in recent_leave.get("reason", "")):
+                leaves_collection.update_one({"_id": recent_leave["_id"]}, {"$set": {"reason": text}})
+                reply = (
+                    f"📝 <b>បានកត់ត្រាមូលហេតុច្បាប់បន្ថែមជោគជ័យ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {text}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                )
+                send_telegram_notify(reply)
+                return {"ok": True}
+
+            recent_loan = loans_collection.find_one(
+                {"employee_name": sender_name, "status": "pending"},
+                sort=[("_id", -1)]
+            )
+            if recent_loan and ("ខ្ចីប្រាក់" in recent_loan.get("purpose", "") or "💰" in recent_loan.get("purpose", "")):
+                loans_collection.update_one({"_id": recent_loan["_id"]}, {"$set": {"purpose": text}})
+                reply = (
+                    f"🎯 <b>បានកត់ត្រាគោលបំណងខ្ចីប្រាក់បន្ថែមជោគជ័យ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {text}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                )
+                send_telegram_notify(reply)
+                return {"ok": True}
         
         # 2. Handle Voice Message for Leave Permission
         if has_voice:
