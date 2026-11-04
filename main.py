@@ -78,6 +78,10 @@ class SendReportRequest(BaseModel):
     mode: Optional[str] = "summary"
     employee_name: Optional[str] = ""
 
+class BulkEmployeeRequest(BaseModel):
+    names: List[str]
+    position: Optional[str] = "បុគ្គលិក"
+
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
@@ -187,9 +191,15 @@ def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, posi
         # 1. Look up by telegram_user_id
         emp = employees_collection.find_one({"telegram_user_id": tg_id})
         
-        # 2. If not found by ID, look up by name or username
+        # 2. If not found by ID, look up by name or username (case-insensitive & flexible)
         if not emp:
             emp = employees_collection.find_one({"name": full_name})
+        if not emp:
+            import re
+            emp = employees_collection.find_one({"name": {"$regex": f"^{re.escape(full_name)}$", "$options": "i"}})
+        if not emp and first_name:
+            import re
+            emp = employees_collection.find_one({"name": {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}})
         if not emp and username:
             emp = employees_collection.find_one({"telegram_username": username})
             
@@ -283,11 +293,12 @@ def sync_group_members_from_telegram() -> dict:
                 })
                 synced_count += 1
                 
+        total_emp = employees_collection.count_documents({})
         return {
             "success": True,
             "synced_count": synced_count,
-            "total_employees": employees_collection.count_documents({}),
-            "message": f"បាន Sync ទិន្នន័យបុគ្គលិកពី Telegram ចំនួន {synced_count} នាក់ជោគជ័យ!"
+            "total_employees": total_emp,
+            "message": f"បាន Sync ទិន្នន័យបុគ្គលិកជោគជ័យ! បច្ចុប្បន្នមានបុគ្គលិកសរុប {total_emp} នាក់ក្នុងប្រព័ន្ធ។"
         }
     except Exception as e:
         print("sync_group_members_from_telegram error:", e)
@@ -1281,6 +1292,30 @@ async def api_sync_telegram_employees():
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
+@app.post("/api/employees/bulk")
+async def bulk_create_employees(req: BulkEmployeeRequest):
+    cambodia_tz = timezone(timedelta(hours=7))
+    now_str = datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M")
+    created = 0
+    for n in req.names:
+        clean_n = n.strip()
+        if not clean_n:
+            continue
+        if not employees_collection.find_one({"name": clean_n}):
+            employees_collection.insert_one({
+                "name": clean_n,
+                "position": req.position or "បុគ្គលិក",
+                "phone": "",
+                "phone2": "",
+                "telegram_user_id": "",
+                "telegram_username": "",
+                "created_at": now_str,
+                "source": "bulk_import"
+            })
+            created += 1
+    total_count = employees_collection.count_documents({})
+    return {"message": f"បានបញ្ចូលបុគ្គលិកថ្មីចំនួន {created} នាក់ជោគជ័យ! បច្ចុប្បន្នមានសរុប {total_count} នាក់។", "created_count": created, "total_count": total_count}
+
 # ===== Settings & Telegram Routes =====
 def mask_token(token: str) -> str:
     if not token:
@@ -2019,6 +2054,22 @@ async def telegram_webhook(req: Request):
                     except Exception:
                         pass
 
+            # Callback for Connecting/Registering staff account
+            if cq_data.startswith("connect_me"):
+                sync_or_update_employee_from_telegram(cq_user)
+                if token and cq_id:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": f"✅ បានភ្ជាប់គណនី Telegram [{cq_name}] ចូលក្នុងប្រព័ន្ធជោគជ័យ!",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    try:
+                        urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    except Exception:
+                        pass
+                return {"ok": True}
+
             # 1. Callback for Leave Days selection -> Show Reason Selection & Allow Direct Typing!
             if cq_data.startswith("leave_days:"):
                 parts = cq_data.split(":")
@@ -2427,7 +2478,7 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
@@ -2574,6 +2625,20 @@ async def telegram_webhook(req: Request):
         if clean_cmd in ["/sync", "/sync_members", "/sync_telegram"]:
             res = sync_group_members_from_telegram()
             send_telegram_notify(res.get("message", "Sync រួចរាល់!"), target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # /connect command - allows all staff in group to connect in 1 tap!
+        if clean_cmd in ["/connect", "/register_members", "/checkin", "/link"]:
+            connect_btn = {
+                "inline_keyboard": [[
+                    {"text": "👤 ភ្ជាប់គណនីខ្ញុំ (Connect Profile)", "callback_data": "connect_me"}
+                ]]
+            }
+            msg = (
+                "👋 <b>សូមជម្រាបសួរបុគ្គលិក AC BOMLU ទាំងអស់!</b>\n\n"
+                "👉 សូមចុចប៊ូតុង <b>[ 👤 ភ្ជាប់គណនីខ្ញុំ ]</b> ខាងក្រោមតែមួយដង ដើម្បីឱ្យប្រព័ន្ធកត់ត្រា និងភ្ជាប់គណនី Telegram របស់អ្នកចូលទៅក្នុងប្រព័ន្ធគ្រប់គ្រងបុគ្គលិកស្វ័យប្រវត្តិ។"
+            )
+            send_telegram_notify(msg, reply_markup=connect_btn, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
@@ -3643,10 +3708,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <h2 class="text-lg font-semibold text-gray-800">បុគ្គលិកទាំងអស់</h2>
           <p class="text-xs text-gray-500 mt-0.5">ទិន្នន័យត្រូវបាន Sync ដោយស្វ័យប្រវត្តិជាមួយ Telegram Group</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <button id="btn-sync-tg-emp" onclick="syncEmployeesFromTelegram()"
             class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 shadow-sm transition">
             <span class="material-symbols-outlined text-base">sync</span> 🔄 Sync ពី Telegram
+          </button>
+          <button onclick="openModal('bulk-emp-modal')"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 shadow-sm transition">
+            <span class="material-symbols-outlined text-base">playlist_add</span> 📋 បញ្ចូលច្រើន (Bulk)
           </button>
           <button onclick="openModal('emp-modal')"
             class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
@@ -4304,6 +4373,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Bulk Employee Modal -->
+<div id="bulk-emp-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-emerald-50">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
+        <span class="material-symbols-outlined text-emerald-600">playlist_add</span> បញ្ចូលឈ្មោះបុគ្គលិកច្រើននាក់ (Bulk Import)
+      </h3>
+      <button onclick="closeModal('bulk-emp-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitBulkEmployees(event)" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm text-gray-700 mb-1 font-semibold">បញ្ជីឈ្មោះបុគ្គលិក (១ ជួរឈ្មោះ ១ នាក់ ឬខណ្ឌដោយក្បៀស)</label>
+        <textarea id="bulk-emp-names" rows="6" required placeholder="ឧទាហរណ៍៖&#10;សុខលីម Soklim&#10;Ac La&#10;Ac Dana&#10;Ac រិត"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 font-sans transition"></textarea>
+        <p class="text-[11px] text-gray-400 mt-1">💡 លោកអ្នកអាច Copy បញ្ជីឈ្មោះពី Telegram Group រួច Paste ចូលទីនេះដើម្បីបង្កើតក្នុងពេលតែមួយ។</p>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700 mb-1 font-semibold">មុខតំណែងទូទៅ</label>
+        <input id="bulk-emp-position" type="text" value="បុគ្គលិក"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition" />
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button" onclick="closeModal('bulk-emp-modal')" class="px-4 py-2 rounded-xl text-sm border border-slate-200 text-gray-600 hover:bg-slate-50 transition">បោះបង់</button>
+        <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">រក្សាទុកទាំងអស់</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Compensate Leave Modal -->
 <div id="compensate-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -4908,6 +5008,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.target.reset();
     showToast('បានបន្ថែមបុគ្គលិក!');
     await loadEmployees(); await loadStats();
+  }
+
+  async function submitBulkEmployees(e) {
+    e.preventDefault();
+    const rawText = document.getElementById('bulk-emp-names').value;
+    const pos = document.getElementById('bulk-emp-position').value || 'បុគ្គលិក';
+    const names = rawText.split(/[\n,]+/).map(n => n.trim()).filter(Boolean);
+    if (!names.length) {
+      showToast('សូមបញ្ចូលឈ្មោះយ៉ាងហោចណាស់ម្នាក់!', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/employees/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: names, position: pos })
+      });
+      const data = await res.json();
+      closeModal('bulk-emp-modal');
+      e.target.reset();
+      showToast(data.message || 'បានបញ្ចូលបុគ្គលិកជោគជ័យ!');
+      await loadEmployees();
+      await loadStats();
+    } catch(err) {
+      showToast('Error: ' + err, 'error');
+    }
   }
 
   // ===== SETTINGS & TELEGRAM =====
