@@ -58,6 +58,20 @@ class Employee(BaseModel):
     phone: Optional[str] = ""
     phone2: Optional[str] = ""
 
+class LeaveCompensationRequest(BaseModel):
+    leave_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    days_to_compensate: float = 1.0
+    admin_name: Optional[str] = "Admin"
+    note: Optional[str] = ""
+
+class LoanRepaymentRequest(BaseModel):
+    loan_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    amount_to_repay: int = 0
+    admin_name: Optional[str] = "Admin"
+    note: Optional[str] = ""
+
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
@@ -179,21 +193,28 @@ def get_employee_self_service_report(emp_name: str) -> str:
         user_leaves = list(leaves_collection.find({"employee_name": emp_name}))
         total_leave_requests = len(user_leaves)
         approved_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "approved")
+        compensated_days = sum(float(l.get("compensated_days", 0.0)) for l in user_leaves if l.get("status") == "approved")
+        remaining_leave_days = max(0.0, approved_leave_days - compensated_days)
         pending_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "pending")
         
         user_loans = list(loans_collection.find({"employee_name": emp_name}))
         approved_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "approved")
+        paid_loan_amt = sum(int(l.get("paid_amount_khr", 0)) for l in user_loans if l.get("status") == "approved")
+        remaining_loan_amt = max(0, approved_loan_amt - paid_loan_amt)
         pending_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "pending")
         
+        comp_info = f"\n• បានសងច្បាប់រួច: <b>{compensated_days} ថ្ងៃ</b>\n• <b>នៅសល់ត្រូវសងចុងសប្តាហ៍:</b> <b>{remaining_leave_days} ថ្ងៃ</b>" if approved_leave_days > 0 else ""
+        loan_paid_info = f"\n• បានកាត់ប្រាក់ខែ/សងរួច: <b>{paid_loan_amt:,} រៀល</b>\n• <b>នៅសល់ជំពាក់ត្រូវកាត់:</b> <b>{remaining_loan_amt:,} រៀល</b>" if approved_loan_amt > 0 else ""
+
         return (
             f"👤 <b>ព័ត៌មានផ្ទាល់ខ្លួន:</b> {emp_name}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📝 <b>ប្រវត្តិច្បាប់ឈប់សម្រាក:</b>\n"
-            f"• បានអនុញ្ញាតិ (Approved): <b>{approved_leave_days} ថ្ងៃ</b>\n"
+            f"• បានអនុញ្ញាតិ (Approved): <b>{approved_leave_days} ថ្ងៃ</b>{comp_info}\n"
             f"• កំពុងរង់ចាំ (Pending): <b>{pending_leave_days} ថ្ងៃ</b>\n"
             f"• សំណើសុំសរុប: <b>{total_leave_requests} លើក</b>\n\n"
             f"💰 <b>ប្រវត្តិខ្ចីប្រាក់ / បុរេប្រទាន:</b>\n"
-            f"• ទឹកប្រាក់បានអនុញ្ញាតិ: <b>{approved_loan_amt:,} រៀល</b>\n"
+            f"• ទឹកប្រាក់បានអនុញ្ញាតិ: <b>{approved_loan_amt:,} រៀល</b>{loan_paid_info}\n"
             f"• ទឹកប្រាក់កំពុងរង់ចាំ: <b>{pending_loan_amt:,} រៀល</b>\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"ℹ️ <i>ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក AC BOMLU</i>"
@@ -256,6 +277,147 @@ def generate_daily_morning_briefing() -> str:
     except Exception as e:
         return f"⚠️ មិនអាចបង្កើតរបាយការណ៍ពេលព្រឹកបានទេ: {e}"
 
+def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Optional[str] = None, days_to_compensate: float = 1.0, admin_name: str = "Admin", note: str = "") -> dict:
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        now_str = now_cam.strftime("%d/%m/%Y %H:%M")
+        days_to_compensate = float(days_to_compensate)
+        if days_to_compensate <= 0:
+            return {"success": False, "message": "ចំនួនថ្ងៃត្រូវសងត្រូវតែធំជាង 0"}
+            
+        target_emp_name = ""
+        
+        if leave_id:
+            try:
+                l = leaves_collection.find_one({"_id": ObjectId(leave_id)})
+            except Exception:
+                l = None
+            if not l:
+                return {"success": False, "message": "រកមិនឃើញទិន្នន័យច្បាប់នេះទេ"}
+            if l.get("status") != "approved":
+                return {"success": False, "message": "អាចកត់ត្រាការសងបានតែលើច្បាប់ដែល Admin បានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                
+            target_emp_name = (l.get("employee_name") or "").strip()
+            tot_days = float(l.get("days", 1.0))
+            curr_comp = float(l.get("compensated_days", 0.0))
+            curr_rem = max(0.0, tot_days - curr_comp)
+            
+            apply_days = min(days_to_compensate, curr_rem)
+            new_comp = curr_comp + apply_days
+            new_rem = max(0.0, tot_days - new_comp)
+            new_status = "fully_compensated" if new_rem <= 0 else "partially_compensated"
+            
+            log_entry = {
+                "days_compensated": apply_days,
+                "total_compensated_now": new_comp,
+                "remaining_days": new_rem,
+                "admin_name": admin_name,
+                "note": note,
+                "recorded_at": now_str
+            }
+            
+            leaves_collection.update_one(
+                {"_id": ObjectId(leave_id)},
+                {
+                    "$set": {
+                        "compensated_days": new_comp,
+                        "remaining_days": new_rem,
+                        "compensation_status": new_status
+                    },
+                    "$push": {"compensation_history": log_entry}
+                }
+            )
+            final_rem = new_rem
+            
+        elif employee_name:
+            target_emp_name = employee_name.strip()
+            leaves = list(leaves_collection.find({
+                "employee_name": target_emp_name,
+                "status": "approved",
+                "compensation_status": {"$ne": "fully_compensated"}
+            }).sort("_id", 1))
+            
+            if not leaves:
+                return {"success": False, "message": f"មិនមានទិន្នន័យច្បាប់ដែលត្រូវសងសម្រាប់បុគ្គលិក [{target_emp_name}] ទេ"}
+                
+            days_needed = days_to_compensate
+            for l in leaves:
+                if days_needed <= 0:
+                    break
+                tot_days = float(l.get("days", 1.0))
+                curr_comp = float(l.get("compensated_days", 0.0))
+                curr_rem = max(0.0, tot_days - curr_comp)
+                if curr_rem <= 0:
+                    continue
+                    
+                apply_days = min(days_needed, curr_rem)
+                new_comp = curr_comp + apply_days
+                new_rem = max(0.0, tot_days - new_comp)
+                new_status = "fully_compensated" if new_rem <= 0 else "partially_compensated"
+                
+                log_entry = {
+                    "days_compensated": apply_days,
+                    "total_compensated_now": new_comp,
+                    "remaining_days": new_rem,
+                    "admin_name": admin_name,
+                    "note": note,
+                    "recorded_at": now_str
+                }
+                
+                leaves_collection.update_one(
+                    {"_id": l["_id"]},
+                    {
+                        "$set": {
+                            "compensated_days": new_comp,
+                            "remaining_days": new_rem,
+                            "compensation_status": new_status
+                        },
+                        "$push": {"compensation_history": log_entry}
+                    }
+                )
+                days_needed -= apply_days
+                
+            active_leaves = list(leaves_collection.find({
+                "employee_name": target_emp_name,
+                "status": "approved"
+            }))
+            final_rem = sum(max(0.0, float(x.get("days", 1.0)) - float(x.get("compensated_days", 0.0))) for x in active_leaves)
+        else:
+            return {"success": False, "message": "ត្រូវផ្តល់ leave_id ឬ employee_name"}
+
+        days_disp = "កន្លះថ្ងៃ" if days_to_compensate == 0.5 else (f"{int(days_to_compensate)} ថ្ងៃ" if days_to_compensate.is_integer() else f"{days_to_compensate} ថ្ងៃ")
+        rem_disp = "០ ថ្ងៃ (សងរួចរាល់គ្រប់ចំនួន ✅)" if final_rem <= 0 else ("កន្លះថ្ងៃ" if final_rem == 0.5 else (f"{int(final_rem)} ថ្ងៃ" if final_rem.is_integer() else f"{final_rem} ថ្ងៃ"))
+        status_label = "សងរួចរាល់គ្រប់ចំនួន ✅" if final_rem <= 0 else "សងបានខ្លះ ⏳"
+        
+        note_line = f"\n📝 <b>ចំណាំ:</b> {note}" if note else ""
+        tg_receipt = (
+            f"📋 <b>បច្ចុប្បន្នភាពការសងច្បាប់ (Leave Compensation)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>បុគ្គលិក:</b> <b>{target_emp_name}</b>\n"
+            f"⏱️ <b>បានសងលើកនេះ:</b> <b>{days_disp}</b>\n"
+            f"📊 <b>ស្ថានភាព:</b> <b>{status_label}</b>\n"
+            f"⏳ <b>នៅសល់ត្រូវសងបន្ត:</b> <b>{rem_disp}</b>\n"
+            f"👮‍♂️ <b>កត់ត្រាដោយ Admin:</b> {admin_name}"
+            f"{note_line}\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {now_str}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"ℹ️ <i>ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក AC BOMLU</i>"
+        )
+        send_telegram_notify(tg_receipt)
+        
+        return {
+            "success": True,
+            "message": f"បានកត់ត្រាការសង {days_disp} ជូន [{target_emp_name}] ជោគជ័យ! (នៅសល់ {rem_disp})",
+            "employee_name": target_emp_name,
+            "days_compensated": days_to_compensate,
+            "final_remaining_days": final_rem,
+            "status": status_label
+        }
+    except Exception as e:
+        print("record_leave_compensation error:", e)
+        return {"success": False, "message": f"កំហុសក្នុងការកត់ត្រាការសងច្បាប់: {e}"}
+
 def generate_weekend_leave_report() -> dict:
     """
     Weekly Leave Report for staff to compensate (ធ្វើការសង) on Saturday & Sunday.
@@ -270,7 +432,7 @@ def generate_weekend_leave_report() -> dict:
         # Only approved leaves must compensate on weekends! Pending and rejected are completely excluded!
         leaves = list(leaves_collection.find({"status": "approved"}).sort("_id", -1))
         
-        emp_comp = {}  # ename -> {"total_days": float, "reasons": list, "dates": list, "count": int}
+        emp_comp = {}  # ename -> {"total_days": float, "compensated_days": float, "remaining_days": float, "reasons": list, "dates": list, "count": int}
         raw_records = []
         for l in leaves:
             doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
@@ -283,7 +445,13 @@ def generate_weekend_leave_report() -> dict:
                 rsn = l.get("reason", "មិនបានបញ្ជាក់")
                 date_str = doc_date.strftime("%d/%m/%Y")
                 
+                comp_days = float(l.get("compensated_days", 0.0))
+                rem_days = max(0.0, days - comp_days)
+                comp_status = l.get("compensation_status") or ("fully_compensated" if rem_days <= 0 else ("partially_compensated" if comp_days > 0 else "uncompensated"))
+                
                 days_display = "កន្លះថ្ងៃ" if days == 0.5 else (f"{int(days)} ថ្ងៃ" if days.is_integer() else f"{days} ថ្ងៃ")
+                comp_display = "០ ថ្ងៃ" if comp_days <= 0 else ("កន្លះថ្ងៃ" if comp_days == 0.5 else (f"{int(comp_days)} ថ្ងៃ" if comp_days.is_integer() else f"{comp_days} ថ្ងៃ"))
+                rem_display = "០ ថ្ងៃ" if rem_days <= 0 else ("កន្លះថ្ងៃ" if rem_days == 0.5 else (f"{int(rem_days)} ថ្ងៃ" if rem_days.is_integer() else f"{rem_days} ថ្ងៃ"))
                 
                 raw_records.append({
                     "id": str(l["_id"]),
@@ -291,13 +459,20 @@ def generate_weekend_leave_report() -> dict:
                     "date": date_str,
                     "days": days_display,
                     "raw_days": days,
+                    "compensated_days": comp_display,
+                    "raw_compensated_days": comp_days,
+                    "remaining_days": rem_display,
+                    "raw_remaining_days": rem_days,
+                    "compensation_status": comp_status,
                     "reason": rsn,
                     "status": "approved"
                 })
                 
                 if ename not in emp_comp:
-                    emp_comp[ename] = {"total_days": 0.0, "reasons": [], "dates": [], "count": 0}
+                    emp_comp[ename] = {"total_days": 0.0, "compensated_days": 0.0, "remaining_days": 0.0, "reasons": [], "dates": [], "count": 0}
                 emp_comp[ename]["total_days"] += days
+                emp_comp[ename]["compensated_days"] += comp_days
+                emp_comp[ename]["remaining_days"] += rem_days
                 emp_comp[ename]["count"] += 1
                 if rsn not in emp_comp[ename]["reasons"]:
                     emp_comp[ename]["reasons"].append(rsn)
@@ -306,27 +481,47 @@ def generate_weekend_leave_report() -> dict:
                     
         compensate_list = []
         total_days_to_compensate = 0.0
+        active_staff_count = 0
         
         for ename, info in emp_comp.items():
             tot = info["total_days"]
-            total_days_to_compensate += tot
-            if tot <= 0.5:
+            comp_days = info["compensated_days"]
+            rem = info["remaining_days"]
+            
+            if rem > 0:
+                total_days_to_compensate += rem
+                active_staff_count += 1
+                
+            if rem <= 0:
+                comp_desc = "បានសងរួចរាល់គ្រប់ចំនួន ✅"
+                days_label = "០ ថ្ងៃ (រួចរាល់)"
+                comp_status = "fully_compensated"
+            elif rem <= 0.5:
                 comp_desc = "សង កន្លះថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
                 days_label = "កន្លះថ្ងៃ"
-            elif tot == 1.0:
+                comp_status = "partially_compensated" if comp_days > 0 else "uncompensated"
+            elif rem == 1.0:
                 comp_desc = "សង ១ ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
                 days_label = "១ ថ្ងៃ"
-            elif tot >= 2.0:
-                comp_desc = f"សង {int(tot) if tot.is_integer() else tot} ថ្ងៃ (ថ្ងៃសៅរ៍ & អាទិត្យ)"
-                days_label = f"{int(tot) if tot.is_integer() else tot} ថ្ងៃ"
+                comp_status = "partially_compensated" if comp_days > 0 else "uncompensated"
+            elif rem >= 2.0:
+                comp_desc = f"សង {int(rem) if rem.is_integer() else rem} ថ្ងៃ (ថ្ងៃសៅរ៍ & អាទិត្យ)"
+                days_label = f"{int(rem) if rem.is_integer() else rem} ថ្ងៃ"
+                comp_status = "partially_compensated" if comp_days > 0 else "uncompensated"
             else:
-                comp_desc = f"សង {tot} ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
-                days_label = f"{tot} ថ្ងៃ"
+                comp_desc = f"សង {rem} ថ្ងៃ (សៅរ៍ ឬ អាទិត្យ)"
+                days_label = f"{rem} ថ្ងៃ"
+                comp_status = "partially_compensated" if comp_days > 0 else "uncompensated"
                 
             compensate_list.append({
                 "employee_name": ename,
-                "days": days_label,
+                "days": f"{int(tot) if tot.is_integer() else tot} ថ្ងៃ" if tot != 0.5 else "កន្លះថ្ងៃ",
                 "raw_days": tot,
+                "compensated_days": f"{int(comp_days) if comp_days.is_integer() else comp_days} ថ្ងៃ" if comp_days != 0.5 else "កន្លះថ្ងៃ",
+                "raw_compensated_days": comp_days,
+                "remaining_days": days_label,
+                "raw_remaining_days": rem,
+                "compensation_status": comp_status,
                 "leave_count": info["count"],
                 "reason": ", ".join(info["reasons"]),
                 "status": "approved",
@@ -338,7 +533,7 @@ def generate_weekend_leave_report() -> dict:
         return {
             "report_type": "weekend_leave",
             "generated_at": now_cam.strftime("%d/%m/%Y %H:%M"),
-            "total_staff_count": len(compensate_list),
+            "total_staff_count": active_staff_count,
             "total_days_to_compensate": tot_days_display,
             "per_employee": compensate_list,
             "items": compensate_list,
@@ -350,19 +545,24 @@ def generate_weekend_leave_report() -> dict:
 
 def format_telegram_weekend_leave_report(data: dict) -> str:
     now_cam_str = data.get("generated_at", "")
-    items = data.get("items", [])
-    total_staff = data.get("total_staff_count", 0)
+    items = data.get("per_employee", data.get("items", []))
+    
+    # Filter ONLY active staff who still need to compensate (raw_remaining_days > 0)!
+    active_items = [it for it in items if it.get("raw_remaining_days", 0) > 0]
+    total_staff = len(active_items)
     total_days = data.get("total_days_to_compensate", 0)
     
     lines = []
-    for idx, item in enumerate(items, 1):
+    for idx, item in enumerate(active_items, 1):
+        comp_info = f" (បានសង {item['compensated_days']})" if item.get('raw_compensated_days', 0) > 0 else ""
         lines.append(
             f"{idx}. <b>{item['employee_name']}</b> (✅ បានអនុញ្ញាត {item.get('leave_count', 1)} ករណី)\n"
-            f"   • ច្បាប់ឈប់សរុប: <b>{item['days']}</b> (មូលហេតុ: {item['reason']})\n"
+            f"   • ច្បាប់ឈប់សរុប: <b>{item['days']}</b>{comp_info}\n"
+            f"   • <b>នៅសល់ត្រូវសង:</b> <b>{item['remaining_days']}</b>\n"
             f"   • <b>កាតព្វកិច្ច:</b> <b>{item['compensation']}</b>"
         )
         
-    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ដែលបានអនុញ្ញាតត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</i>"
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ដែលត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ (សងរួចរាល់គ្រប់គ្នា) 🎉</i>"
     
     return (
         f"📢 <b>របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍ (ថ្ងៃសៅរ៍ & អាទិត្យ)</b>\n"
@@ -374,6 +574,147 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"⚠️ <i>សូមបុគ្គលិកដែលមានឈ្មោះខាងលើ មកបំពេញការងារសងនៅថ្ងៃសៅរ៍ និងថ្ងៃអាទិត្យឱ្យបានទៀងទាត់!</i>"
     )
+
+def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional[str] = None, amount_to_repay: int = 0, admin_name: str = "Admin", note: str = "") -> dict:
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        now_str = now_cam.strftime("%d/%m/%Y %H:%M")
+        amount_to_repay = int(amount_to_repay)
+        if amount_to_repay <= 0:
+            return {"success": False, "message": "ចំនួនទឹកប្រាក់ត្រូវកាត់/សង ត្រូវតែធំជាង 0"}
+            
+        target_emp_name = ""
+        
+        if loan_id:
+            try:
+                ln = loans_collection.find_one({"_id": ObjectId(loan_id)})
+            except Exception:
+                ln = None
+            if not ln:
+                return {"success": False, "message": "រកមិនឃើញទិន្នន័យខ្ចីប្រាក់នេះទេ"}
+            if ln.get("status") != "approved":
+                return {"success": False, "message": "អាចកត់ត្រាការកាត់/សងបានតែលើសំណើដែល Admin បានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                
+            target_emp_name = (ln.get("employee_name") or "").strip()
+            tot_amt = int(ln.get("amount_khr", 0))
+            curr_paid = int(ln.get("paid_amount_khr", 0))
+            curr_rem = max(0, tot_amt - curr_paid)
+            
+            apply_amt = min(amount_to_repay, curr_rem)
+            new_paid = curr_paid + apply_amt
+            new_rem = max(0, tot_amt - new_paid)
+            new_status = "fully_paid" if new_rem <= 0 else "partially_paid"
+            
+            log_entry = {
+                "amount_repaid": apply_amt,
+                "total_paid_now": new_paid,
+                "remaining_amount_khr": new_rem,
+                "admin_name": admin_name,
+                "note": note,
+                "recorded_at": now_str
+            }
+            
+            loans_collection.update_one(
+                {"_id": ObjectId(loan_id)},
+                {
+                    "$set": {
+                        "paid_amount_khr": new_paid,
+                        "remaining_amount_khr": new_rem,
+                        "repayment_status": new_status
+                    },
+                    "$push": {"repayment_history": log_entry}
+                }
+            )
+            final_rem = new_rem
+            
+        elif employee_name:
+            target_emp_name = employee_name.strip()
+            loans = list(loans_collection.find({
+                "employee_name": target_emp_name,
+                "status": "approved",
+                "repayment_status": {"$ne": "fully_paid"}
+            }).sort("_id", 1))
+            
+            if not loans:
+                return {"success": False, "message": f"មិនមានទិន្នន័យខ្ចីប្រាក់ដែលត្រូវកាត់/សង សម្រាប់បុគ្គលិក [{target_emp_name}] ទេ"}
+                
+            amt_needed = amount_to_repay
+            for ln in loans:
+                if amt_needed <= 0:
+                    break
+                tot_amt = int(ln.get("amount_khr", 0))
+                curr_paid = int(ln.get("paid_amount_khr", 0))
+                curr_rem = max(0, tot_amt - curr_paid)
+                if curr_rem <= 0:
+                    continue
+                    
+                apply_amt = min(amt_needed, curr_rem)
+                new_paid = curr_paid + apply_amt
+                new_rem = max(0, tot_amt - new_paid)
+                new_status = "fully_paid" if new_rem <= 0 else "partially_paid"
+                
+                log_entry = {
+                    "amount_repaid": apply_amt,
+                    "total_paid_now": new_paid,
+                    "remaining_amount_khr": new_rem,
+                    "admin_name": admin_name,
+                    "note": note,
+                    "recorded_at": now_str
+                }
+                
+                loans_collection.update_one(
+                    {"_id": ln["_id"]},
+                    {
+                        "$set": {
+                            "paid_amount_khr": new_paid,
+                            "remaining_amount_khr": new_rem,
+                            "repayment_status": new_status
+                        },
+                        "$push": {"repayment_history": log_entry}
+                    }
+                )
+                amt_needed -= apply_amt
+                
+            active_loans = list(loans_collection.find({
+                "employee_name": target_emp_name,
+                "status": "approved"
+            }))
+            final_rem = sum(max(0, int(x.get("amount_khr", 0)) - int(x.get("paid_amount_khr", 0))) for x in active_loans)
+        else:
+            return {"success": False, "message": "ត្រូវផ្តល់ loan_id ឬ employee_name"}
+
+        amt_disp = f"{amount_to_repay:,} រៀល"
+        rem_disp = "០ រៀល (កាត់ដាច់ទាំងអស់ ✅)" if final_rem <= 0 else f"{final_rem:,} រៀល"
+        status_label = "កាត់ដាច់ទាំងអស់ ✅" if final_rem <= 0 else "កាត់បានខ្លះ ⏳"
+        
+        note_line = f"\n📝 <b>ចំណាំ:</b> {note}" if note else ""
+        tg_receipt = (
+            f"🧾 <b>បង្កាន់ដៃកាត់ប្រាក់ខែ / សងប្រាក់កម្ចី (Loan Repayment)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>បុគ្គលិក:</b> <b>{target_emp_name}</b>\n"
+            f"💵 <b>បានកាត់/សងលើកនេះ:</b> <b>{amt_disp}</b>\n"
+            f"📊 <b>ស្ថានភាព:</b> <b>{status_label}</b>\n"
+            f"⏳ <b>នៅសល់ជំពាក់ត្រូវកាត់បន្ត:</b> <b>{rem_disp}</b>\n"
+            f"👮‍♂️ <b>កត់ត្រាដោយ Admin:</b> {admin_name}"
+            f"{note_line}\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {now_str}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <i>ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក AC BOMLU</i>"
+        )
+        send_telegram_notify(tg_receipt)
+        
+        return {
+            "success": True,
+            "message": f"បានកត់ត្រាការកាត់/សងប្រាក់ {amt_disp} ជូន [{target_emp_name}] ជោគជ័យ! (នៅសល់ {rem_disp})",
+            "employee_name": target_emp_name,
+            "amount_repaid": amount_to_repay,
+            "final_remaining_amount": final_rem,
+            "status": status_label
+        }
+    except Exception as e:
+        print("record_loan_repayment error:", e)
+        return {"success": False, "message": f"កំហុសក្នុងការកត់ត្រាការកាត់/សងប្រាក់: {e}"}
 
 def generate_monthly_loan_report() -> dict:
     """
@@ -390,9 +731,9 @@ def generate_monthly_loan_report() -> dict:
         # STRICT: Only approved loans! Pending and rejected are completely excluded!
         loans = list(loans_collection.find({"status": "approved"}).sort("_id", -1))
         
-        emp_loans = {}  # ename -> {"total_amount": int, "count": int, "purposes": list, "dates": list}
+        emp_loans = {}  # ename -> {"total_amount": int, "paid_amount": int, "remaining_amount": int, "count": int, "purposes": list, "dates": list}
         month_items = []
-        total_amount = 0
+        total_remaining_to_deduct = 0
         
         for ln in loans:
             doc_dt = ln["_id"].generation_time.astimezone(cambodia_tz)
@@ -402,7 +743,11 @@ def generate_monthly_loan_report() -> dict:
                     amt_val = int(amt)
                 except (ValueError, TypeError):
                     amt_val = 0
-                total_amount += amt_val
+                    
+                paid_val = int(ln.get("paid_amount_khr", 0))
+                rem_val = max(0, amt_val - paid_val)
+                rep_status = ln.get("repayment_status") or ("fully_paid" if rem_val <= 0 else ("partially_paid" if paid_val > 0 else "unpaid"))
+                
                 ename = (ln.get("employee_name") or "").strip() or "បុគ្គលិក"
                 pur = ln.get("purpose", "មិនបានបញ្ជាក់")
                 date_str = doc_dt.strftime("%d/%m/%Y")
@@ -411,14 +756,19 @@ def generate_monthly_loan_report() -> dict:
                     "id": str(ln["_id"]),
                     "employee_name": ename,
                     "amount_khr": amt_val,
+                    "paid_amount_khr": paid_val,
+                    "remaining_amount_khr": rem_val,
+                    "repayment_status": rep_status,
                     "purpose": pur,
                     "status": "approved",
                     "date": date_str
                 })
                 
                 if ename not in emp_loans:
-                    emp_loans[ename] = {"total_amount": 0, "count": 0, "purposes": [], "dates": []}
+                    emp_loans[ename] = {"total_amount": 0, "paid_amount": 0, "remaining_amount": 0, "count": 0, "purposes": [], "dates": []}
                 emp_loans[ename]["total_amount"] += amt_val
+                emp_loans[ename]["paid_amount"] += paid_val
+                emp_loans[ename]["remaining_amount"] += rem_val
                 emp_loans[ename]["count"] += 1
                 if pur not in emp_loans[ename]["purposes"]:
                     emp_loans[ename]["purposes"].append(pur)
@@ -426,10 +776,21 @@ def generate_monthly_loan_report() -> dict:
                     emp_loans[ename]["dates"].append(date_str)
                     
         per_employee = []
+        active_borrowers_count = 0
         for ename, einfo in emp_loans.items():
+            rem = einfo["remaining_amount"]
+            paid = einfo["paid_amount"]
+            tot = einfo["total_amount"]
+            if rem > 0:
+                total_remaining_to_deduct += rem
+                active_borrowers_count += 1
+                
             per_employee.append({
                 "employee_name": ename,
-                "total_amount_khr": einfo["total_amount"],
+                "total_amount_khr": tot,
+                "total_paid_khr": paid,
+                "remaining_amount_khr": rem,
+                "repayment_status": "fully_paid" if rem <= 0 else ("partially_paid" if paid > 0 else "unpaid"),
                 "loan_count": einfo["count"],
                 "purpose": ", ".join(einfo["purposes"]),
                 "date": ", ".join(einfo["dates"]),
@@ -439,9 +800,9 @@ def generate_monthly_loan_report() -> dict:
         return {
             "report_type": "monthly_loan",
             "month_str": now_cam.strftime("%m/%Y"),
-            "total_borrowers": len(per_employee),
+            "total_borrowers": active_borrowers_count,
             "total_transactions": len(month_items),
-            "total_amount_khr": total_amount,
+            "total_amount_khr": total_remaining_to_deduct,
             "per_employee": per_employee,
             "items": month_items
         }
@@ -452,25 +813,30 @@ def generate_monthly_loan_report() -> dict:
 def format_telegram_monthly_loan_report(data: dict) -> str:
     month_str = data.get("month_str", "")
     per_emp = data.get("per_employee", [])
+    
+    # Only active borrowers with remaining debt!
+    active_emp = [it for it in per_emp if it.get("remaining_amount_khr", 0) > 0]
     total_amt = data.get("total_amount_khr", 0)
-    total_borrowers = data.get("total_borrowers", 0)
+    total_borrowers = len(active_emp)
     
     lines = []
-    for idx, item in enumerate(per_emp, 1):
+    for idx, item in enumerate(active_emp, 1):
+        paid_info = f" (បានកាត់/សងរួច: {item['total_paid_khr']:,} ៛)" if item.get('total_paid_khr', 0) > 0 else ""
         lines.append(
             f"{idx}. <b>{item['employee_name']}</b> (✅ បានអនុញ្ញាត {item['loan_count']} ករណី)\n"
-            f"   • ទឹកប្រាក់សរុបត្រូវកាត់: <b>{item['total_amount_khr']:,} រៀល</b>\n"
+            f"   • ខ្ចីសរុប: <b>{item['total_amount_khr']:,} រៀល</b>{paid_info}\n"
+            f"   • <b>នៅសល់ត្រូវកាត់ប្រាក់ខែ:</b> <b>{item['remaining_amount_khr']:,} រៀល</b>\n"
             f"   • គោលបំណង: {item['purpose']}\n"
             f"   • កាលបរិច្ឆេទ: {item['date']}"
         )
         
-    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានសំណើខ្ចីប្រាក់ដែលបានអនុញ្ញាតក្នុងខែនេះទេ</i>"
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកជំពាក់ប្រាក់ខ្ចីដែលត្រូវកាត់ប្រាក់ខែក្នុងខែនេះទេ (កាត់ដាច់គ្រប់គ្នា) 🎉</i>"
     
     return (
         f"💰 <b>របាយការណ៍ខ្ចីប្រាក់ប្រចាំខែ (សម្រាប់កាត់ប្រាក់ខែចុងខែ {month_str})</b>\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"💵 <b>ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ:</b> <b>{total_amt:,} រៀល</b> (អនុញ្ញាតប៉ុណ្ណោះ ✅)\n"
-        f"👥 <b>ចំនួនបុគ្គលិកខ្ចីប្រាក់:</b> {total_borrowers} នាក់\n\n"
+        f"👥 <b>ចំនួនបុគ្គលិកត្រូវកាត់ប្រាក់:</b> {total_borrowers} នាក់\n\n"
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យដើម្បីកាត់ប្រាក់ខែបុគ្គលិកខាងលើឱ្យបានត្រឹមត្រូវ!</i>"
@@ -838,6 +1204,32 @@ async def api_send_monthly_loan_report():
     msg = format_telegram_monthly_loan_report(data)
     send_telegram_notify(msg)
     return {"message": "បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ប្រចាំខែទៅ Telegram រួចរាល់!"}
+
+@app.post("/api/reports/compensate-leave")
+async def api_compensate_leave(req: LeaveCompensationRequest):
+    res = record_leave_compensation(
+        leave_id=req.leave_id,
+        employee_name=req.employee_name,
+        days_to_compensate=req.days_to_compensate,
+        admin_name=req.admin_name or "Admin",
+        note=req.note or ""
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+@app.post("/api/reports/repay-loan")
+async def api_repay_loan(req: LoanRepaymentRequest):
+    res = record_loan_repayment(
+        loan_id=req.loan_id,
+        employee_name=req.employee_name,
+        amount_to_repay=req.amount_to_repay,
+        admin_name=req.admin_name or "Admin",
+        note=req.note or ""
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
 
 # ===== Telegram Mini App Web Forms (Option 4) =====
 LEAVE_FORM_HTML = """<!DOCTYPE html>
@@ -1725,7 +2117,7 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan"] or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or is_leave_btn or is_loan_btn
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
@@ -1745,6 +2137,51 @@ async def telegram_webhook(req: Request):
             loan_rep_data = generate_monthly_loan_report()
             loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
             send_telegram_notify(loan_tg_msg, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Admin Leave Compensation Command (/compensate [ឈ្មោះ] [ចំនួនថ្ងៃ])
+        if clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង"):
+            sender_id = from_user.get("id")
+            s = settings_collection.find_one({"_id": "app_settings"})
+            token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+            if not is_telegram_admin(token, chat_id_str, sender_id):
+                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការសងច្បាប់បាន។", target_chat_id=chat_id_str)
+                return {"ok": True}
+            parts = text.split()
+            if len(parts) >= 3:
+                try:
+                    c_days = float(parts[-1])
+                    c_emp = " ".join(parts[1:-1]).strip()
+                    res = record_leave_compensation(employee_name=c_emp, days_to_compensate=c_days, admin_name=sender_name)
+                    if not res.get("success"):
+                        send_telegram_notify(f"⚠️ {res.get('message')}", target_chat_id=chat_id_str)
+                except ValueError:
+                    send_telegram_notify("⚠️ សូមបញ្ជាក់ចំនួនថ្ងៃជាលេខឱ្យបានត្រឹមត្រូវ (ឧ. /compensate Kem Borey 1)", target_chat_id=chat_id_str)
+            else:
+                send_telegram_notify("📌 <b>ទម្រង់ប្រើប្រាស់:</b> <code>/compensate [ឈ្មោះបុគ្គលិក] [ចំនួនថ្ងៃ]</code>\nឧទាហរណ៍៖ <code>/compensate Kem Borey 1</code> ឬ <code>/សង Kem Borey 0.5</code>", target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Admin Loan Repayment Command (/repay [ឈ្មោះ] [ចំនួនទឹកប្រាក់])
+        if clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ"):
+            sender_id = from_user.get("id")
+            s = settings_collection.find_one({"_id": "app_settings"})
+            token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+            if not is_telegram_admin(token, chat_id_str, sender_id):
+                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការកាត់/សងប្រាក់បាន។", target_chat_id=chat_id_str)
+                return {"ok": True}
+            parts = text.split()
+            if len(parts) >= 3:
+                try:
+                    raw_amt_str = parts[-1].replace(",", "").replace("៛", "").replace("$", "").strip()
+                    r_amt = int(raw_amt_str)
+                    r_emp = " ".join(parts[1:-1]).strip()
+                    res = record_loan_repayment(employee_name=r_emp, amount_to_repay=r_amt, admin_name=sender_name)
+                    if not res.get("success"):
+                        send_telegram_notify(f"⚠️ {res.get('message')}", target_chat_id=chat_id_str)
+                except ValueError:
+                    send_telegram_notify("⚠️ សូមបញ្ជាក់ចំនួនទឹកប្រាក់ជាលេខរៀលឱ្យបានត្រឹមត្រូវ (ឧ. /repay Kem Borey 50000)", target_chat_id=chat_id_str)
+            else:
+                send_telegram_notify("📌 <b>ទម្រង់ប្រើប្រាស់:</b> <code>/repay [ឈ្មោះបុគ្គលិក] [ចំនួនទឹកប្រាក់]</code>\nឧទាហរណ៍៖ <code>/repay Kem Borey 50000</code> ឬ <code>/កាត់លុយ Kem Borey 100000</code>", target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
@@ -2373,6 +2810,11 @@ async def telegram_webhook(req: Request):
                 f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
                 f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
                 f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
+                f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់ Admin:</b>\n"
+                f"• <code>/weekend_report</code> — របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍\n"
+                f"• <code>/month_report</code> — របាយការណ៍កាត់ប្រាក់ខែប្រចាំខែ\n"
+                f"• <code>/compensate [ឈ្មោះ] [ចំនួនថ្ងៃ]</code> — កត់ត្រាការសងច្បាប់ (ឧ. /compensate Borey 1)\n"
+                f"• <code>/repay [ឈ្មោះ] [ចំនួនទឹកប្រាក់]</code> — កត់ត្រាការកាត់/សងប្រាក់ (ឧ. /repay Borey 50000)\n\n"
                 f"🚀 ប្រព័ន្ធនឹងកត់ត្រាចូល Dashboard របស់ AC BOMLU ដោយស្វ័យប្រវត្តិ!"
             )
             send_telegram_notify(help_msg, target_chat_id=chat_id_str)
@@ -3145,15 +3587,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <tr>
                   <th class="py-3 px-4">#</th>
                   <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
-                  <th class="py-3 px-4">ថ្ងៃសុំច្បាប់</th>
-                  <th class="py-3 px-4">ចំនួនថ្ងៃឈប់</th>
-                  <th class="py-3 px-4">មូលហេតុ</th>
+                  <th class="py-3 px-4">ច្បាប់សរុប</th>
+                  <th class="py-3 px-4">បានសងរួច</th>
+                  <th class="py-3 px-4">នៅសល់ត្រូវសង</th>
                   <th class="py-3 px-4">កាតព្វកិច្ចធ្វើការសង</th>
                   <th class="py-3 px-4">ស្ថានភាព</th>
+                  <th class="py-3 px-4">សកម្មភាព</th>
                 </tr>
               </thead>
               <tbody id="rep-leave-tbody" class="divide-y divide-slate-100 text-gray-700">
-                <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
+                <tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
               </tbody>
             </table>
           </div>
@@ -3257,15 +3700,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <tr>
                   <th class="py-3 px-4">#</th>
                   <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
-                  <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
-                  <th class="py-3 px-4">ចំនួនដងខ្ចី</th>
+                  <th class="py-3 px-4">ខ្ចីសរុប</th>
+                  <th class="py-3 px-4">បានកាត់រួច</th>
+                  <th class="py-3 px-4">នៅសល់ត្រូវកាត់</th>
                   <th class="py-3 px-4">គោលបំណង</th>
-                  <th class="py-3 px-4">ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ</th>
                   <th class="py-3 px-4">ស្ថានភាព</th>
+                  <th class="py-3 px-4">សកម្មភាព</th>
                 </tr>
               </thead>
               <tbody id="rep-loan-tbody" class="divide-y divide-slate-100 text-gray-700">
-                <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
+                <tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>
               </tbody>
             </table>
           </div>
@@ -3395,6 +3839,152 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
         <button type="submit"
           class="btn-primary flex-1 py-2.5 rounded-xl text-sm font-medium transition">រក្សាទុក</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Compensate Leave Modal -->
+<div id="compensate-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-amber-50">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
+        <span class="material-symbols-outlined text-amber-600">event_repeat</span> កត់ត្រាការសងច្បាប់ (Leave Compensation)
+      </h3>
+      <button onclick="closeModal('compensate-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitCompensateLeave(event)" class="p-6 space-y-4">
+      <input type="hidden" id="comp-leave-id" value="" />
+      <input type="hidden" id="comp-leave-rem-raw" value="0" />
+      
+      <!-- Employee Info Banner -->
+      <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-amber-700 font-medium">ឈ្មោះបុគ្គលិក</p>
+          <p class="text-sm font-bold text-gray-900" id="comp-leave-emp-name">-</p>
+        </div>
+        <div class="text-right">
+          <p class="text-xs text-amber-700 font-medium">នៅសល់ត្រូវសង</p>
+          <p class="text-sm font-bold text-amber-700" id="comp-leave-rem-disp">0 ថ្ងៃ</p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Days -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1.5">ជម្រើសចំនួនថ្ងៃសងរហ័ស</label>
+        <div class="grid grid-cols-4 gap-2">
+          <button type="button" onclick="setCompDays(0.5)" class="py-2 px-2 text-xs font-bold rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 transition">កន្លះថ្ងៃ</button>
+          <button type="button" onclick="setCompDays(1)" class="py-2 px-2 text-xs font-bold rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 transition">១ ថ្ងៃ</button>
+          <button type="button" onclick="setCompDays(2)" class="py-2 px-2 text-xs font-bold rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 transition">២ ថ្ងៃ</button>
+          <button type="button" onclick="setCompDays('all')" class="py-2 px-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition">សងគ្រប់</button>
+        </div>
+      </div>
+
+      <!-- Custom Days Input -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ចំនួនថ្ងៃដែលបានសងលើកនេះ (ថ្ងៃ)</label>
+        <input id="comp-leave-days" type="number" step="0.5" min="0.5" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 transition" />
+      </div>
+
+      <!-- Admin Name -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ឈ្មោះ Admin អ្នកកត់ត្រា</label>
+        <input id="comp-leave-admin" type="text" required placeholder="ឈ្មោះ Admin..."
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 transition" />
+      </div>
+
+      <!-- Optional Note -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">សម្គាល់ / ចំណាំបន្ថែម (ស្រេចចិត្ត)</label>
+        <input id="comp-leave-note" type="text" placeholder="ឧ. បានមកធ្វើការសងថ្ងៃសៅរ៍ពេញមួយថ្ងៃ..."
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 transition" />
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-3 pt-2">
+        <button type="button" onclick="closeModal('compensate-modal')"
+          class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-comp-submit"
+          class="bg-amber-500 hover:bg-amber-600 text-white flex-1 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow transition flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-sm">check_circle</span>
+          <span>រក្សាទុក & ជូនដំណឹង</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Repay Loan Modal -->
+<div id="repay-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-indigo-50">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
+        <span class="material-symbols-outlined text-indigo-600">payments</span> កត់ត្រាការកាត់ប្រាក់ខែ / សងប្រាក់កម្ចី
+      </h3>
+      <button onclick="closeModal('repay-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitRepayLoan(event)" class="p-6 space-y-4">
+      <input type="hidden" id="repay-loan-id" value="" />
+      <input type="hidden" id="repay-loan-rem-raw" value="0" />
+      
+      <!-- Employee Info Banner -->
+      <div class="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-indigo-700 font-medium">ឈ្មោះបុគ្គលិក</p>
+          <p class="text-sm font-bold text-gray-900" id="repay-loan-emp-name">-</p>
+        </div>
+        <div class="text-right">
+          <p class="text-xs text-indigo-700 font-medium">នៅសល់ជំពាក់ត្រូវកាត់</p>
+          <p class="text-sm font-bold text-indigo-700" id="repay-loan-rem-disp">0 ៛</p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Amounts -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1.5">ជម្រើសចំនួនទឹកប្រាក់រហ័ស</label>
+        <div class="grid grid-cols-4 gap-2">
+          <button type="button" onclick="setRepayAmt(50000)" class="py-2 px-1 text-xs font-bold rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 transition">50,000 ៛</button>
+          <button type="button" onclick="setRepayAmt(100000)" class="py-2 px-1 text-xs font-bold rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 transition">100,000 ៛</button>
+          <button type="button" onclick="setRepayAmt(200000)" class="py-2 px-1 text-xs font-bold rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 transition">200,000 ៛</button>
+          <button type="button" onclick="setRepayAmt('all')" class="py-2 px-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">កាត់ដាច់</button>
+        </div>
+      </div>
+
+      <!-- Custom Amount Input -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ចំនួនទឹកប្រាក់កាត់/សងលើកនេះ (រៀល)</label>
+        <input id="repay-loan-amount" type="number" step="1000" min="1000" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
+      </div>
+
+      <!-- Admin Name -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ឈ្មោះ Admin អ្នកកត់ត្រា</label>
+        <input id="repay-loan-admin" type="text" required placeholder="ឈ្មោះ Admin..."
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
+      </div>
+
+      <!-- Optional Note -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">សម្គាល់ / ចំណាំបន្ថែម (ស្រេចចិត្ត)</label>
+        <input id="repay-loan-note" type="text" placeholder="ឧ. កាត់ប្រាក់ខែប្រចាំខែ ១១..."
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-3 pt-2">
+        <button type="button" onclick="closeModal('repay-modal')"
+          class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-repay-submit"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white flex-1 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow transition flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-sm">check_circle</span>
+          <span>រក្សាទុក & ជូនដំណឹង</span>
+        </button>
       </div>
     </form>
   </div>
@@ -4040,11 +4630,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <tr>
           <th class="py-3 px-4">#</th>
           <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
-          <th class="py-3 px-4">កាលបរិច្ឆេទសុំច្បាប់</th>
-          <th class="py-3 px-4">ចំនួនថ្ងៃឈប់សរុប</th>
-          <th class="py-3 px-4">មូលហេតុ</th>
+          <th class="py-3 px-4">ច្បាប់សរុប</th>
+          <th class="py-3 px-4">បានសងរួច</th>
+          <th class="py-3 px-4">នៅសល់ត្រូវសង</th>
           <th class="py-3 px-4">កាតព្វកិច្ចធ្វើការសង</th>
           <th class="py-3 px-4">ស្ថានភាព</th>
+          <th class="py-3 px-4">សកម្មភាព</th>
         </tr>
       `;
 
@@ -4054,30 +4645,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យច្បាប់ដែលត្រូវបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យច្បាប់ដែលត្រូវបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
         return;
       }
 
-      tbody.innerHTML = list.map((it, idx) => `
-        <tr class="hover:bg-slate-50/70 transition">
-          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
-          <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
-          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
-          <td class="py-3 px-4 font-bold text-amber-600">${it.days}</td>
-          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
-          <td class="py-3 px-4">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
-              <span class="material-symbols-outlined text-sm">event_repeat</span>
-              ${it.compensation}
-            </span>
-          </td>
-          <td class="py-3 px-4">
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
-            </span>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = list.map((it, idx) => {
+        const isCleared = (it.raw_remaining_days || 0) <= 0;
+        const statusBadge = isCleared 
+          ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> សងរួចរាល់ ✅</span>'
+          : ((it.raw_compensated_days || 0) > 0
+            ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> សងបានខ្លះ ⏳</span>'
+            : '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> មិនទាន់សង</span>');
+
+        const actionBtn = !isCleared
+          ? `<button onclick="openCompensateModal('${escapeHtml(it.employee_name)}', null, ${it.raw_remaining_days})" class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition">
+              <span class="material-symbols-outlined text-xs">edit_calendar</span>
+              <span>កត់ត្រាការសង</span>
+            </button>`
+          : `<span class="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="material-symbols-outlined text-sm">task_alt</span> រួចរាល់</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50/70 transition">
+            <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+            <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
+            <td class="py-3 px-4 text-gray-600 font-medium">${it.days}</td>
+            <td class="py-3 px-4 font-semibold text-emerald-600">${it.compensated_days || '0 ថ្ងៃ'}</td>
+            <td class="py-3 px-4 font-bold text-amber-600">${it.remaining_days}</td>
+            <td class="py-3 px-4">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${isCleared ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
+                <span class="material-symbols-outlined text-xs">${isCleared ? 'task_alt' : 'event_repeat'}</span>
+                ${it.compensation}
+              </span>
+            </td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4">${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
 
     } else {
       // Detailed all approved records
@@ -4086,9 +4690,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <th class="py-3 px-4">#</th>
           <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
           <th class="py-3 px-4">កាលបរិច្ឆេទសុំច្បាប់</th>
-          <th class="py-3 px-4">ចំនួនថ្ងៃ</th>
+          <th class="py-3 px-4">ចំនួនថ្ងៃសុំ</th>
+          <th class="py-3 px-4">បានសង</th>
+          <th class="py-3 px-4">នៅសល់</th>
           <th class="py-3 px-4">មូលហេតុ</th>
           <th class="py-3 px-4">ស្ថានភាព</th>
+          <th class="py-3 px-4">សកម្មភាព</th>
         </tr>
       `;
 
@@ -4098,24 +4705,103 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">គ្មានកំណត់ត្រាច្បាប់ដែលត្រូវបានអនុញ្ញាតទេ</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400">គ្មានកំណត់ត្រាច្បាប់ដែលត្រូវបានអនុញ្ញាតទេ</td></tr>';
         return;
       }
 
-      tbody.innerHTML = list.map((it, idx) => `
-        <tr class="hover:bg-slate-50/70 transition">
-          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
-          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
-          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
-          <td class="py-3 px-4 font-bold text-amber-600">${it.days}</td>
-          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
-          <td class="py-3 px-4">
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
-            </span>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = list.map((it, idx) => {
+        const isCleared = (it.raw_remaining_days || 0) <= 0;
+        const statusBadge = isCleared 
+          ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">សងរួចរាល់ ✅</span>'
+          : ((it.raw_compensated_days || 0) > 0
+            ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">សងបានខ្លះ ⏳</span>'
+            : '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">មិនទាន់សង</span>');
+
+        const actionBtn = !isCleared
+          ? `<button onclick="openCompensateModal('${escapeHtml(it.employee_name)}', '${it.id}', ${it.raw_remaining_days})" class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition">
+              <span class="material-symbols-outlined text-xs">edit_calendar</span>
+              <span>កត់ត្រាការសង</span>
+            </button>`
+          : `<span class="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="material-symbols-outlined text-sm">task_alt</span> រួចរាល់</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50/70 transition">
+            <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+            <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+            <td class="py-3 px-4 font-medium text-gray-700">${it.days}</td>
+            <td class="py-3 px-4 font-semibold text-emerald-600">${it.compensated_days || '0 ថ្ងៃ'}</td>
+            <td class="py-3 px-4 font-bold text-amber-600">${it.remaining_days}</td>
+            <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4">${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // Leave Compensation Modal Functions
+  function openCompensateModal(empName, leaveId, remainingDays) {
+    document.getElementById('comp-leave-emp-name').textContent = empName;
+    document.getElementById('comp-leave-rem-disp').textContent = remainingDays + ' ថ្ងៃ';
+    document.getElementById('comp-leave-rem-raw').value = remainingDays;
+    document.getElementById('comp-leave-id').value = leaveId || '';
+    document.getElementById('comp-leave-days').value = remainingDays > 0 ? (remainingDays >= 1 ? 1 : 0.5) : 1;
+    document.getElementById('comp-leave-days').max = remainingDays;
+    document.getElementById('comp-leave-admin').value = localStorage.getItem('ac_admin_name') || 'Admin';
+    document.getElementById('comp-leave-note').value = '';
+    openModal('compensate-modal');
+  }
+
+  function setCompDays(val) {
+    const rawRem = parseFloat(document.getElementById('comp-leave-rem-raw').value) || 1;
+    if (val === 'all') {
+      document.getElementById('comp-leave-days').value = rawRem;
+    } else {
+      document.getElementById('comp-leave-days').value = Math.min(rawRem, val);
+    }
+  }
+
+  async function submitCompensateLeave(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-comp-submit');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">refresh</span><span>កំពុងរក្សាទុក...</span>';
+
+    const empName = document.getElementById('comp-leave-emp-name').textContent;
+    const leaveId = document.getElementById('comp-leave-id').value || null;
+    const days = parseFloat(document.getElementById('comp-leave-days').value);
+    const admin = document.getElementById('comp-leave-admin').value.trim() || 'Admin';
+    const note = document.getElementById('comp-leave-note').value.trim();
+
+    localStorage.setItem('ac_admin_name', admin);
+
+    try {
+      const res = await fetch('/api/reports/compensate-leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leave_id: leaveId,
+          employee_name: empName,
+          days_to_compensate: days,
+          admin_name: admin,
+          note: note
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'បានកត់ត្រាការសងច្បាប់ជោគជ័យ!');
+        closeModal('compensate-modal');
+        await loadWeekendLeaveReport();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការកត់ត្រា', true);
+      }
+    } catch(err) {
+      showToast('បរាជ័យ: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined text-sm">check_circle</span><span>រក្សាទុក & ជូនដំណឹង</span>';
     }
   }
 
@@ -4123,7 +4809,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function loadWeekendLeaveReport() {
     const tbody = document.getElementById('rep-leave-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
     try {
       const res = await fetch('/api/reports/weekend-leave');
       const data = await res.json();
@@ -4144,7 +4830,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       
       renderLeaveReportTable();
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
     }
   }
 
@@ -4199,11 +4885,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <tr>
           <th class="py-3 px-4">#</th>
           <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
-          <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
-          <th class="py-3 px-4">ចំនួនដងខ្ចី</th>
+          <th class="py-3 px-4">ខ្ចីសរុប</th>
+          <th class="py-3 px-4">បានកាត់រួច</th>
+          <th class="py-3 px-4">នៅសល់ត្រូវកាត់</th>
           <th class="py-3 px-4">គោលបំណង</th>
-          <th class="py-3 px-4">ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ</th>
           <th class="py-3 px-4">ស្ថានភាព</th>
+          <th class="py-3 px-4">សកម្មភាព</th>
         </tr>
       `;
 
@@ -4213,29 +4900,42 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យខ្ចីប្រាក់ដែលបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យខ្ចីប្រាក់ដែលបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
         return;
       }
 
-      tbody.innerHTML = list.map((it, idx) => `
-        <tr class="hover:bg-slate-50/70 transition">
-          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
-          <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
-          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
-          <td class="py-3 px-4 font-semibold text-slate-700">${it.loan_count} ករណី</td>
-          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
-          <td class="py-3 px-4 font-bold text-indigo-600">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              - ${Number(it.total_amount_khr).toLocaleString()} ៛
-            </span>
-          </td>
-          <td class="py-3 px-4">
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
-            </span>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = list.map((it, idx) => {
+        const isCleared = (it.remaining_amount_khr || 0) <= 0;
+        const statusBadge = isCleared 
+          ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> កាត់ដាច់រួចរាល់ ✅</span>'
+          : ((it.total_paid_khr || 0) > 0
+            ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> កាត់បានខ្លះ ⏳</span>'
+            : '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> មិនទាន់កាត់/សង</span>');
+
+        const actionBtn = !isCleared
+          ? `<button onclick="openRepayModal('${escapeHtml(it.employee_name)}', null, ${it.remaining_amount_khr})" class="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition">
+              <span class="material-symbols-outlined text-xs">payments</span>
+              <span>កត់ត្រាការកាត់/សង</span>
+            </button>`
+          : `<span class="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="material-symbols-outlined text-sm">task_alt</span> រួចរាល់</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50/70 transition">
+            <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+            <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
+            <td class="py-3 px-4 text-gray-600 font-medium">${Number(it.total_amount_khr).toLocaleString()} ៛</td>
+            <td class="py-3 px-4 font-semibold text-emerald-600">${Number(it.total_paid_khr || 0).toLocaleString()} ៛</td>
+            <td class="py-3 px-4 font-bold text-indigo-600">
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${isCleared ? 'bg-slate-100 text-slate-500' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}">
+                ${isCleared ? '០ ៛' : '- ' + Number(it.remaining_amount_khr).toLocaleString() + ' ៛'}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4">${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
 
     } else {
       // All approved transactions
@@ -4245,9 +4945,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
           <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
           <th class="py-3 px-4">ចំនួនទឹកប្រាក់ខ្ចី</th>
+          <th class="py-3 px-4">បានកាត់រួច</th>
+          <th class="py-3 px-4">នៅសល់ត្រូវកាត់</th>
           <th class="py-3 px-4">គោលបំណង</th>
-          <th class="py-3 px-4">ចំនួនត្រូវកាត់ប្រាក់ខែ</th>
           <th class="py-3 px-4">ស្ថានភាព</th>
+          <th class="py-3 px-4">សកម្មភាព</th>
         </tr>
       `;
 
@@ -4257,29 +4959,107 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានសំណើខ្ចីប្រាក់ដែលបានអនុញ្ញាតក្នុងខែនេះទេ</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400">គ្មានសំណើខ្ចីប្រាក់ដែលបានអនុញ្ញាតក្នុងខែនេះទេ</td></tr>';
         return;
       }
 
-      tbody.innerHTML = list.map((it, idx) => `
-        <tr class="hover:bg-slate-50/70 transition">
-          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
-          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
-          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
-          <td class="py-3 px-4 font-bold text-emerald-600">${Number(it.amount_khr).toLocaleString()} ៛</td>
-          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
-          <td class="py-3 px-4 font-bold text-indigo-600">
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              - ${Number(it.amount_khr).toLocaleString()} ៛
-            </span>
-          </td>
-          <td class="py-3 px-4">
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
-            </span>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = list.map((it, idx) => {
+        const isCleared = (it.remaining_amount_khr || 0) <= 0;
+        const statusBadge = isCleared 
+          ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">កាត់ដាច់រួចរាល់ ✅</span>'
+          : ((it.paid_amount_khr || 0) > 0
+            ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">កាត់បានខ្លះ ⏳</span>'
+            : '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">មិនទាន់កាត់/សង</span>');
+
+        const actionBtn = !isCleared
+          ? `<button onclick="openRepayModal('${escapeHtml(it.employee_name)}', '${it.id}', ${it.remaining_amount_khr})" class="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition">
+              <span class="material-symbols-outlined text-xs">payments</span>
+              <span>កត់ត្រាការកាត់/សង</span>
+            </button>`
+          : `<span class="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="material-symbols-outlined text-sm">task_alt</span> រួចរាល់</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50/70 transition">
+            <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+            <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+            <td class="py-3 px-4 font-medium text-gray-700">${Number(it.amount_khr).toLocaleString()} ៛</td>
+            <td class="py-3 px-4 font-semibold text-emerald-600">${Number(it.paid_amount_khr || 0).toLocaleString()} ៛</td>
+            <td class="py-3 px-4 font-bold text-indigo-600">
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${isCleared ? 'bg-slate-100 text-slate-500' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}">
+                ${isCleared ? '០ ៛' : '- ' + Number(it.remaining_amount_khr).toLocaleString() + ' ៛'}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4">${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // Loan Repayment Modal Functions
+  function openRepayModal(empName, loanId, remainingAmt) {
+    document.getElementById('repay-loan-emp-name').textContent = empName;
+    document.getElementById('repay-loan-rem-disp').textContent = Number(remainingAmt).toLocaleString() + ' ៛';
+    document.getElementById('repay-loan-rem-raw').value = remainingAmt;
+    document.getElementById('repay-loan-id').value = loanId || '';
+    document.getElementById('repay-loan-amount').value = remainingAmt;
+    document.getElementById('repay-loan-amount').max = remainingAmt;
+    document.getElementById('repay-loan-admin').value = localStorage.getItem('ac_admin_name') || 'Admin';
+    document.getElementById('repay-loan-note').value = '';
+    openModal('repay-modal');
+  }
+
+  function setRepayAmt(val) {
+    const rawRem = parseInt(document.getElementById('repay-loan-rem-raw').value) || 0;
+    if (val === 'all') {
+      document.getElementById('repay-loan-amount').value = rawRem;
+    } else {
+      document.getElementById('repay-loan-amount').value = Math.min(rawRem, val);
+    }
+  }
+
+  async function submitRepayLoan(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-repay-submit');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">refresh</span><span>កំពុងរក្សាទុក...</span>';
+
+    const empName = document.getElementById('repay-loan-emp-name').textContent;
+    const loanId = document.getElementById('repay-loan-id').value || null;
+    const amount = parseInt(document.getElementById('repay-loan-amount').value);
+    const admin = document.getElementById('repay-loan-admin').value.trim() || 'Admin';
+    const note = document.getElementById('repay-loan-note').value.trim();
+
+    localStorage.setItem('ac_admin_name', admin);
+
+    try {
+      const res = await fetch('/api/reports/repay-loan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loan_id: loanId,
+          employee_name: empName,
+          amount_to_repay: amount,
+          admin_name: admin,
+          note: note
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'បានកត់ត្រាការកាត់/សងប្រាក់ជោគជ័យ!');
+        closeModal('repay-modal');
+        await loadMonthlyLoanReport();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការកត់ត្រា', true);
+      }
+    } catch(err) {
+      showToast('បរាជ័យ: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined text-sm">check_circle</span><span>រក្សាទុក & ជូនដំណឹង</span>';
     }
   }
 
@@ -4287,7 +5067,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function loadMonthlyLoanReport() {
     const tbody = document.getElementById('rep-loan-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
     try {
       const res = await fetch('/api/reports/monthly-loan');
       const data = await res.json();
@@ -4308,7 +5088,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       
       renderLoanReportTable();
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
     }
   }
 
