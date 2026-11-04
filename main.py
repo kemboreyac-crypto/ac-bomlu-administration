@@ -259,17 +259,19 @@ def generate_daily_morning_briefing() -> str:
 def generate_weekend_leave_report() -> dict:
     """
     Weekly Leave Report for staff to compensate (ធ្វើការសង) on Saturday & Sunday.
-    Covers APPROVED leaves within the last 7 days.
+    STRICT: ONLY APPROVED LEAVES! Pending and rejected leaves are STRICTLY EXCLUDED.
+    Grouped strictly by distinct employee name.
     """
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         start_date = (now_cam - timedelta(days=7)).date()
         
-        # Only approved leaves must compensate on weekends
+        # Only approved leaves must compensate on weekends! Pending and rejected are completely excluded!
         leaves = list(leaves_collection.find({"status": "approved"}).sort("_id", -1))
         
-        emp_comp = {}  # ename -> {"total_days": float, "reasons": list, "dates": list}
+        emp_comp = {}  # ename -> {"total_days": float, "reasons": list, "dates": list, "count": int}
+        raw_records = []
         for l in leaves:
             doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
             if doc_date >= start_date:
@@ -281,9 +283,22 @@ def generate_weekend_leave_report() -> dict:
                 rsn = l.get("reason", "មិនបានបញ្ជាក់")
                 date_str = doc_date.strftime("%d/%m/%Y")
                 
+                days_display = "កន្លះថ្ងៃ" if days == 0.5 else (f"{int(days)} ថ្ងៃ" if days.is_integer() else f"{days} ថ្ងៃ")
+                
+                raw_records.append({
+                    "id": str(l["_id"]),
+                    "employee_name": ename,
+                    "date": date_str,
+                    "days": days_display,
+                    "raw_days": days,
+                    "reason": rsn,
+                    "status": "approved"
+                })
+                
                 if ename not in emp_comp:
-                    emp_comp[ename] = {"total_days": 0.0, "reasons": [], "dates": []}
+                    emp_comp[ename] = {"total_days": 0.0, "reasons": [], "dates": [], "count": 0}
                 emp_comp[ename]["total_days"] += days
+                emp_comp[ename]["count"] += 1
                 if rsn not in emp_comp[ename]["reasons"]:
                     emp_comp[ename]["reasons"].append(rsn)
                 if date_str not in emp_comp[ename]["dates"]:
@@ -312,6 +327,7 @@ def generate_weekend_leave_report() -> dict:
                 "employee_name": ename,
                 "days": days_label,
                 "raw_days": tot,
+                "leave_count": info["count"],
                 "reason": ", ".join(info["reasons"]),
                 "status": "approved",
                 "date": ", ".join(info["dates"]),
@@ -324,11 +340,13 @@ def generate_weekend_leave_report() -> dict:
             "generated_at": now_cam.strftime("%d/%m/%Y %H:%M"),
             "total_staff_count": len(compensate_list),
             "total_days_to_compensate": tot_days_display,
-            "items": compensate_list
+            "per_employee": compensate_list,
+            "items": compensate_list,
+            "raw_records": raw_records
         }
     except Exception as e:
         print("generate_weekend_leave_report error:", e)
-        return {"report_type": "weekend_leave", "items": [], "total_staff_count": 0, "total_days_to_compensate": 0}
+        return {"report_type": "weekend_leave", "items": [], "per_employee": [], "raw_records": [], "total_staff_count": 0, "total_days_to_compensate": 0}
 
 def format_telegram_weekend_leave_report(data: dict) -> str:
     now_cam_str = data.get("generated_at", "")
@@ -339,18 +357,18 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
     lines = []
     for idx, item in enumerate(items, 1):
         lines.append(
-            f"{idx}. <b>{item['employee_name']}</b> (✅)\n"
-            f"   • ច្បាប់ឈប់: <b>{item['days']}</b> (មូលហេតុ: {item['reason']})\n"
+            f"{idx}. <b>{item['employee_name']}</b> (✅ បានអនុញ្ញាត {item.get('leave_count', 1)} ករណី)\n"
+            f"   • ច្បាប់ឈប់សរុប: <b>{item['days']}</b> (មូលហេតុ: {item['reason']})\n"
             f"   • <b>កាតព្វកិច្ច:</b> <b>{item['compensation']}</b>"
         )
         
-    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</i>"
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ដែលបានអនុញ្ញាតត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</i>"
     
     return (
         f"📢 <b>របាយការណ៍ច្បាប់ចុងសប្តាហ៍ (បុគ្គលិកត្រូវធ្វើការសង ថ្ងៃសៅរ៍-អាទិត្យ)</b>\n"
         f"📅 <b>កាលបរិច្ឆេទ:</b> {now_cam_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👥 <b>បុគ្គលិកត្រូវធ្វើការសង:</b> {total_staff} នាក់ (សរុប {total_days} ថ្ងៃ)\n\n"
+        f"👥 <b>បុគ្គលិកត្រូវធ្វើការសង:</b> {total_staff} នាក់ (សរុប {total_days} ថ្ងៃ - អនុញ្ញាតប៉ុណ្ណោះ ✅)\n\n"
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"⚠️ <i>សូមបុគ្គលិកដែលមានឈ្មោះខាងលើ មកបំពេញការងារសងនៅថ្ងៃសៅរ៍ និងថ្ងៃអាទិត្យឱ្យបានទៀងទាត់!</i>"
@@ -359,6 +377,8 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
 def generate_monthly_loan_report() -> dict:
     """
     Monthly Loan Report for month-end payroll deduction.
+    STRICT: ONLY APPROVED LOANS. Pending and rejected loans are STRICTLY EXCLUDED.
+    Returns both per_employee (grouped by employee) and items (all approved transactions).
     """
     try:
         cambodia_tz = timezone(timedelta(hours=7))
@@ -366,8 +386,10 @@ def generate_monthly_loan_report() -> dict:
         cur_year = now_cam.year
         cur_month = now_cam.month
         
-        loans = list(loans_collection.find({"status": {"$in": ["approved", "pending"]}}).sort("_id", -1))
+        # STRICT: Only approved loans! Pending and rejected are completely excluded!
+        loans = list(loans_collection.find({"status": "approved"}).sort("_id", -1))
         
+        emp_loans = {}  # ename -> {"total_amount": int, "count": int, "purposes": list, "dates": list}
         month_items = []
         total_amount = 0
         
@@ -375,48 +397,78 @@ def generate_monthly_loan_report() -> dict:
             doc_dt = ln["_id"].generation_time.astimezone(cambodia_tz)
             if doc_dt.year == cur_year and doc_dt.month == cur_month:
                 amt = ln.get("amount_khr", 0)
-                total_amount += amt
+                try:
+                    amt_val = int(amt)
+                except (ValueError, TypeError):
+                    amt_val = 0
+                total_amount += amt_val
+                ename = (ln.get("employee_name") or "").strip() or "បុគ្គលិក"
+                pur = ln.get("purpose", "មិនបានបញ្ជាក់")
+                date_str = doc_dt.strftime("%d/%m/%Y")
+                
                 month_items.append({
                     "id": str(ln["_id"]),
-                    "employee_name": ln.get("employee_name", "បុគ្គលិក"),
-                    "amount_khr": amt,
-                    "purpose": ln.get("purpose", "មិនបានបញ្ជាក់"),
-                    "status": ln.get("status", "approved"),
-                    "date": doc_dt.strftime("%d/%m/%Y")
+                    "employee_name": ename,
+                    "amount_khr": amt_val,
+                    "purpose": pur,
+                    "status": "approved",
+                    "date": date_str
                 })
                 
+                if ename not in emp_loans:
+                    emp_loans[ename] = {"total_amount": 0, "count": 0, "purposes": [], "dates": []}
+                emp_loans[ename]["total_amount"] += amt_val
+                emp_loans[ename]["count"] += 1
+                if pur not in emp_loans[ename]["purposes"]:
+                    emp_loans[ename]["purposes"].append(pur)
+                if date_str not in emp_loans[ename]["dates"]:
+                    emp_loans[ename]["dates"].append(date_str)
+                    
+        per_employee = []
+        for ename, einfo in emp_loans.items():
+            per_employee.append({
+                "employee_name": ename,
+                "total_amount_khr": einfo["total_amount"],
+                "loan_count": einfo["count"],
+                "purpose": ", ".join(einfo["purposes"]),
+                "date": ", ".join(einfo["dates"]),
+                "status": "approved"
+            })
+            
         return {
             "report_type": "monthly_loan",
             "month_str": now_cam.strftime("%m/%Y"),
-            "total_borrowers": len(month_items),
+            "total_borrowers": len(per_employee),
+            "total_transactions": len(month_items),
             "total_amount_khr": total_amount,
+            "per_employee": per_employee,
             "items": month_items
         }
     except Exception as e:
         print("generate_monthly_loan_report error:", e)
-        return {"report_type": "monthly_loan", "items": [], "total_borrowers": 0, "total_amount_khr": 0}
+        return {"report_type": "monthly_loan", "items": [], "per_employee": [], "total_borrowers": 0, "total_transactions": 0, "total_amount_khr": 0}
 
 def format_telegram_monthly_loan_report(data: dict) -> str:
     month_str = data.get("month_str", "")
-    items = data.get("items", [])
+    per_emp = data.get("per_employee", [])
     total_amt = data.get("total_amount_khr", 0)
     total_borrowers = data.get("total_borrowers", 0)
     
     lines = []
-    for idx, item in enumerate(items, 1):
-        st = "✅" if item["status"] == "approved" else "🟡"
+    for idx, item in enumerate(per_emp, 1):
         lines.append(
-            f"{idx}. <b>{item['employee_name']}</b> ({st})\n"
-            f"   • ទឹកប្រាក់ខ្ចី: <b>{item['amount_khr']:,} រៀល</b>\n"
-            f"   • គោលបំណង: {item['purpose']}"
+            f"{idx}. <b>{item['employee_name']}</b> (✅ បានអនុញ្ញាត {item['loan_count']} ករណី)\n"
+            f"   • ទឹកប្រាក់សរុបត្រូវកាត់: <b>{item['total_amount_khr']:,} រៀល</b>\n"
+            f"   • គោលបំណង: {item['purpose']}\n"
+            f"   • កាលបរិច្ឆេទ: {item['date']}"
         )
         
-    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានសំណើខ្ចីប្រាក់ក្នុងខែនេះទេ</i>"
+    items_str = "\n\n".join(lines) if lines else "  <i>គ្មានសំណើខ្ចីប្រាក់ដែលបានអនុញ្ញាតក្នុងខែនេះទេ</i>"
     
     return (
         f"💰 <b>របាយការណ៍ខ្ចីប្រាក់ប្រចាំខែ (សម្រាប់កាត់ប្រាក់ខែចុងខែ {month_str})</b>\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"💵 <b>ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ:</b> <b>{total_amt:,} រៀល</b>\n"
+        f"💵 <b>ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ:</b> <b>{total_amt:,} រៀល</b> (អនុញ្ញាតប៉ុណ្ណោះ ✅)\n"
         f"👥 <b>ចំនួនបុគ្គលិកខ្ចីប្រាក់:</b> {total_borrowers} នាក់\n\n"
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
@@ -3058,16 +3110,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Table Container -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
-              <span class="material-symbols-outlined text-amber-600">format_list_bulleted</span>
-              បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ (កាតព្វកិច្ចសងថ្ងៃសៅរ៍ & អាទិត្យ)
-            </h3>
-            <span class="text-xs text-gray-400" id="rep-leave-updated-at"></span>
+          <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
+                <span class="material-symbols-outlined text-amber-600">format_list_bulleted</span>
+                <span>បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ (កាតព្វកិច្ចសងថ្ងៃសៅរ៍ & អាទិត្យ)</span>
+              </h3>
+              <p class="text-xs text-gray-400 mt-0.5" id="rep-leave-updated-at"></p>
+            </div>
+            <!-- View Mode Switcher & Filter -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                <button type="button" id="btn-leave-mode-emp" onclick="setLeaveViewMode('per_employee')"
+                  class="px-3 py-1.5 rounded-lg bg-amber-500 text-white shadow-sm flex items-center gap-1 transition">
+                  <span class="material-symbols-outlined text-sm">person</span>
+                  <span>ឈ្មោះម្នាក់ៗ (សង្ខេប)</span>
+                </button>
+                <button type="button" id="btn-leave-mode-all" onclick="setLeaveViewMode('all')"
+                  class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition">
+                  <span class="material-symbols-outlined text-sm">view_list</span>
+                  <span>កំណត់ត្រាលម្អិតទាំងអស់</span>
+                </button>
+              </div>
+              <select id="rep-leave-emp-filter" onchange="renderLeaveReportTable()"
+                class="text-xs border border-slate-200 rounded-xl px-3 py-1.5 bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                <option value="">-- បង្ហាញបុគ្គលិកទាំងអស់ --</option>
+              </select>
+            </div>
           </div>
           <div class="overflow-x-auto w-full">
             <table class="w-full text-left text-xs sm:text-sm">
-              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs">
+              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs" id="rep-leave-thead">
                 <tr>
                   <th class="py-3 px-4">#</th>
                   <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
@@ -3149,23 +3222,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Table Container -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
-              <span class="material-symbols-outlined text-indigo-600">format_list_bulleted</span>
-              បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែនេះ (កាត់ប្រាក់ខែចុងខែ)
-            </h3>
-            <span class="text-xs text-gray-400" id="rep-loan-updated-at"></span>
+          <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
+                <span class="material-symbols-outlined text-indigo-600">format_list_bulleted</span>
+                <span>បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែនេះ (កាត់ប្រាក់ខែចុងខែ)</span>
+              </h3>
+              <p class="text-xs text-gray-400 mt-0.5" id="rep-loan-updated-at"></p>
+            </div>
+            <!-- View Mode Switcher & Filter -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                <button type="button" id="btn-loan-mode-emp" onclick="setLoanViewMode('per_employee')"
+                  class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm flex items-center gap-1 transition">
+                  <span class="material-symbols-outlined text-sm">person</span>
+                  <span>ឈ្មោះម្នាក់ៗ (សង្ខេប)</span>
+                </button>
+                <button type="button" id="btn-loan-mode-all" onclick="setLoanViewMode('all')"
+                  class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition">
+                  <span class="material-symbols-outlined text-sm">view_list</span>
+                  <span>សរុប (ប្រតិបត្តិការទាំងអស់)</span>
+                </button>
+              </div>
+              <select id="rep-loan-emp-filter" onchange="renderLoanReportTable()"
+                class="text-xs border border-slate-200 rounded-xl px-3 py-1.5 bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="">-- បង្ហាញបុគ្គលិកទាំងអស់ --</option>
+              </select>
+            </div>
           </div>
           <div class="overflow-x-auto w-full">
             <table class="w-full text-left text-xs sm:text-sm">
-              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs">
+              <thead class="bg-slate-50 text-gray-500 font-medium border-b border-slate-100 text-xs" id="rep-loan-thead">
                 <tr>
                   <th class="py-3 px-4">#</th>
                   <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
                   <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
-                  <th class="py-3 px-4">ចំនួនទឹកប្រាក់ខ្ចី</th>
+                  <th class="py-3 px-4">ចំនួនដងខ្ចី</th>
                   <th class="py-3 px-4">គោលបំណង</th>
-                  <th class="py-3 px-4">ចំនួនត្រូវកាត់ប្រាក់ខែ</th>
+                  <th class="py-3 px-4">ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ</th>
                   <th class="py-3 px-4">ស្ថានភាព</th>
                 </tr>
               </thead>
@@ -3908,29 +4002,67 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     });
   }
 
-  // ===== Reports: Weekend Leave Compensation =====
-  async function loadWeekendLeaveReport() {
+  // ===== Reports State =====
+  let leaveReportData = null;
+  let currentLeaveViewMode = 'per_employee';
+
+  let loanReportData = null;
+  let currentLoanViewMode = 'per_employee';
+
+  // Switch Leave View Mode
+  function setLeaveViewMode(mode) {
+    currentLeaveViewMode = mode;
+    const btnEmp = document.getElementById('btn-leave-mode-emp');
+    const btnAll = document.getElementById('btn-leave-mode-all');
+    if (btnEmp && btnAll) {
+      if (mode === 'per_employee') {
+        btnEmp.className = 'px-3 py-1.5 rounded-lg bg-amber-500 text-white shadow-sm flex items-center gap-1 transition';
+        btnAll.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition';
+      } else {
+        btnEmp.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition';
+        btnAll.className = 'px-3 py-1.5 rounded-lg bg-amber-500 text-white shadow-sm flex items-center gap-1 transition';
+      }
+    }
+    renderLeaveReportTable();
+  }
+
+  // Render Leave Report Table
+  function renderLeaveReportTable() {
+    const thead = document.getElementById('rep-leave-thead');
     const tbody = document.getElementById('rep-leave-tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
-    try {
-      const res = await fetch('/api/reports/weekend-leave');
-      const data = await res.json();
-      document.getElementById('rep-leave-staff-count').textContent = (data.total_staff_count || 0) + ' នាក់';
-      document.getElementById('rep-leave-days-count').textContent = (data.total_days_to_compensate || 0) + ' ថ្ងៃ';
-      document.getElementById('rep-leave-updated-at').textContent = 'ធ្វើបច្ចុប្បន្នភាព: ' + (data.generated_at || '');
-      
-      const items = data.items || [];
-      if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានបុគ្គលិកសុំច្បាប់ដែលត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</td></tr>';
+    if (!tbody || !leaveReportData) return;
+
+    const selectedEmp = (document.getElementById('rep-leave-emp-filter')?.value || '').trim();
+
+    if (currentLeaveViewMode === 'per_employee') {
+      thead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4">#</th>
+          <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+          <th class="py-3 px-4">កាលបរិច្ឆេទសុំច្បាប់</th>
+          <th class="py-3 px-4">ចំនួនថ្ងៃឈប់សរុប</th>
+          <th class="py-3 px-4">មូលហេតុ</th>
+          <th class="py-3 px-4">កាតព្វកិច្ចធ្វើការសង</th>
+          <th class="py-3 px-4">ស្ថានភាព</th>
+        </tr>
+      `;
+
+      let list = leaveReportData.per_employee || leaveReportData.items || [];
+      if (selectedEmp) {
+        list = list.filter(it => it.employee_name === selectedEmp);
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យច្បាប់ដែលត្រូវបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
         return;
       }
-      tbody.innerHTML = items.map((it, idx) => `
+
+      tbody.innerHTML = list.map((it, idx) => `
         <tr class="hover:bg-slate-50/70 transition">
           <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
-          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+          <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
           <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
-          <td class="py-3 px-4 font-semibold text-amber-600">${it.days} ថ្ងៃ</td>
+          <td class="py-3 px-4 font-bold text-amber-600">${it.days}</td>
           <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
           <td class="py-3 px-4">
             <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
@@ -3938,9 +4070,78 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               ${it.compensation}
             </span>
           </td>
-          <td class="py-3 px-4">${statusBadge(it.status)}</td>
+          <td class="py-3 px-4">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
+            </span>
+          </td>
         </tr>
       `).join('');
+
+    } else {
+      // Detailed all approved records
+      thead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4">#</th>
+          <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+          <th class="py-3 px-4">កាលបរិច្ឆេទសុំច្បាប់</th>
+          <th class="py-3 px-4">ចំនួនថ្ងៃ</th>
+          <th class="py-3 px-4">មូលហេតុ</th>
+          <th class="py-3 px-4">ស្ថានភាព</th>
+        </tr>
+      `;
+
+      let list = leaveReportData.raw_records || [];
+      if (selectedEmp) {
+        list = list.filter(it => it.employee_name === selectedEmp);
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">គ្មានកំណត់ត្រាច្បាប់ដែលត្រូវបានអនុញ្ញាតទេ</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map((it, idx) => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+          <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
+          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+          <td class="py-3 px-4 font-bold text-amber-600">${it.days}</td>
+          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.reason)}">${escapeHtml(it.reason)}</td>
+          <td class="py-3 px-4">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
+            </span>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Load Weekend Leave Report
+  async function loadWeekendLeaveReport() {
+    const tbody = document.getElementById('rep-leave-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    try {
+      const res = await fetch('/api/reports/weekend-leave');
+      const data = await res.json();
+      leaveReportData = data;
+      document.getElementById('rep-leave-staff-count').textContent = (data.total_staff_count || 0) + ' នាក់';
+      document.getElementById('rep-leave-days-count').textContent = (data.total_days_to_compensate || 0) + ' ថ្ងៃ';
+      document.getElementById('rep-leave-updated-at').textContent = 'ធ្វើបច្ចុប្បន្នភាព: ' + (data.generated_at || '');
+      
+      // Populate employee filter dropdown
+      const filterSelect = document.getElementById('rep-leave-emp-filter');
+      if (filterSelect) {
+        const curVal = filterSelect.value;
+        const empSet = new Set((data.per_employee || data.items || []).map(it => it.employee_name));
+        filterSelect.innerHTML = '<option value="">-- បង្ហាញបុគ្គលិកទាំងអស់ --</option>' +
+          Array.from(empSet).map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
+        if (curVal && empSet.has(curVal)) filterSelect.value = curVal;
+      }
+      
+      renderLeaveReportTable();
     } catch(e) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
     }
@@ -3967,24 +4168,99 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  // ===== Reports: Monthly Loan Payroll Deduction =====
-  async function loadMonthlyLoanReport() {
+  // Switch Loan View Mode
+  function setLoanViewMode(mode) {
+    currentLoanViewMode = mode;
+    const btnEmp = document.getElementById('btn-loan-mode-emp');
+    const btnAll = document.getElementById('btn-loan-mode-all');
+    if (btnEmp && btnAll) {
+      if (mode === 'per_employee') {
+        btnEmp.className = 'px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm flex items-center gap-1 transition';
+        btnAll.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition';
+      } else {
+        btnEmp.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1 transition';
+        btnAll.className = 'px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm flex items-center gap-1 transition';
+      }
+    }
+    renderLoanReportTable();
+  }
+
+  // Render Loan Report Table
+  function renderLoanReportTable() {
+    const thead = document.getElementById('rep-loan-thead');
     const tbody = document.getElementById('rep-loan-tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
-    try {
-      const res = await fetch('/api/reports/monthly-loan');
-      const data = await res.json();
-      document.getElementById('rep-loan-total-amt').textContent = (data.total_amount_khr || 0).toLocaleString() + ' ៛';
-      document.getElementById('rep-loan-borrowers-count').textContent = (data.total_borrowers || 0) + ' នាក់';
-      document.getElementById('rep-loan-updated-at').textContent = 'ខែ: ' + (data.month_str || '');
-      
-      const items = data.items || [];
-      if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានសំណើខ្ចីប្រាក់ក្នុងខែនេះទេ</td></tr>';
+    if (!tbody || !loanReportData) return;
+
+    const selectedEmp = (document.getElementById('rep-loan-emp-filter')?.value || '').trim();
+
+    if (currentLoanViewMode === 'per_employee') {
+      thead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4">#</th>
+          <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+          <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
+          <th class="py-3 px-4">ចំនួនដងខ្ចី</th>
+          <th class="py-3 px-4">គោលបំណង</th>
+          <th class="py-3 px-4">ទឹកប្រាក់សរុបត្រូវកាត់ប្រាក់ខែ</th>
+          <th class="py-3 px-4">ស្ថានភាព</th>
+        </tr>
+      `;
+
+      let list = loanReportData.per_employee || [];
+      if (selectedEmp) {
+        list = list.filter(it => it.employee_name === selectedEmp);
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានទិន្នន័យខ្ចីប្រាក់ដែលបានអនុញ្ញាតសម្រាប់បុគ្គលិកនេះទេ</td></tr>';
         return;
       }
-      tbody.innerHTML = items.map((it, idx) => `
+
+      tbody.innerHTML = list.map((it, idx) => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
+          <td class="py-3 px-4 font-bold text-gray-800">${escapeHtml(it.employee_name)}</td>
+          <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+          <td class="py-3 px-4 font-semibold text-slate-700">${it.loan_count} ករណី</td>
+          <td class="py-3 px-4 text-gray-600 max-w-xs truncate" title="${escapeHtml(it.purpose)}">${escapeHtml(it.purpose)}</td>
+          <td class="py-3 px-4 font-bold text-indigo-600">
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              - ${Number(it.total_amount_khr).toLocaleString()} ៛
+            </span>
+          </td>
+          <td class="py-3 px-4">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
+            </span>
+          </td>
+        </tr>
+      `).join('');
+
+    } else {
+      // All approved transactions
+      thead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4">#</th>
+          <th class="py-3 px-4">ឈ្មោះបុគ្គលិក</th>
+          <th class="py-3 px-4">កាលបរិច្ឆេទខ្ចី</th>
+          <th class="py-3 px-4">ចំនួនទឹកប្រាក់ខ្ចី</th>
+          <th class="py-3 px-4">គោលបំណង</th>
+          <th class="py-3 px-4">ចំនួនត្រូវកាត់ប្រាក់ខែ</th>
+          <th class="py-3 px-4">ស្ថានភាព</th>
+        </tr>
+      `;
+
+      let list = loanReportData.items || [];
+      if (selectedEmp) {
+        list = list.filter(it => it.employee_name === selectedEmp);
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">គ្មានសំណើខ្ចីប្រាក់ដែលបានអនុញ្ញាតក្នុងខែនេះទេ</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map((it, idx) => `
         <tr class="hover:bg-slate-50/70 transition">
           <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
           <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
@@ -3996,9 +4272,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               - ${Number(it.amount_khr).toLocaleString()} ៛
             </span>
           </td>
-          <td class="py-3 px-4">${statusBadge(it.status)}</td>
+          <td class="py-3 px-4">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> អនុញ្ញាតិ
+            </span>
+          </td>
         </tr>
       `).join('');
+    }
+  }
+
+  // Load Monthly Loan Report
+  async function loadMonthlyLoanReport() {
+    const tbody = document.getElementById('rep-loan-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    try {
+      const res = await fetch('/api/reports/monthly-loan');
+      const data = await res.json();
+      loanReportData = data;
+      document.getElementById('rep-loan-total-amt').textContent = (data.total_amount_khr || 0).toLocaleString() + ' ៛';
+      document.getElementById('rep-loan-borrowers-count').textContent = (data.total_borrowers || 0) + ' នាក់';
+      document.getElementById('rep-loan-updated-at').textContent = 'ខែ: ' + (data.month_str || '');
+      
+      // Populate employee filter dropdown
+      const filterSelect = document.getElementById('rep-loan-emp-filter');
+      if (filterSelect) {
+        const curVal = filterSelect.value;
+        const empSet = new Set((data.per_employee || []).map(it => it.employee_name));
+        filterSelect.innerHTML = '<option value="">-- បង្ហាញបុគ្គលិកទាំងអស់ --</option>' +
+          Array.from(empSet).map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
+        if (curVal && empSet.has(curVal)) filterSelect.value = curVal;
+      }
+      
+      renderLoanReportTable();
     } catch(e) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">បរាជ័យក្នុងការទាញយក: ${e.message}</td></tr>`;
     }
