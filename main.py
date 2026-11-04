@@ -5147,7 +5147,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const rawText = document.getElementById('bulk-emp-names').value;
     const pos = document.getElementById('bulk-emp-position').value || 'បុគ្គលិក';
-    const names = rawText.split(/[\n,]+/).map(n => n.trim()).filter(Boolean);
+    const names = rawText.split(/[\\n,]+/).map(n => n.trim()).filter(Boolean);
     if (!names.length) {
       showToast('សូមបញ្ចូលឈ្មោះយ៉ាងហោចណាស់ម្នាក់!', 'error');
       return;
