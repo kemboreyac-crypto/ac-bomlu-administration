@@ -2,6 +2,8 @@ import os
 import json
 import re
 import base64
+import asyncio
+from datetime import datetime, timezone, timedelta
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
@@ -90,12 +92,13 @@ def is_telegram_admin(token: str, chat_id: str, user_id: int) -> bool:
         print("Check admin error:", e)
     return False
 
-def send_telegram_notify(text: str, reply_markup: dict = None):
+def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: str = None):
     try:
         s = settings_collection.find_one({"_id": "app_settings"})
         token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
-        chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
-        if not token or not chat_id:
+        group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
+        dest_chat_id = target_chat_id or group_chat_id
+        if not token or not dest_chat_id:
             return
             
         # Default persistent keyboard buttons if no custom markup provided
@@ -110,7 +113,7 @@ def send_telegram_notify(text: str, reply_markup: dict = None):
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
-            "chat_id": chat_id,
+            "chat_id": dest_chat_id,
             "text": text,
             "parse_mode": "HTML",
             "reply_markup": reply_markup
@@ -119,6 +122,121 @@ def send_telegram_notify(text: str, reply_markup: dict = None):
         urllib.request.urlopen(req, timeout=8)
     except Exception as e:
         print(f"Telegram notify error: {e}")
+
+def check_leave_conflicts(emp_name: str) -> str:
+    """Feature 4: Alert Admin if multiple staff take leave on the same day!"""
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        today_date = datetime.now(cambodia_tz).date()
+        today_str = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
+        
+        recent_leaves = list(leaves_collection.find({
+            "status": {"$in": ["approved", "pending"]},
+            "employee_name": {"$ne": emp_name}
+        }, sort=[("_id", -1)]).limit(15))
+        
+        conflict_names = []
+        for l in recent_leaves:
+            doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
+            if doc_date == today_date or l.get("date") == today_str:
+                ename = l.get("employee_name", "").strip()
+                if ename and ename not in conflict_names:
+                    conflict_names.append(ename)
+                    
+        if conflict_names:
+            names_str = ", ".join(conflict_names)
+            return f"\n⚠️ <b>ចំណាំ:</b> ថ្ងៃនេះមានបុគ្គលិក <b>[{names_str}]</b> បានសុំច្បាប់រួចហើយ សូមពិចារណាមុននឹងអនុញ្ញាតិ!\n"
+    except Exception as e:
+        print("Check leave conflicts error:", e)
+    return ""
+
+def get_employee_self_service_report(emp_name: str) -> str:
+    """Feature 5: Employee self-service inquiry for personal leave & loan totals."""
+    try:
+        user_leaves = list(leaves_collection.find({"employee_name": emp_name}))
+        total_leave_requests = len(user_leaves)
+        approved_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "approved")
+        pending_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "pending")
+        
+        user_loans = list(loans_collection.find({"employee_name": emp_name}))
+        approved_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "approved")
+        pending_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "pending")
+        
+        return (
+            f"👤 <b>ព័ត៌មានផ្ទាល់ខ្លួន:</b> {emp_name}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📝 <b>ប្រវត្តិច្បាប់ឈប់សម្រាក:</b>\n"
+            f"• បានអនុញ្ញាតិ (Approved): <b>{approved_leave_days} ថ្ងៃ</b>\n"
+            f"• កំពុងរង់ចាំ (Pending): <b>{pending_leave_days} ថ្ងៃ</b>\n"
+            f"• សំណើសុំសរុប: <b>{total_leave_requests} លើក</b>\n\n"
+            f"💰 <b>ប្រវត្តិខ្ចីប្រាក់ / បុរេប្រទាន:</b>\n"
+            f"• ទឹកប្រាក់បានអនុញ្ញាតិ: <b>{approved_loan_amt:,} រៀល</b>\n"
+            f"• ទឹកប្រាក់កំពុងរង់ចាំ: <b>{pending_loan_amt:,} រៀល</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"ℹ️ <i>ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក AC BOMLU</i>"
+        )
+    except Exception as e:
+        return f"⚠️ មិនអាចទាញយកទិន្នន័យបានទេ: {e}"
+
+def generate_daily_morning_briefing() -> str:
+    """Feature 3: Daily morning summary of attendance and leaves for Admins."""
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        today_date = now_cam.date()
+        today_str = now_cam.strftime("%d/%m/%Y")
+        
+        total_emp = employees_collection.count_documents({})
+        
+        all_leaves = list(leaves_collection.find({"status": {"$in": ["approved", "pending"]}}))
+        today_leaves = []
+        for l in all_leaves:
+            doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
+            if doc_date == today_date or l.get("date") == now_cam.strftime("%Y-%m-%d"):
+                ename = l.get("employee_name", "")
+                days = l.get("days", 1)
+                st = "✅" if l.get("status") == "approved" else "🟡"
+                today_leaves.append(f"{ename} ({days} ថ្ងៃ {st})")
+                
+        leave_count = len(today_leaves)
+        leave_list_str = "\n  • " + "\n  • ".join(today_leaves) if today_leaves else " គ្មានទេ"
+        
+        pending_loans = list(loans_collection.find({"status": "pending"}))
+        pending_loan_count = len(pending_loans)
+        pending_loan_amt = sum(ln.get("amount_khr", 0) for ln in pending_loans)
+        
+        return (
+            f"☀️ <b>អរុណសួស្តី Admin & ក្រុមការងារ AC BOMLU!</b>\n"
+            f"📊 <b>របាយការណ៍ស្ថានភាពបុគ្គលិកប្រចាំថ្ងៃ ({today_str}):</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"👥 <b>បុគ្គលិកសរុបក្នុងប្រព័ន្ធ:</b> {total_emp} នាក់\n"
+            f"📝 <b>បុគ្គលិកសុំច្បាប់ថ្ងៃនេះ ({leave_count} នាក់):</b>{leave_list_str}\n"
+            f"💰 <b>សំណើខ្ចីប្រាក់រង់ចាំពិនិត្យ:</b> {pending_loan_count} ករណី ({pending_loan_amt:,} ៛)\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💪 <i>សូមជូនពរឱ្យដំណើរការការងារថ្ងៃនេះទទួលបានជោគជ័យ និងរលូនល្អ!</i>"
+        )
+    except Exception as e:
+        return f"⚠️ មិនអាចបង្កើតរបាយការណ៍ពេលព្រឹកបានទេ: {e}"
+
+async def morning_briefing_scheduler():
+    """Background loop sending briefing at 08:30 AM Cambodia time."""
+    cambodia_tz = timezone(timedelta(hours=7))
+    last_sent_date = ""
+    while True:
+        try:
+            now_cam = datetime.now(cambodia_tz)
+            today_str = now_cam.strftime("%Y-%m-%d")
+            if now_cam.hour == 8 and now_cam.minute >= 30 and last_sent_date != today_str:
+                briefing = generate_daily_morning_briefing()
+                send_telegram_notify(briefing)
+                last_sent_date = today_str
+        except Exception as e:
+            print("Morning briefing scheduler error:", e)
+        await asyncio.sleep(60)
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(morning_briefing_scheduler())
 
 # ===== API Routes =====
 @app.get("/api/stats")
@@ -398,6 +516,12 @@ async def test_telegram(payload: TelegramTestRequest):
                 return {"success": False, "message": f"Telegram API error: {resp_body}"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"មិនអាចផ្ញើសារបាន: {str(e)}")
+
+@app.post("/api/send-briefing")
+async def send_briefing_api():
+    briefing = generate_daily_morning_briefing()
+    send_telegram_notify(briefing)
+    return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!"}
 
 # ===== Telegram Mini App Web Forms (Option 4) =====
 LEAVE_FORM_HTML = """<!DOCTYPE html>
@@ -781,13 +905,13 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
         "You are the official Smart HR & Staff Assistant for 'AC BOMLU' (ក្រុមហ៊ុន សេវាបូមលូ និងដឹកជញ្ជូន AC BOMLU).\n"
         "Your role is to assist staff with leave requests, loan requests, and general HR questions politely and accurately in Khmer.\n\n"
         "When analyzing a message (text or audio from a staff member):\n"
-        "1. Determine their intent: 'leave' (សុំច្បាប់), 'loan' (ខ្ចីប្រាក់), 'hr_query' (សួរព័ត៌មាន/ច្បាប់), or 'general_chat' (ជជែកទូទៅ).\n"
+        "1. Determine their intent: 'leave' (សុំច្បាប់), 'loan' (ខ្ចីប្រាក់), 'self_query' (សួររកមើលទិន្នន័យច្បាប់/លុយខ្ចីផ្ទាល់ខ្លួន), 'hr_query' (សួរព័ត៌មាន/ច្បាប់ទូទៅ), or 'general_chat' (ជជែកទូទៅ).\n"
         "2. If intent is 'leave', extract: days (integer, default 1), reason (short clear Khmer summary).\n"
         "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (short clear Khmer purpose).\n"
         "4. Always write a warm, polite Khmer response in 'response_text' (use 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n\n"
         "CRITICAL: Always output strictly valid JSON matching this schema:\n"
         "{\n"
-        '  "intent": "leave" | "loan" | "hr_query" | "general_chat",\n'
+        '  "intent": "leave" | "loan" | "self_query" | "hr_query" | "general_chat",\n'
         '  "days": 1,\n'
         '  "reason": "...",\n'
         '  "amount_khr": 100000,\n'
@@ -907,13 +1031,17 @@ async def telegram_webhook(req: Request):
                 cq_user_id = str(cq_user.get("id"))
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
                     "employee_name": cq_name,
                     "reason": rsn,
                     "days": days,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 leave_id = str(l_res.inserted_id)
+                conflict_alert = check_leave_conflicts(cq_name)
                 adm_btn = {
                     "inline_keyboard": [[
                         {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
@@ -925,6 +1053,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {rsn}\n"
+                    f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
                 send_telegram_notify(reply, reply_markup=adm_btn)
@@ -1104,13 +1233,43 @@ async def telegram_webhook(req: Request):
                 send_telegram_notify(welcome_msg)
             return {"ok": True}
 
+        chat = message.get("chat", {})
+        chat_type = chat.get("type", "group")
+        chat_id_str = str(chat.get("id"))
+        is_private = (chat_type == "private")
+        
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
         clean_cmd = text.split('@')[0].strip().lower()
 
+        bot_username = "ac_bomlu_administration_bot"
+        is_reply_to_bot = bool(message.get("reply_to_message", {}).get("from", {}).get("is_bot"))
+        is_mentioned = ("@" in text and bot_username.lower() in text.lower()) or is_reply_to_bot
+        is_hr_topic = any(w in text for w in ["សុំច្បាប់", "ច្បាប់", "ឈប់", "leave", "ខ្ចីប្រាក់", "ខ្ចី", "បុរេប្រទាន", "loan", "វត្តមាន", "ប្រាក់ខែ", "លុយ"])
+
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help"] or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan"] or is_leave_btn or is_loan_btn
+
+        # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
+        if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
+            briefing = generate_daily_morning_briefing()
+            send_telegram_notify(briefing, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
+        is_self_query = clean_cmd in ["/me", "/status", "/profile", "/my_leave", "/my_loan"] or any(k in text for k in [
+            "ច្បាប់ប៉ុន្មាន", "លុយខ្ចីប៉ុន្មាន", "ខ្ចីប៉ុន្មាន", "ច្បាប់ខ្ញុំ", 
+            "ខ្ចីខ្ញុំ", "ប្រវត្តិខ្ញុំ", "មើលច្បាប់", "មើលខ្ចី", "ទិន្នន័យខ្ញុំ"
+        ])
+        if is_self_query:
+            report = get_employee_self_service_report(sender_name)
+            send_telegram_notify(report, target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # Feature 2: Smart Group Filtering (Quiet Bot in Groups for normal casual chatter)
+        if not is_private and not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
+            return {"ok": True}
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
         active_flow = user_flows_collection.find_one({"user_id": user_id_str})
@@ -1120,15 +1279,19 @@ async def telegram_webhook(req: Request):
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 l_res = leaves_collection.insert_one({
                     "employee_name": sender_name,
                     "reason": content,
                     "days": days,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 leave_id = str(l_res.inserted_id)
                 user_flows_collection.delete_one({"user_id": user_id_str})
                 
+                conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
                     "inline_keyboard": [[
                         {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
@@ -1140,18 +1303,30 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {content}\n"
+                    f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
+                if is_private:
+                    send_telegram_notify(
+                        f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {content}\n"
+                        f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
+                        target_chat_id=chat_id_str
+                    )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
                 
             elif flow_type == "loan":
                 amount = active_flow.get("amount", 100000)
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
                 ln_res = loans_collection.insert_one({
                     "employee_name": sender_name,
                     "amount_khr": amount,
                     "purpose": content,
-                    "status": "pending"
+                    "status": "pending",
+                    "date": today_khr
                 })
                 loan_id = str(ln_res.inserted_id)
                 user_flows_collection.delete_one({"user_id": user_id_str})
@@ -1169,6 +1344,14 @@ async def telegram_webhook(req: Request):
                     f"🎯 <b>គោលបំណង:</b> {content}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
+                if is_private:
+                    send_telegram_notify(
+                        f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {content}\n"
+                        f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
+                        target_chat_id=chat_id_str
+                    )
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
 
@@ -1366,16 +1549,26 @@ async def telegram_webhook(req: Request):
             ai_data = call_gemini_ai(prompt=f"Staff member '{sender_name}' wrote: {text}", user_name=sender_name)
             if ai_data:
                 intent = ai_data.get("intent")
-                if intent == "leave":
+                cambodia_tz = timezone(timedelta(hours=7))
+                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
+
+                if intent == "self_query":
+                    report = get_employee_self_service_report(sender_name)
+                    send_telegram_notify(report, target_chat_id=chat_id_str)
+                    return {"ok": True}
+
+                elif intent == "leave":
                     days = int(ai_data.get("days", 1))
                     reason = ai_data.get("reason") or text
                     l_res = leaves_collection.insert_one({
                         "employee_name": sender_name,
                         "reason": reason,
                         "days": days,
-                        "status": "pending"
+                        "status": "pending",
+                        "date": today_khr
                     })
                     leave_id = str(l_res.inserted_id)
+                    conflict_alert = check_leave_conflicts(sender_name)
                     adm_btn = {
                         "inline_keyboard": [[
                             {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
@@ -1387,8 +1580,17 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                         f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                        f"{conflict_alert}"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
+                    if is_private:
+                        send_telegram_notify(
+                            f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                            f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                            f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
+                            target_chat_id=chat_id_str
+                        )
                     send_telegram_notify(reply, reply_markup=adm_btn)
                     return {"ok": True}
 
@@ -1399,7 +1601,8 @@ async def telegram_webhook(req: Request):
                         "employee_name": sender_name,
                         "amount_khr": amount,
                         "purpose": purpose,
-                        "status": "pending"
+                        "status": "pending",
+                        "date": today_khr
                     })
                     loan_id = str(ln_res.inserted_id)
                     adm_btn = {
@@ -1415,12 +1618,20 @@ async def telegram_webhook(req: Request):
                         f"🎯 <b>គោលបំណង:</b> {purpose}\n"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
+                    if is_private:
+                        send_telegram_notify(
+                            f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                            f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                            f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
+                            target_chat_id=chat_id_str
+                        )
                     send_telegram_notify(reply, reply_markup=adm_btn)
                     return {"ok": True}
 
                 elif intent in ["hr_query", "general_chat"] and ai_data.get("response_text"):
                     clean_res = ai_data.get("response_text")
-                    send_telegram_notify(f"🤖 <b>ឆ្លើយតប ({sender_name}):</b>\n{clean_res}")
+                    send_telegram_notify(f"🤖 <b>ជំនួយការ AI:</b>\n{clean_res}", target_chat_id=chat_id_str)
                     return {"ok": True}
 
         # 6. Fallback: Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
@@ -1431,13 +1642,17 @@ async def telegram_webhook(req: Request):
             if day_match:
                 days = int(day_match.group(1))
                 
+            cambodia_tz = timezone(timedelta(hours=7))
+            today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
             l_res = leaves_collection.insert_one({
                 "employee_name": sender_name,
                 "reason": text,
                 "days": days,
-                "status": "pending"
+                "status": "pending",
+                "date": today_khr
             })
             leave_id = str(l_res.inserted_id)
+            conflict_alert = check_leave_conflicts(sender_name)
             adm_btn = {
                 "inline_keyboard": [[
                     {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
@@ -1449,8 +1664,16 @@ async def telegram_webhook(req: Request):
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                f"{conflict_alert}"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
+            if is_private:
+                send_telegram_notify(
+                    f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {text}",
+                    target_chat_id=chat_id_str
+                )
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
@@ -1486,11 +1709,14 @@ async def telegram_webhook(req: Request):
                 except Exception:
                     amount = 100000
                     
+            cambodia_tz = timezone(timedelta(hours=7))
+            today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
             ln_res = loans_collection.insert_one({
                 "employee_name": sender_name,
                 "amount_khr": amount,
                 "purpose": text,
-                "status": "pending"
+                "status": "pending",
+                "date": today_khr
             })
             loan_id = str(ln_res.inserted_id)
             adm_btn = {
@@ -1506,6 +1732,13 @@ async def telegram_webhook(req: Request):
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
+            if is_private:
+                send_telegram_notify(
+                    f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {text}",
+                    target_chat_id=chat_id_str
+                )
             send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
@@ -1999,6 +2232,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 class="btn-secondary flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-blue-200 transition">
                 <span class="material-symbols-outlined text-lg" id="test-bot-icon">send</span>
                 <span>សាកល្បងផ្ញើសារ (Test Bot)</span>
+              </button>
+              <button type="button" onclick="sendMorningBriefing()" id="btn-morning-briefing"
+                class="bg-amber-50 hover:bg-amber-100 text-amber-700 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-amber-200 transition">
+                <span class="material-symbols-outlined text-lg" id="briefing-icon">wb_sunny</span>
+                <span>ផ្ញើរបាយការណ៍ពេលព្រឹក (Morning Briefing)</span>
               </button>
             </div>
           </form>
@@ -2780,6 +3018,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     } finally {
       icon.classList.remove('animate-spin');
       btn.disabled = false;
+    }
+  }
+
+  async function sendMorningBriefing() {
+    const icon = document.getElementById('briefing-icon');
+    const btn = document.getElementById('btn-morning-briefing');
+    if (icon) icon.classList.add('animate-spin');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch('/api/send-briefing', { method: 'POST' });
+      const res = await r.json();
+      if (r.ok) {
+        showToast(res.message || 'បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!');
+      } else {
+        showToast(res.detail || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍', true);
+      }
+    } catch(e) {
+      showToast('បរាជ័យក្នុងការផ្ញើរបាយការណ៍: ' + e.message, true);
+    } finally {
+      if (icon) icon.classList.remove('animate-spin');
+      if (btn) btn.disabled = false;
     }
   }
 
