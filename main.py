@@ -150,6 +150,29 @@ def check_leave_conflicts(emp_name: str) -> str:
         print("Check leave conflicts error:", e)
     return ""
 
+def get_employee_context(emp_name: str) -> dict:
+    """Helper to fetch live employee leave & loan counts for AI reasoning."""
+    try:
+        user_leaves = list(leaves_collection.find({"employee_name": emp_name}))
+        approved_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "approved")
+        pending_leave_days = sum(l.get("days", 1) for l in user_leaves if l.get("status") == "pending")
+        
+        user_loans = list(loans_collection.find({"employee_name": emp_name}))
+        approved_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "approved")
+        pending_loan_amt = sum(l.get("amount_khr", 0) for l in user_loans if l.get("status") == "pending")
+        
+        return {
+            "name": emp_name,
+            "total_leaves": len(user_leaves),
+            "approved_leaves": approved_leave_days,
+            "pending_leaves": pending_leave_days,
+            "approved_loans": approved_loan_amt,
+            "pending_loans": pending_loan_amt
+        }
+    except Exception as e:
+        print("get_employee_context error:", e)
+        return {"name": emp_name}
+
 def get_employee_self_service_report(emp_name: str) -> str:
     """Feature 5: Employee self-service inquiry for personal leave & loan totals."""
     try:
@@ -179,7 +202,7 @@ def get_employee_self_service_report(emp_name: str) -> str:
         return f"⚠️ មិនអាចទាញយកទិន្នន័យបានទេ: {e}"
 
 def generate_daily_morning_briefing() -> str:
-    """Feature 3: Daily morning summary of attendance and leaves for Admins."""
+    """Feature 3: Daily morning summary of attendance and leaves for Admins (06:00 AM)."""
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
@@ -206,8 +229,8 @@ def generate_daily_morning_briefing() -> str:
         pending_loan_amt = sum(ln.get("amount_khr", 0) for ln in pending_loans)
         
         return (
-            f"☀️ <b>អរុណសួស្តី Admin & ក្រុមការងារ AC BOMLU!</b>\n"
-            f"📊 <b>របាយការណ៍ស្ថានភាពបុគ្គលិកប្រចាំថ្ងៃ ({today_str}):</b>\n"
+            f"🌅 <b>របាយការណ៍សង្ខេបពេលព្រឹក (Daily Briefing - ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {today_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"👥 <b>បុគ្គលិកសរុបក្នុងប្រព័ន្ធ:</b> {total_emp} នាក់\n"
             f"📝 <b>បុគ្គលិកសុំច្បាប់ថ្ងៃនេះ ({leave_count} នាក់):</b>{leave_list_str}\n"
@@ -219,14 +242,15 @@ def generate_daily_morning_briefing() -> str:
         return f"⚠️ មិនអាចបង្កើតរបាយការណ៍ពេលព្រឹកបានទេ: {e}"
 
 async def morning_briefing_scheduler():
-    """Background loop sending briefing at 08:30 AM Cambodia time."""
+    """Background loop sending briefing at 06:00 AM Cambodia time."""
     cambodia_tz = timezone(timedelta(hours=7))
     last_sent_date = ""
     while True:
         try:
             now_cam = datetime.now(cambodia_tz)
             today_str = now_cam.strftime("%Y-%m-%d")
-            if now_cam.hour == 8 and now_cam.minute >= 30 and last_sent_date != today_str:
+            # Scheduled at exactly 06:00 AM Cambodia Time
+            if now_cam.hour == 6 and now_cam.minute >= 0 and last_sent_date != today_str:
                 briefing = generate_daily_morning_briefing()
                 send_telegram_notify(briefing)
                 last_sent_date = today_str
@@ -901,15 +925,42 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
         })
     parts.append({"text": prompt})
     
+    # Live database employee context for ultra-smart self-service answers
+    emp_ctx = get_employee_context(user_name) if user_name else {}
+    emp_info_str = ""
+    if emp_ctx and emp_ctx.get("name"):
+        emp_info_str = (
+            f"LIVE DATABASE STATS FOR THIS STAFF MEMBER ({user_name}):\n"
+            f"- Approved Leaves taken: {emp_ctx.get('approved_leaves', 0)} days\n"
+            f"- Pending Leaves awaiting review: {emp_ctx.get('pending_leaves', 0)} days\n"
+            f"- Total Leave requests submitted: {emp_ctx.get('total_leaves', 0)} times\n"
+            f"- Approved Loan total: {emp_ctx.get('approved_loans', 0):,} Riel\n"
+            f"- Pending Loan requests: {emp_ctx.get('pending_loans', 0):,} Riel\n"
+            f"CRITICAL: If the staff asks about their leaves, loan status, or remaining days/money, reference these real figures directly in your answer!\n\n"
+        )
+    
     system_instruction = (
-        "You are the official Smart HR & Staff Assistant for 'AC BOMLU' (ក្រុមហ៊ុន សេវាបូមលូ និងដឹកជញ្ជូន AC BOMLU).\n"
-        "Your role is to assist staff with leave requests, loan requests, and general HR questions politely and accurately in Khmer.\n\n"
-        "When analyzing a message (text or audio from a staff member):\n"
-        "1. Determine their intent: 'leave' (សុំច្បាប់), 'loan' (ខ្ចីប្រាក់), 'self_query' (សួររកមើលទិន្នន័យច្បាប់/លុយខ្ចីផ្ទាល់ខ្លួន), 'hr_query' (សួរព័ត៌មាន/ច្បាប់ទូទៅ), or 'general_chat' (ជជែកទូទៅ).\n"
-        "2. If intent is 'leave', extract: days (integer, default 1), reason (short clear Khmer summary).\n"
-        "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (short clear Khmer purpose).\n"
-        "4. Always write a warm, polite Khmer response in 'response_text' (use 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n\n"
-        "CRITICAL: Always output strictly valid JSON matching this schema:\n"
+        "You are the official Ultra-Smart HR & Staff Assistant AI for 'AC BOMLU' (ក្រុមហ៊ុន សេវាបូមលូ និងដឹកជញ្ជូន AC BOMLU).\n"
+        "Your role is to assist employees with leave requests, loan requests, status inquiries, and company questions with maximum intelligence, warmth, and accuracy in fluent Khmer.\n\n"
+        f"{emp_info_str}"
+        "Company Profile:\n"
+        "- Company: សេវាបូមលូ និងដឹកជញ្ជូន AC BOMLU\n"
+        "- Working Hours: 07:30 AM - 05:30 PM (រៀងរាល់ថ្ងៃ)\n"
+        "- Services: សេវាបូមលូ ដឹកជញ្ជូន និងសម្អាតអនាម័យទូទាំងប្រទេស\n\n"
+        "Instructions when analyzing staff input (text or audio):\n"
+        "1. Classify intent into one of:\n"
+        "   - 'leave': Staff wants to take leave / day off (សុំច្បាប់, ឈឺ, ទៅស្រុក, សម្រាក...)\n"
+        "   - 'loan': Staff wants to borrow money / salary advance (ខ្ចីប្រាក់, បុរេប្រទាន, ខ្ចីលុយ...)\n"
+        "   - 'self_query': Staff is inquiring about their personal records, leave count, loan balance, or status (e.g. 'ខែនេះខ្ញុំសុំច្បាប់ប៉ុន្មានថ្ងៃហើយ?', 'តើខ្ញុំនៅសល់លុយខ្ចីប៉ុន្មាន?', 'ច្បាប់ខ្ញុំ')\n"
+        "   - 'hr_query': Questions about company rules, working hours, procedures, or general advice\n"
+        "   - 'general_chat': Greetings, thank-you messages, casual friendly talk\n"
+        "2. If intent is 'leave', extract: days (integer, default 1), reason (concise Khmer reason).\n"
+        "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (concise Khmer purpose).\n"
+        "4. In 'response_text': Always compose an exceptionally smart, warm, polite, and helpful response in natural Khmer (using 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n"
+        "   - For 'self_query': Answer their question directly with their exact live data numbers, followed by an encouraging note.\n"
+        "   - For 'leave' or 'loan': A warm acknowledgment stating that their request has been registered and forwarded to Admin for approval.\n"
+        "   - For 'hr_query' or 'general_chat': An insightful, polite, and supportive response.\n\n"
+        "CRITICAL: Output strictly valid JSON matching this schema:\n"
         "{\n"
         '  "intent": "leave" | "loan" | "self_query" | "hr_query" | "general_chat",\n'
         '  "days": 1,\n'
@@ -1234,9 +1285,7 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         chat = message.get("chat", {})
-        chat_type = chat.get("type", "group")
         chat_id_str = str(chat.get("id"))
-        is_private = (chat_type == "private")
         
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
@@ -1260,15 +1309,21 @@ async def telegram_webhook(req: Request):
         # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
         is_self_query = clean_cmd in ["/me", "/status", "/profile", "/my_leave", "/my_loan"] or any(k in text for k in [
             "ច្បាប់ប៉ុន្មាន", "លុយខ្ចីប៉ុន្មាន", "ខ្ចីប៉ុន្មាន", "ច្បាប់ខ្ញុំ", 
-            "ខ្ចីខ្ញុំ", "ប្រវត្តិខ្ញុំ", "មើលច្បាប់", "មើលខ្ចី", "ទិន្នន័យខ្ញុំ"
+            "ខ្ចីខ្ញុំ", "ប្រវត្តិខ្ញុំ", "មើលច្បាប់", "មើលខ្ចី", "ទិន្នន័យខ្ញុំ", "សល់លុយ"
         ])
         if is_self_query:
+            ai_data = call_gemini_ai(prompt=f"Staff member '{sender_name}' asked self-service inquiry: {text}", user_name=sender_name)
+            ai_msg = (ai_data.get("response_text") if ai_data else "").strip()
             report = get_employee_self_service_report(sender_name)
-            send_telegram_notify(report, target_chat_id=chat_id_str)
+            if ai_msg:
+                full_reply = f"🤖 <b>ឆ្លើយតប ({sender_name}):</b>\n{ai_msg}\n\n{report}"
+            else:
+                full_reply = report
+            send_telegram_notify(full_reply, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Feature 2: Smart Group Filtering (Quiet Bot in Groups for normal casual chatter)
-        if not is_private and not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
+        if not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
             return {"ok": True}
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
@@ -1306,15 +1361,7 @@ async def telegram_webhook(req: Request):
                     f"{conflict_alert}"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                if is_private:
-                    send_telegram_notify(
-                        f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {content}\n"
-                        f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
-                        target_chat_id=chat_id_str
-                    )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             elif flow_type == "loan":
@@ -1344,15 +1391,7 @@ async def telegram_webhook(req: Request):
                     f"🎯 <b>គោលបំណង:</b> {content}\n"
                     f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                 )
-                if is_private:
-                    send_telegram_notify(
-                        f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {content}\n"
-                        f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
-                        target_chat_id=chat_id_str
-                    )
-                send_telegram_notify(reply, reply_markup=adm_btn)
+                send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
 
         # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
@@ -1553,8 +1592,13 @@ async def telegram_webhook(req: Request):
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
 
                 if intent == "self_query":
+                    ai_msg = (ai_data.get("response_text") or "").strip()
                     report = get_employee_self_service_report(sender_name)
-                    send_telegram_notify(report, target_chat_id=chat_id_str)
+                    if ai_msg:
+                        full_reply = f"🤖 <b>ឆ្លើយតប ({sender_name}):</b>\n{ai_msg}\n\n{report}"
+                    else:
+                        full_reply = report
+                    send_telegram_notify(full_reply, target_chat_id=chat_id_str)
                     return {"ok": True}
 
                 elif intent == "leave":
@@ -1583,15 +1627,7 @@ async def telegram_webhook(req: Request):
                         f"{conflict_alert}"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
-                    if is_private:
-                        send_telegram_notify(
-                            f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                            f"📝 <b>មូលហេតុ:</b> {reason}\n"
-                            f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
-                            target_chat_id=chat_id_str
-                        )
-                    send_telegram_notify(reply, reply_markup=adm_btn)
+                    send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
                     return {"ok": True}
 
                 elif intent == "loan":
@@ -1618,15 +1654,7 @@ async def telegram_webhook(req: Request):
                         f"🎯 <b>គោលបំណង:</b> {purpose}\n"
                         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
                     )
-                    if is_private:
-                        send_telegram_notify(
-                            f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                            f"🎯 <b>គោលបំណង:</b> {purpose}\n"
-                            f"🟡 សូមរង់ចាំការសម្រេចពី Admin។",
-                            target_chat_id=chat_id_str
-                        )
-                    send_telegram_notify(reply, reply_markup=adm_btn)
+                    send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
                     return {"ok": True}
 
                 elif intent in ["hr_query", "general_chat"] and ai_data.get("response_text"):
@@ -1667,14 +1695,7 @@ async def telegram_webhook(req: Request):
                 f"{conflict_alert}"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
-            if is_private:
-                send_telegram_notify(
-                    f"✅ <b>សំណើសុំច្បាប់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                    f"📝 <b>មូលហេតុ:</b> {text}",
-                    target_chat_id=chat_id_str
-                )
-            send_telegram_notify(reply, reply_markup=adm_btn)
+            send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 6. Handle Loan Button -> Step 1: Show Amount Selection Buttons (ជម្រើសទី ១)!
@@ -1732,14 +1753,7 @@ async def telegram_webhook(req: Request):
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
                 f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
             )
-            if is_private:
-                send_telegram_notify(
-                    f"✅ <b>សំណើខ្ចីប្រាក់របស់អ្នកត្រូវបានបញ្ជូនទៅ Admin ក្នុងគ្រុបដោយសម្ងាត់រួចរាល់ហើយ!</b>\n\n"
-                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {text}",
-                    target_chat_id=chat_id_str
-                )
-            send_telegram_notify(reply, reply_markup=adm_btn)
+            send_telegram_notify(reply, reply_markup=adm_btn, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 8. Handle Help/Start Command
