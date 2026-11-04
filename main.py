@@ -33,6 +33,7 @@ leaves_collection = db["leaves"]
 loans_collection = db["loans"]
 employees_collection = db["employees"]
 settings_collection = db["settings"]
+user_flows_collection = db["user_flows"]
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -332,49 +333,47 @@ async def telegram_webhook(req: Request):
                 except Exception:
                     pass
 
-            # 1. Callback for Leave Days selection
+            # 1. Callback for Leave Days selection -> Ask for Reason!
             if cq_data.startswith("leave_days:"):
                 parts = cq_data.split(":")
                 days_str = parts[1]
                 days = int(days_str) if days_str.isdigit() else 1
                 
-                leaves_collection.insert_one({
-                    "employee_name": cq_name,
-                    "reason": f"សុំច្បាប់ {days} ថ្ងៃ",
-                    "days": days,
-                    "status": "pending"
-                })
-                
-                confirm_msg = (
-                    f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
-                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard\n\n"
-                    f"✍️ <i>(លោកអ្នកអាច Reply ឬផ្ញើសារ/Voice បញ្ជាក់មូលហេតុបន្ថែមបាន)</i>"
+                cq_user_id = str(cq_user.get("id"))
+                user_flows_collection.replace_one(
+                    {"user_id": cq_user_id},
+                    {"user_id": cq_user_id, "type": "leave", "days": days, "name": cq_name},
+                    upsert=True
                 )
-                send_telegram_notify(confirm_msg)
+                
+                ask_reason_msg = (
+                    f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"⏱️ <b>ចំនួនថ្ងៃដែលបានរើស:</b> {days} ថ្ងៃ\n\n"
+                    f"✍️ <b>សូមវាយបញ្ជាក់ «មូលហេតុ» នៃការសុំច្បាប់ (ឬផ្ញើសារ Voice ក៏បាន)៖</b>\n"
+                    f"<i>(ឧទាហរណ៍៖ ឈឺក្បាល, ជាប់រវល់ការងារផ្ទះ, ទៅស្រុកកំណើត...)</i>"
+                )
+                send_telegram_notify(ask_reason_msg)
                 return {"ok": True}
 
-            # 2. Callback for Loan Amount selection
+            # 2. Callback for Loan Amount selection -> Ask for Purpose!
             if cq_data.startswith("loan_amt:"):
                 parts = cq_data.split(":")
                 amount = int(parts[1]) if parts[1].isdigit() else 100000
                 
-                loans_collection.insert_one({
-                    "employee_name": cq_name,
-                    "amount_khr": amount,
-                    "purpose": "ខ្ចីប្រាក់តាមប៊ូតុង",
-                    "status": "pending"
-                })
-                
-                confirm_msg = (
-                    f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ជោគជ័យ!</b>\n\n"
-                    f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
-                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard\n\n"
-                    f"🎯 <i>(លោកអ្នកអាច Reply ឬផ្ញើសារបញ្ជាក់គោលបំណងបន្ថែមបាន)</i>"
+                cq_user_id = str(cq_user.get("id"))
+                user_flows_collection.replace_one(
+                    {"user_id": cq_user_id},
+                    {"user_id": cq_user_id, "type": "loan", "amount": amount, "name": cq_name},
+                    upsert=True
                 )
-                send_telegram_notify(confirm_msg)
+                
+                ask_purpose_msg = (
+                    f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់ដែលបានរើស:</b> {amount:,} រៀល\n\n"
+                    f"🎯 <b>សូមវាយបញ្ជាក់ «គោលបំណង ឬមូលហេតុ» នៃការខ្ចីប្រាក់ (ឬផ្ញើសារ Voice ក៏បាន)៖</b>\n"
+                    f"<i>(ឧទាហរណ៍៖ បង់ថ្លៃផ្ទះ, ទិញថ្នាំពេទ្យ, ថ្លៃទឹកភ្លើង...)</i>"
+                )
+                send_telegram_notify(ask_purpose_msg)
                 return {"ok": True}
 
         # B. Handle Regular Messages
@@ -384,6 +383,7 @@ async def telegram_webhook(req: Request):
 
         from_user = message.get("from", {})
         sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
+        user_id_str = str(from_user.get("id"))
         
         # 1. Handle New Member Added to Group -> Welcome & Send 4-corner Keyboard automatically!
         new_members = message.get("new_chat_members", [])
@@ -402,6 +402,52 @@ async def telegram_webhook(req: Request):
 
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
+
+        # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
+        active_flow = user_flows_collection.find_one({"user_id": user_id_str})
+        if active_flow and not (text in ["📝 សុំច្បាប់", "សុំច្បាប់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "/leave", "/loan"]):
+            content = (message.get("caption") or "សារសំឡេង (Voice Message)") if has_voice else text
+            flow_type = active_flow.get("type")
+            
+            if flow_type == "leave":
+                days = active_flow.get("days", 1)
+                leaves_collection.insert_one({
+                    "employee_name": sender_name,
+                    "reason": content,
+                    "days": days,
+                    "status": "pending"
+                })
+                user_flows_collection.delete_one({"user_id": user_id_str})
+                
+                reply = (
+                    f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ពេញលេញ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {content}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                )
+                send_telegram_notify(reply)
+                return {"ok": True}
+                
+            elif flow_type == "loan":
+                amount = active_flow.get("amount", 100000)
+                loans_collection.insert_one({
+                    "employee_name": sender_name,
+                    "amount_khr": amount,
+                    "purpose": content,
+                    "status": "pending"
+                })
+                user_flows_collection.delete_one({"user_id": user_id_str})
+                
+                reply = (
+                    f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ពេញលេញ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {content}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                )
+                send_telegram_notify(reply)
+                return {"ok": True}
         
         # 2. Handle Voice Message for Leave Permission
         if has_voice:
