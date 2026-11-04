@@ -365,7 +365,8 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
     items_str = "\n\n".join(lines) if lines else "  <i>គ្មានបុគ្គលិកសុំច្បាប់ដែលបានអនុញ្ញាតត្រូវធ្វើការសងក្នុងចុងសប្តាហ៍នេះទេ</i>"
     
     return (
-        f"📢 <b>របាយការណ៍ច្បាប់ចុងសប្តាហ៍ (បុគ្គលិកត្រូវធ្វើការសង ថ្ងៃសៅរ៍-អាទិត្យ)</b>\n"
+        f"📢 <b>របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍ (ថ្ងៃសៅរ៍ & អាទិត្យ)</b>\n"
+        f"⏰ <b>ជូនដំណឹងស្វ័យប្រវត្តិ:</b> រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ៦:០០ ល្ងាច (18:00)\n"
         f"📅 <b>កាលបរិច្ឆេទ:</b> {now_cam_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"👥 <b>បុគ្គលិកត្រូវធ្វើការសង:</b> {total_staff} នាក់ (សរុប {total_days} ថ្ងៃ - អនុញ្ញាតប៉ុណ្ណោះ ✅)\n\n"
@@ -493,9 +494,9 @@ async def morning_briefing_scheduler():
                 send_telegram_notify(briefing)
                 last_daily_date = today_str
                 
-            # 2. Weekend Leave Compensation Report at 06:00 AM on Friday (4) and Saturday (5)
-            # Sends report so staff know they must compensate on Saturday & Sunday!
-            if now_cam.weekday() in [4, 5] and now_cam.hour == 6 and now_cam.minute >= 0 and last_weekend_date != today_str:
+            # 2. Weekend Leave Compensation Report at 06:00 PM (18:00) on Friday (weekday 4)
+            # End of Friday workweek: notifies staff who must compensate work on Saturday & Sunday!
+            if now_cam.weekday() == 4 and now_cam.hour >= 18 and last_weekend_date != today_str:
                 rep_data = generate_weekend_leave_report()
                 if rep_data.get("items"):
                     tg_msg = format_telegram_weekend_leave_report(rep_data)
@@ -3061,7 +3062,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
               <h2 class="text-base sm:text-lg font-bold text-gray-800">របាយការណ៍ច្បាប់ (សម្រាប់ធ្វើការសង ថ្ងៃសៅរ៍-អាទិត្យ)</h2>
-              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ដែលត្រូវបំពេញការងារសងនៅចុងសប្តាហ៍ (ស្វ័យប្រវត្តិតាម Telegram រៀងរាល់ថ្ងៃសុក្រ និងសៅរ៍ ម៉ោង ៦:០០ ព្រឹក)</p>
+              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកសុំច្បាប់ក្នុងសប្តាហ៍ដែលត្រូវបំពេញការងារសងនៅចុងសប្តាហ៍ (ស្វ័យប្រវត្តិតាម Telegram រៀងរាល់ថ្ងៃសុក្រ វេលាម៉ោង ៦:០០ ល្ងាច / 18:00)</p>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
@@ -3103,7 +3104,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
               <p class="text-xs text-gray-500 font-medium">កាលវិភាគស្វ័យប្រវត្តិ</p>
-              <p class="text-xs sm:text-sm font-semibold text-emerald-600">រៀងរាល់ម៉ោង ០៦:០០ ព្រឹក (ចុងសប្តាហ៍)</p>
+              <p class="text-xs sm:text-sm font-semibold text-emerald-600">រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ០៦:០០ ល្ងាច (18:00)</p>
             </div>
           </div>
         </div>
