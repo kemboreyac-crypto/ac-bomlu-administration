@@ -57,6 +57,8 @@ class Employee(BaseModel):
     position: str
     phone: Optional[str] = ""
     phone2: Optional[str] = ""
+    telegram_user_id: Optional[str] = ""
+    telegram_username: Optional[str] = ""
 
 class LeaveCompensationRequest(BaseModel):
     leave_id: Optional[str] = None
@@ -136,6 +138,133 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
         urllib.request.urlopen(req, timeout=8)
     except Exception as e:
         print(f"Telegram notify error: {e}")
+
+def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, position: str = None) -> dict:
+    """
+    Auto-registers or auto-updates employee records from Telegram.
+    Syncs display name changes automatically whenever a user interacts.
+    """
+    try:
+        if not tg_user:
+            return None
+        tg_id = str(tg_user.get("id"))
+        if not tg_id or tg_id == "None":
+            return None
+            
+        first_name = (tg_user.get("first_name") or "").strip()
+        last_name = (tg_user.get("last_name") or "").strip()
+        username = (tg_user.get("username") or "").strip()
+        
+        full_name = f"{first_name} {last_name}".strip() or username or "បុគ្គលិក"
+        
+        # 1. Look up by telegram_user_id
+        emp = employees_collection.find_one({"telegram_user_id": tg_id})
+        
+        # 2. If not found by ID, look up by name or username
+        if not emp:
+            emp = employees_collection.find_one({"name": full_name})
+        if not emp and username:
+            emp = employees_collection.find_one({"telegram_username": username})
+            
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_str = datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M")
+        
+        if emp:
+            update_fields = {}
+            old_name = emp.get("name")
+            # Update name if changed on Telegram, and cascade to leave/loan records
+            if old_name and old_name != full_name:
+                update_fields["name"] = full_name
+                try:
+                    leaves_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": full_name}})
+                    loans_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": full_name}})
+                except Exception as ex:
+                    print("Error cascading name update:", ex)
+            if username and emp.get("telegram_username") != username:
+                update_fields["telegram_username"] = username
+            if not emp.get("telegram_user_id"):
+                update_fields["telegram_user_id"] = tg_id
+            if phone and emp.get("phone") != phone:
+                update_fields["phone"] = phone
+            if position and (not emp.get("position") or emp.get("position") == "បុគ្គលិក"):
+                update_fields["position"] = position
+                
+            if update_fields:
+                update_fields["updated_at"] = now_str
+                employees_collection.update_one({"_id": emp["_id"]}, {"$set": update_fields})
+                emp.update(update_fields)
+            return emp
+        else:
+            # New employee from Telegram group
+            new_emp = {
+                "name": full_name,
+                "position": position or "បុគ្គលិក",
+                "phone": phone or "",
+                "phone2": "",
+                "telegram_user_id": tg_id,
+                "telegram_username": username,
+                "created_at": now_str,
+                "source": "telegram_auto_sync"
+            }
+            res = employees_collection.insert_one(new_emp)
+            new_emp["_id"] = res.inserted_id
+            return new_emp
+    except Exception as e:
+        print("sync_or_update_employee_from_telegram error:", e)
+        return None
+
+def sync_group_members_from_telegram() -> dict:
+    """
+    Fetches group administrators and recent active members from Telegram API,
+    and syncs them into employees_collection.
+    """
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
+        if not token or not chat_id:
+            return {"success": False, "message": "សូមកំណត់ Telegram Bot Token និង Chat ID ជាមុនសិន!"}
+            
+        url = f"https://api.telegram.org/bot{token}/getChatAdministrators?chat_id={chat_id}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        synced_count = 0
+        with urllib.request.urlopen(req, timeout=8) as r:
+            res = json.loads(r.read().decode())
+            if res.get("ok"):
+                for m in res.get("result", []):
+                    u = m.get("user", {})
+                    if u.get("is_bot"):
+                        continue
+                    title = m.get("custom_title") or ("ប្រធាន (Owner)" if m.get("status") == "creator" else "អ្នកគ្រប់គ្រង (Admin)")
+                    emp = sync_or_update_employee_from_telegram(u, position=title)
+                    if emp:
+                        synced_count += 1
+                        
+        # Also sync from active users in recent leaves, loans, and user_flows
+        recent_leaves = leaves_collection.find({}, {"employee_name": 1, "telegram_user_id": 1}).sort("_id", -1).limit(50)
+        for l in recent_leaves:
+            ename = (l.get("employee_name") or "").strip()
+            if ename and not employees_collection.find_one({"name": ename}):
+                employees_collection.insert_one({
+                    "name": ename,
+                    "position": "បុគ្គលិក",
+                    "phone": "",
+                    "phone2": "",
+                    "telegram_user_id": l.get("telegram_user_id", ""),
+                    "created_at": datetime.now(timezone(timedelta(hours=7))).strftime("%d/%m/%Y %H:%M"),
+                    "source": "leave_activity"
+                })
+                synced_count += 1
+                
+        return {
+            "success": True,
+            "synced_count": synced_count,
+            "total_employees": employees_collection.count_documents({}),
+            "message": f"បាន Sync ទិន្នន័យបុគ្គលិកពី Telegram ចំនួន {synced_count} នាក់ជោគជ័យ!"
+        }
+    except Exception as e:
+        print("sync_group_members_from_telegram error:", e)
+        return {"success": False, "message": f"កំហុសក្នុងការ Sync: {e}"}
 
 def check_leave_conflicts(emp_name: str) -> str:
     """Feature 4: Alert Admin if multiple staff take leave on the same day!"""
@@ -1019,6 +1148,20 @@ async def delete_employee(emp_id: str):
     employees_collection.delete_one({"_id": ObjectId(emp_id)})
     return {"message": "Deleted"}
 
+@app.put("/api/employee/{emp_id}")
+async def update_employee(emp_id: str, payload: dict):
+    update_data = {k: v for k, v in payload.items() if k in ["name", "position", "phone", "phone2"]}
+    if update_data:
+        employees_collection.update_one({"_id": ObjectId(emp_id)}, {"$set": update_data})
+    return {"message": "Updated"}
+
+@app.post("/api/employees/sync-telegram")
+async def api_sync_telegram_employees():
+    res = sync_group_members_from_telegram()
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
 # ===== Settings & Telegram Routes =====
 def mask_token(token: str) -> str:
     if not token:
@@ -1720,6 +1863,8 @@ async def telegram_webhook(req: Request):
             cq_id = callback_query.get("id")
             cq_data = callback_query.get("data", "")
             cq_user = callback_query.get("from", {})
+            if cq_user and not cq_user.get("is_bot"):
+                sync_or_update_employee_from_telegram(cq_user)
             cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
             cq_msg = callback_query.get("message", {})
             cq_chat = cq_msg.get("chat", {})
@@ -2077,21 +2222,32 @@ async def telegram_webhook(req: Request):
         # B. Handle Regular Messages
         message = update.get("message") or update.get("channel_post")
         if not message:
+            # Check chat_member or my_chat_member update event (profile changes, joining group)
+            c_update = update.get("chat_member") or update.get("my_chat_member")
+            if c_update:
+                m_user = c_update.get("new_chat_member", {}).get("user", {}) or c_update.get("from", {})
+                if m_user and not m_user.get("is_bot"):
+                    sync_or_update_employee_from_telegram(m_user)
             return {"ok": True}
 
         from_user = message.get("from", {})
+        if from_user and not from_user.get("is_bot"):
+            sync_or_update_employee_from_telegram(from_user)
         sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
         user_id_str = str(from_user.get("id"))
         
-        # Check active flow immediately to prevent UnboundLocalError
-        active_flow = user_flows_collection.find_one({"user_id": user_id_str})
-        
-        # 1. Handle New Member Added to Group -> Welcome & Send 4-corner Keyboard automatically!
+        chat = message.get("chat", {})
+        chat_id_str = str(chat.get("id"))
+        chat_type = chat.get("type", "group")
+        is_private_chat = (chat_type == "private")
+
+        # 1. Handle New Member Added to Group -> Welcome & Auto-Sync!
         new_members = message.get("new_chat_members", [])
         if new_members:
             for m in new_members:
                 if m.get("is_bot"):
                     continue
+                sync_or_update_employee_from_telegram(m)
                 m_name = (m.get("first_name", "") + " " + m.get("last_name", "")).strip() or m.get("username", "បុគ្គលិក")
                 welcome_msg = (
                     f"👋 <b>សូមស្វាគមន៍ {m_name} មកកាន់គ្រុប សុំច្បាប់ AC BOMLU!</b>\n\n"
@@ -2101,10 +2257,29 @@ async def telegram_webhook(req: Request):
                 send_telegram_notify(welcome_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        chat = message.get("chat", {})
-        chat_id_str = str(chat.get("id"))
-        chat_type = chat.get("type", "group")
-        is_private_chat = (chat_type == "private")
+        # Check contact sharing (Staff shares phone number via Telegram):
+        contact = message.get("contact")
+        if contact:
+            c_phone = (contact.get("phone_number") or "").strip()
+            if c_phone.startswith("+855"):
+                c_phone = "0" + c_phone[4:]
+            elif c_phone.startswith("855"):
+                c_phone = "0" + c_phone[3:]
+            elif c_phone.startswith("+"):
+                c_phone = c_phone[1:]
+            c_phone = c_phone.replace(" ", "").replace("-", "")
+            sync_or_update_employee_from_telegram(from_user, phone=c_phone)
+            conf_msg = (
+                f"✅ <b>បានកត់ត្រាលេខទូរស័ព្ទជោគជ័យ!</b>\n\n"
+                f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                f"📞 <b>លេខទូរស័ព្ទ:</b> <code>{c_phone}</code>\n\n"
+                f"ប្រព័ន្ធបានធ្វើបច្ចុប្បន្នភាពចូល Dashboard រួចរាល់។"
+            )
+            send_telegram_notify(conf_msg, target_chat_id=chat_id_str)
+            return {"ok": True}
+        
+        # Check active flow immediately to prevent UnboundLocalError
+        active_flow = user_flows_collection.find_one({"user_id": user_id_str})
         
         text = (message.get("text") or "").strip()
         has_voice = bool(message.get("voice") or message.get("audio"))
@@ -2117,7 +2292,7 @@ async def telegram_webhook(req: Request):
 
         is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
         is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/month_report", "/loan_report", "/month_loan", "/sync", "/sync_members", "/sync_telegram"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
@@ -2182,6 +2357,80 @@ async def telegram_webhook(req: Request):
                     send_telegram_notify("⚠️ សូមបញ្ជាក់ចំនួនទឹកប្រាក់ជាលេខរៀលឱ្យបានត្រឹមត្រូវ (ឧ. /repay Kem Borey 50000)", target_chat_id=chat_id_str)
             else:
                 send_telegram_notify("📌 <b>ទម្រង់ប្រើប្រាស់:</b> <code>/repay [ឈ្មោះបុគ្គលិក] [ចំនួនទឹកប្រាក់]</code>\nឧទាហរណ៍៖ <code>/repay Kem Borey 50000</code> ឬ <code>/កាត់លុយ Kem Borey 100000</code>", target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # /setphone command
+        if clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone"):
+            parts = text.split()
+            if len(parts) == 2:
+                # User setting own phone: /setphone 012345678
+                p_num = parts[1].replace("+855", "0").replace("-", "").replace(" ", "").strip()
+                sync_or_update_employee_from_telegram(from_user, phone=p_num)
+                send_telegram_notify(
+                    f"✅ <b>បានអាប់ដេតលេខទូរស័ព្ទជោគជ័យ!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"📞 <b>លេខទូរស័ព្ទ:</b> <code>{p_num}</code>",
+                    target_chat_id=chat_id_str
+                )
+                return {"ok": True}
+            elif len(parts) >= 3:
+                # Setting an employee's phone: /setphone [name] [phone]
+                p_num = parts[-1].replace("+855", "0").replace("-", "").replace(" ", "").strip()
+                target_name = " ".join(parts[1:-1]).strip()
+                import re
+                target_emp = employees_collection.find_one({"name": {"$regex": f"^{re.escape(target_name)}$", "$options": "i"}})
+                if target_emp:
+                    employees_collection.update_one({"_id": target_emp["_id"]}, {"$set": {"phone": p_num}})
+                    send_telegram_notify(
+                        f"✅ <b>បានអាប់ដេតលេខទូរស័ព្ទជោគជ័យ!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {target_emp.get('name')}\n"
+                        f"📞 <b>លេខទូរស័ព្ទ:</b> <code>{p_num}</code>",
+                        target_chat_id=chat_id_str
+                    )
+                else:
+                    send_telegram_notify(f"⚠️ រកមិនឃើញបុគ្គលិកឈ្មោះ «{target_name}» ក្នុងប្រព័ន្ធទេ!", target_chat_id=chat_id_str)
+                return {"ok": True}
+            else:
+                send_telegram_notify(
+                    f"📌 <b>ទម្រង់ប្រើប្រាស់:</b>\n"
+                    f"• បុគ្គលិកកំណត់លេខផ្ទាល់ខ្លួន: <code>/setphone [លេខទូរស័ព្ទ]</code> (ឧ. <code>/setphone 016905354</code>)\n"
+                    f"• Admin កំណត់ឱ្យបុគ្គលិក: <code>/setphone [ឈ្មោះ] [លេខទូរស័ព្ទ]</code>",
+                    target_chat_id=chat_id_str
+                )
+                return {"ok": True}
+
+        # /setposition command
+        if clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position"):
+            sender_id = from_user.get("id")
+            s = settings_collection.find_one({"_id": "app_settings"})
+            token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+            if not is_telegram_admin(token, chat_id_str, sender_id):
+                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកំណត់មុខតំណែងបាន។", target_chat_id=chat_id_str)
+                return {"ok": True}
+            parts = text.split()
+            if len(parts) >= 3:
+                pos_str = parts[-1].strip()
+                target_name = " ".join(parts[1:-1]).strip()
+                import re
+                target_emp = employees_collection.find_one({"name": {"$regex": f"^{re.escape(target_name)}$", "$options": "i"}})
+                if target_emp:
+                    employees_collection.update_one({"_id": target_emp["_id"]}, {"$set": {"position": pos_str}})
+                    send_telegram_notify(
+                        f"✅ <b>បានអាប់ដេតមុខតំណែងជោគជ័យ!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {target_emp.get('name')}\n"
+                        f"💼 <b>មុខតំណែង:</b> {pos_str}",
+                        target_chat_id=chat_id_str
+                    )
+                else:
+                    send_telegram_notify(f"⚠️ រកមិនឃើញបុគ្គលិកឈ្មោះ «{target_name}» ក្នុងប្រព័ន្ធទេ!", target_chat_id=chat_id_str)
+            else:
+                send_telegram_notify("📌 <b>ទម្រង់ប្រើប្រាស់:</b> <code>/setposition [ឈ្មោះបុគ្គលិក] [មុខតំណែង]</code>\nឧទាហរណ៍៖ <code>/setposition AC Mart APP អ្នកបើកឡាន</code>", target_chat_id=chat_id_str)
+            return {"ok": True}
+
+        # /sync_members or /sync command
+        if clean_cmd in ["/sync", "/sync_members", "/sync_telegram"]:
+            res = sync_group_members_from_telegram()
+            send_telegram_notify(res.get("message", "Sync រួចរាល់!"), target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Feature 5: Self-Service Query Command (/me, /status, or natural language question)
@@ -2810,7 +3059,10 @@ async def telegram_webhook(req: Request):
                 f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
                 f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
                 f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
-                f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់ Admin:</b>\n"
+                f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់ Admin & បុគ្គលិក:</b>\n"
+                f"• <code>/setphone [លេខ]</code> — កំណត់/អាប់ដេតលេខទូរស័ព្ទ (ឬផ្ញើ Contact ផ្ទាល់)\n"
+                f"• <code>/setposition [ឈ្មោះ] [មុខតំណែង]</code> — កំណត់មុខតំណែងបុគ្គលិក\n"
+                f"• <code>/sync_members</code> — Sync ទិន្នន័យបុគ្គលិកពី Telegram Group ចូលប្រព័ន្ធ\n"
                 f"• <code>/weekend_report</code> — របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍\n"
                 f"• <code>/month_report</code> — របាយការណ៍កាត់ប្រាក់ខែប្រចាំខែ\n"
                 f"• <code>/compensate [ឈ្មោះ] [ចំនួនថ្ងៃ]</code> — កត់ត្រាការសងច្បាប់ (ឧ. /compensate Borey 1)\n"
@@ -3243,12 +3495,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <!-- ===== EMPLOYEES TAB ===== -->
     <div id="tab-employees" class="p-6 animate-fadeIn hidden">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-lg font-semibold text-gray-800">បុគ្គលិកទាំងអស់</h2>
-        <button onclick="openModal('emp-modal')"
-          class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
-          <span class="material-symbols-outlined text-lg">person_add</span> បន្ថែម
-        </button>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-800">បុគ្គលិកទាំងអស់</h2>
+          <p class="text-xs text-gray-500 mt-0.5">ទិន្នន័យត្រូវបាន Sync ដោយស្វ័យប្រវត្តិជាមួយ Telegram Group</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-sync-tg-emp" onclick="syncEmployeesFromTelegram()"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 shadow-sm transition">
+            <span class="material-symbols-outlined text-base">sync</span> 🔄 Sync ពី Telegram
+          </button>
+          <button onclick="openModal('emp-modal')"
+            class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
+            <span class="material-symbols-outlined text-lg">person_add</span> + បន្ថែម
+          </button>
+        </div>
       </div>
 
       <div id="employees-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -4336,28 +4597,95 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const data = await r.json();
       const grid = document.getElementById('employees-grid');
       if (!data.length) {
-        grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400">គ្មានបុគ្គលិក — ចុច "បន្ថែម" ដើម្បីចាប់ផ្តើម</div>'; return;
+        grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400">គ្មានបុគ្គលិក — ចុច "Sync ពី Telegram" ឬ "បន្ថែម" ដើម្បីចាប់ផ្តើម</div>'; return;
       }
       grid.innerHTML = data.map((emp, i) => {
         const color = avatarColors[i % avatarColors.length];
-        return `<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col items-center text-center gap-3 hover:shadow-md transition">
-          <div class="w-14 h-14 rounded-full ${color} flex items-center justify-center text-white text-xl font-bold">
-            ${emp.name.charAt(0)}
+        const tgBadge = emp.telegram_username ? 
+          `<a href="https://t.me/${emp.telegram_username}" target="_blank" class="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full mt-1 transition">
+             <span>✈️ @${emp.telegram_username}</span>
+           </a>` : '';
+        const phoneHtml = emp.phone ? 
+          `<p class="text-xs text-gray-600 mt-1 flex items-center justify-center gap-1 font-mono font-medium">
+             <span class="material-symbols-outlined text-sm text-green-600">call</span> ${emp.phone}
+           </p>` : 
+          `<p class="text-[11px] text-amber-500 mt-1 flex items-center justify-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md">
+             <span>⚠️ មិនទាន់មានលេខ</span>
+           </p>`;
+
+        return `<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col items-center text-center gap-2 hover:shadow-md transition">
+          <div class="w-14 h-14 rounded-full ${color} flex items-center justify-center text-white text-xl font-bold shadow-inner">
+            ${(emp.name || 'U').charAt(0).toUpperCase()}
           </div>
-          <div>
-            <p class="font-semibold text-gray-800">${emp.name}</p>
-            <p class="text-xs text-blue-600 font-medium">${emp.position}</p>
-            ${emp.phone ? `<p class="text-xs text-gray-400 mt-1 flex items-center justify-center gap-1"><span class="material-symbols-outlined text-sm">call</span>${emp.phone}</p>` : ''}
-            ${emp.phone2 ? `<p class="text-xs text-gray-400 flex items-center justify-center gap-1"><span class="material-symbols-outlined text-sm">call</span>${emp.phone2}</p>` : ''}
+          <div class="w-full">
+            <p class="font-semibold text-gray-800 text-sm truncate" title="${emp.name}">${emp.name}</p>
+            <p class="text-xs text-blue-600 font-medium">${emp.position || 'បុគ្គលិក'}</p>
+            ${tgBadge}
+            ${phoneHtml}
+            ${emp.phone2 ? `<p class="text-xs text-gray-400 flex items-center justify-center gap-1 mt-0.5"><span class="material-symbols-outlined text-sm">call</span>${emp.phone2}</p>` : ''}
           </div>
-          <button onclick="deleteEmployee('${emp._id}')"
-            class="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 mt-1 transition">
-            <span class="material-symbols-outlined text-sm">delete</span> លុប
-          </button>
+          <div class="flex items-center gap-3 mt-2 pt-2 border-t border-slate-100 w-full justify-center">
+            <button onclick="editEmployeePhone('${emp._id}', '${emp.name}', '${emp.phone || ''}')"
+              class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition" title="កែប្រែលេខទូរស័ព្ទ">
+              <span class="material-symbols-outlined text-sm">edit</span> លេខ
+            </button>
+            <span class="text-gray-200">|</span>
+            <button onclick="deleteEmployee('${emp._id}')"
+              class="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5 transition" title="លុបបុគ្គលិក">
+              <span class="material-symbols-outlined text-sm">delete</span> លុប
+            </button>
+          </div>
         </div>`;
       }).join('');
     } catch(e) {
       document.getElementById('employees-grid').innerHTML = '<div class="col-span-full text-center py-10 text-red-400">មិនអាចភ្ជាប់ MongoDB បាន</div>';
+    }
+  }
+
+  async function syncEmployeesFromTelegram() {
+    const btn = document.getElementById('btn-sync-tg-emp');
+    const oldHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-base">progress_activity</span> កំពុង Sync...';
+      btn.disabled = true;
+    }
+    try {
+      const res = await fetch('/api/employees/sync-telegram', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បាន Sync ទិន្នន័យបុគ្គលិកពី Telegram រួចរាល់!');
+        await loadEmployees();
+        await loadStats();
+      } else {
+        showToast(data.detail || data.message || 'មិនអាច Sync បានទេ!', 'error');
+      }
+    } catch (e) {
+      showToast('កំហុសក្នុងការតភ្ជាប់: ' + e, 'error');
+    } finally {
+      if (btn) {
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
+      }
+    }
+  }
+
+  async function editEmployeePhone(id, name, currentPhone) {
+    const newPhone = prompt(`បញ្ចូលលេខទូរស័ព្ទថ្មីសម្រាប់ «${name}»៖`, currentPhone || '');
+    if (newPhone === null) return;
+    try {
+      const r = await fetch(`/api/employee/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: newPhone.trim() })
+      });
+      if (r.ok) {
+        showToast('បានអាប់ដេតលេខទូរស័ព្ទជោគជ័យ!');
+        await loadEmployees();
+      } else {
+        showToast('កំហុសក្នុងការកែប្រែ!', 'error');
+      }
+    } catch(e) {
+      showToast('Error: ' + e, 'error');
     }
   }
 
