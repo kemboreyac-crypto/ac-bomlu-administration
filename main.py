@@ -69,6 +69,19 @@ def fix_id(doc):
     doc["_id"] = str(doc["_id"])
     return doc
 
+def is_telegram_admin(token: str, chat_id: str, user_id: int) -> bool:
+    try:
+        url = f"https://api.telegram.org/bot{token}/getChatMember?chat_id={chat_id}&user_id={user_id}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read().decode())
+            if data.get("ok"):
+                status = data.get("result", {}).get("status", "")
+                return status in ["creator", "administrator"]
+    except Exception as e:
+        print("Check admin error:", e)
+    return False
+
 def send_telegram_notify(text: str, reply_markup: dict = None):
     try:
         s = settings_collection.find_one({"_id": "app_settings"})
@@ -117,14 +130,22 @@ async def get_leaves():
 @app.post("/api/leave")
 async def create_leave(request: LeaveRequest):
     result = leaves_collection.insert_one(request.dict())
+    leave_id = str(result.inserted_id)
+    adm_btn = {
+        "inline_keyboard": [[
+            {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+            {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+        ]]
+    }
     send_telegram_notify(
         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំការអនុម័ត"
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត",
+        reply_markup=adm_btn
     )
-    return {"message": "Leave request saved!", "id": str(result.inserted_id)}
+    return {"message": "Leave request saved!", "id": leave_id}
 
 @app.patch("/api/leave/{leave_id}/status")
 async def update_leave_status(leave_id: str, status: str):
@@ -162,15 +183,23 @@ async def get_loans():
 @app.post("/api/loan")
 async def create_loan(request: LoanRequest):
     result = loans_collection.insert_one(request.dict())
+    loan_id = str(result.inserted_id)
     formatted_amount = f"{request.amount_khr:,}"
+    adm_btn = {
+        "inline_keyboard": [[
+            {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
+            {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+        ]]
+    }
     send_telegram_notify(
         f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
         f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំការអនុម័ត"
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត",
+        reply_markup=adm_btn
     )
-    return {"message": "Loan request saved!", "id": str(result.inserted_id)}
+    return {"message": "Loan request saved!", "id": loan_id}
 
 @app.patch("/api/loan/{loan_id}/status")
 async def update_loan_status(loan_id: str, status: str):
@@ -324,14 +353,15 @@ async def telegram_webhook(req: Request):
             cq_user = callback_query.get("from", {})
             cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
             
-            # Answer callback immediately to remove loading spinner
-            if token and cq_id:
-                try:
-                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
-                    ans_req = urllib.request.Request(ans_url, data=json.dumps({"callback_query_id": cq_id}).encode('utf-8'), headers={"Content-Type": "application/json"})
-                    urllib.request.urlopen(ans_req, timeout=5)
-                except Exception:
-                    pass
+            # Answer callback immediately for selection buttons to remove loading spinner
+            if cq_data.startswith("leave_days:") or cq_data.startswith("loan_amt:"):
+                if token and cq_id:
+                    try:
+                        ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                        ans_req = urllib.request.Request(ans_url, data=json.dumps({"callback_query_id": cq_id}).encode('utf-8'), headers={"Content-Type": "application/json"})
+                        urllib.request.urlopen(ans_req, timeout=5)
+                    except Exception:
+                        pass
 
             # 1. Callback for Leave Days selection -> Ask for Reason!
             if cq_data.startswith("leave_days:"):
@@ -376,6 +406,92 @@ async def telegram_webhook(req: Request):
                 send_telegram_notify(ask_purpose_msg)
                 return {"ok": True}
 
+            # 3. Handle Admin Approval / Rejection directly inside Telegram (Option B)
+            if cq_data.startswith("app_leave:") or cq_data.startswith("rej_leave:") or cq_data.startswith("app_loan:") or cq_data.startswith("rej_loan:"):
+                cq_msg = callback_query.get("message", {})
+                chat_id_str = str(cq_msg.get("chat", {}).get("id") or "")
+                if not chat_id_str or chat_id_str == "None":
+                    chat_id_str = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
+                cq_user_id = cq_user.get("id")
+                
+                # Security Check: Option B - Only Group Admins can approve/reject!
+                if not is_telegram_admin(token, chat_id_str, cq_user_id):
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_data = json.dumps({
+                        "callback_query_id": cq_id,
+                        "text": "⚠️ សុំទោស! លោកអ្នកជាបុគ្គលិកធម្មតា មិនមានសិទ្ធិអនុម័តឡើយ។ មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចចុចបាន!",
+                        "show_alert": True
+                    }).encode('utf-8')
+                    urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                    return {"ok": True}
+                    
+                # Admin authorized!
+                action, doc_id = cq_data.split(":")
+                is_approve = action.startswith("app_")
+                msg_id = cq_msg.get("message_id")
+                
+                if "leave" in action:
+                    leave = leaves_collection.find_one({"_id": ObjectId(doc_id)})
+                    if leave:
+                        emp_name = leave.get("employee_name", "បុគ្គលិក")
+                        days = leave.get("days", 1)
+                        reason = leave.get("reason", "")
+                        status_str = "approved" if is_approve else "rejected"
+                        leaves_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
+                        
+                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected) ❌"
+                        edit_text = (
+                            f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+                            f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
+                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                            f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"{result_text}\n"
+                            f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}"
+                        )
+                        edit_url = f"https://api.telegram.org/bot{token}/editMessageText"
+                        urllib.request.urlopen(urllib.request.Request(edit_url, data=json.dumps({
+                            "chat_id": chat_id_str,
+                            "message_id": msg_id,
+                            "text": edit_text,
+                            "parse_mode": "HTML"
+                        }).encode('utf-8'), headers={"Content-Type": "application/json"}), timeout=8)
+                        
+                elif "loan" in action:
+                    loan = loans_collection.find_one({"_id": ObjectId(doc_id)})
+                    if loan:
+                        emp_name = loan.get("employee_name", "បុគ្គលិក")
+                        amount = loan.get("amount_khr", 0)
+                        purpose = loan.get("purpose", "")
+                        status_str = "approved" if is_approve else "rejected"
+                        loans_collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"status": status_str}})
+                        
+                        result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុម័ត (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> ត្រូវបានបដិសេធ (Rejected) ❌"
+                        edit_text = (
+                            f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
+                            f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
+                            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                            f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"{result_text}\n"
+                            f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}"
+                        )
+                        edit_url = f"https://api.telegram.org/bot{token}/editMessageText"
+                        urllib.request.urlopen(urllib.request.Request(edit_url, data=json.dumps({
+                            "chat_id": chat_id_str,
+                            "message_id": msg_id,
+                            "text": edit_text,
+                            "parse_mode": "HTML"
+                        }).encode('utf-8'), headers={"Content-Type": "application/json"}), timeout=8)
+
+                ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                ans_data = json.dumps({
+                    "callback_query_id": cq_id,
+                    "text": "✅ បានអនុម័តជោគជ័យ!" if is_approve else "❌ បានបដិសេធសំណើ!"
+                }).encode('utf-8')
+                urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
+                return {"ok": True}
+
         # B. Handle Regular Messages
         message = update.get("message") or update.get("channel_post")
         if not message:
@@ -411,42 +527,56 @@ async def telegram_webhook(req: Request):
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
-                leaves_collection.insert_one({
+                l_res = leaves_collection.insert_one({
                     "employee_name": sender_name,
                     "reason": content,
                     "days": days,
                     "status": "pending"
                 })
+                leave_id = str(l_res.inserted_id)
                 user_flows_collection.delete_one({"user_id": user_id_str})
                 
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                    ]]
+                }
                 reply = (
-                    f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ពេញលេញ!</b>\n\n"
+                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {content}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
                 )
-                send_telegram_notify(reply)
+                send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
                 
             elif flow_type == "loan":
                 amount = active_flow.get("amount", 100000)
-                loans_collection.insert_one({
+                ln_res = loans_collection.insert_one({
                     "employee_name": sender_name,
                     "amount_khr": amount,
                     "purpose": content,
                     "status": "pending"
                 })
+                loan_id = str(ln_res.inserted_id)
                 user_flows_collection.delete_one({"user_id": user_id_str})
                 
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                    ]]
+                }
                 reply = (
-                    f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ពេញលេញ!</b>\n\n"
+                    f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {content}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
                 )
-                send_telegram_notify(reply)
+                send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
 
         # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
@@ -457,14 +587,21 @@ async def telegram_webhook(req: Request):
             )
             if recent_leave and ("សុំច្បាប់" in recent_leave.get("reason", "") or "📝" in recent_leave.get("reason", "")):
                 leaves_collection.update_one({"_id": recent_leave["_id"]}, {"$set": {"reason": text}})
+                leave_id = str(recent_leave["_id"])
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                    ]]
+                }
                 reply = (
-                    f"📝 <b>បានកត់ត្រាមូលហេតុច្បាប់បន្ថែមជោគជ័យ!</b>\n\n"
+                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាក (បានបន្ថែមមូលហេតុ)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
                 )
-                send_telegram_notify(reply)
+                send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
 
             recent_loan = loans_collection.find_one(
@@ -473,33 +610,47 @@ async def telegram_webhook(req: Request):
             )
             if recent_loan and ("ខ្ចីប្រាក់" in recent_loan.get("purpose", "") or "💰" in recent_loan.get("purpose", "")):
                 loans_collection.update_one({"_id": recent_loan["_id"]}, {"$set": {"purpose": text}})
+                loan_id = str(recent_loan["_id"])
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                    ]]
+                }
                 reply = (
-                    f"🎯 <b>បានកត់ត្រាគោលបំណងខ្ចីប្រាក់បន្ថែមជោគជ័យ!</b>\n\n"
+                    f"💰 <b>សំណើខ្ចីប្រាក់ (បានបន្ថែមគោលបំណង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
                 )
-                send_telegram_notify(reply)
+                send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
         
         # 2. Handle Voice Message for Leave Permission
         if has_voice:
             caption = message.get("caption") or "សារសំឡេង (Voice Message)"
-            leaves_collection.insert_one({
+            v_res = leaves_collection.insert_one({
                 "employee_name": sender_name,
                 "reason": caption,
                 "days": 1,
                 "status": "pending"
             })
+            leave_id = str(v_res.inserted_id)
+            adm_btn = {
+                "inline_keyboard": [[
+                    {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+                    {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                ]]
+            }
             reply = (
-                f"🎙️ <b>បានកត់ត្រាសំណើសុំច្បាប់តាមសំឡេង!</b>\n\n"
+                f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេងថ្មី!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {caption}\n"
                 f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
             )
-            send_telegram_notify(reply)
+            send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
         # 3. Handle Greetings & Casual Messages -> Re-attach 4-corner Keyboard!
@@ -541,20 +692,27 @@ async def telegram_webhook(req: Request):
             if day_match:
                 days = int(day_match.group(1))
                 
-            leaves_collection.insert_one({
+            l_res = leaves_collection.insert_one({
                 "employee_name": sender_name,
                 "reason": text,
                 "days": days,
                 "status": "pending"
             })
+            leave_id = str(l_res.inserted_id)
+            adm_btn = {
+                "inline_keyboard": [[
+                    {"text": "✅ អនុម័ត", "callback_data": f"app_leave:{leave_id}"},
+                    {"text": "❌ បដិសេធ", "callback_data": f"rej_leave:{leave_id}"}
+                ]]
+            }
             reply = (
                 f"📋 <b>បានកត់ត្រាសំណើសុំច្បាប់ជោគជ័យ!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
             )
-            send_telegram_notify(reply)
+            send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
         # 6. Handle Loan Button or Exact Command -> Show Amount Selection (Inline Buttons)!
@@ -589,20 +747,27 @@ async def telegram_webhook(req: Request):
                 except Exception:
                     amount = 100000
                     
-            loans_collection.insert_one({
+            ln_res = loans_collection.insert_one({
                 "employee_name": sender_name,
                 "amount_khr": amount,
                 "purpose": text,
                 "status": "pending"
             })
+            loan_id = str(ln_res.inserted_id)
+            adm_btn = {
+                "inline_keyboard": [[
+                    {"text": "✅ អនុម័ត", "callback_data": f"app_loan:{loan_id}"},
+                    {"text": "❌ បដិសេធ", "callback_data": f"rej_loan:{loan_id}"}
+                ]]
+            }
             reply = (
                 f"💰 <b>បានកត់ត្រាសំណើខ្ចីប្រាក់ជោគជ័យ!</b>\n\n"
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
-                f"🟡 <b>ស្ថានភាព:</b> កំពុងរង់ចាំ Admin ពិនិត្យលើ Dashboard"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុម័ត"
             )
-            send_telegram_notify(reply)
+            send_telegram_notify(reply, reply_markup=adm_btn)
             return {"ok": True}
 
         # 8. Handle Help/Start Command
