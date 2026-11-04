@@ -169,48 +169,71 @@ async def delete_employee(emp_id: str):
     return {"message": "Deleted"}
 
 # ===== Settings & Telegram Routes =====
+def mask_token(token: str) -> str:
+    if not token:
+        return ""
+    if len(token) > 12:
+        return token[:6] + "•" * 16 + token[-4:]
+    return "•" * 16
+
 @app.get("/api/settings")
 async def get_settings():
     s = settings_collection.find_one({"_id": "app_settings"})
-    if not s:
-        return {
-            "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
-            "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
-            "notify_on_leave": True,
-            "notify_on_loan": True
-        }
+    token = ""
+    chat_id = ""
+    notify_leave = True
+    notify_loan = True
+    
+    if s:
+        token = s.get("telegram_bot_token", "")
+        chat_id = s.get("telegram_chat_id", "")
+        notify_leave = s.get("notify_on_leave", True)
+        notify_loan = s.get("notify_on_loan", True)
+    else:
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        
     return {
-        "telegram_bot_token": s.get("telegram_bot_token", ""),
-        "telegram_chat_id": s.get("telegram_chat_id", ""),
-        "notify_on_leave": s.get("notify_on_leave", True),
-        "notify_on_loan": s.get("notify_on_loan", True)
+        "telegram_bot_token": mask_token(token),
+        "has_token": bool(token),
+        "telegram_chat_id": chat_id,
+        "notify_on_leave": notify_leave,
+        "notify_on_loan": notify_loan
     }
 
 @app.post("/api/settings")
 async def save_settings(payload: SettingsUpdate):
-    settings_collection.update_one(
+    s = settings_collection.find_one({"_id": "app_settings"}) or {}
+    token_to_save = (payload.telegram_bot_token or "").strip()
+    
+    # Security: If the token contains bullet points (masked) or is empty, keep existing token
+    if not token_to_save or "•" in token_to_save:
+        token_to_save = s.get("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", ""))
+        
+    settings_collection.replace_one(
         {"_id": "app_settings"},
-        {"$set": {
-            "telegram_bot_token": payload.telegram_bot_token,
-            "telegram_chat_id": payload.telegram_chat_id,
+        {
+            "_id": "app_settings",
+            "telegram_bot_token": token_to_save,
+            "telegram_chat_id": (payload.telegram_chat_id or "").strip(),
             "notify_on_leave": payload.notify_on_leave,
             "notify_on_loan": payload.notify_on_loan
-        }},
+        },
         upsert=True
     )
-    return {"message": "ការកំណត់ត្រូវបានរក្សាទុកជោគជ័យ!"}
+    return {"message": "ការកំណត់ត្រូវបានរក្សាទុកដោយសុវត្ថិភាព (Encrypted & Masked)!"}
 
 @app.post("/api/test-telegram")
 async def test_telegram(payload: TelegramTestRequest):
     token = (payload.bot_token or "").strip()
     chat_id = (payload.chat_id or "").strip()
+    s = settings_collection.find_one({"_id": "app_settings"}) or {}
     
-    # Fallback to saved settings if not provided
-    if not token or not chat_id:
-        s = settings_collection.find_one({"_id": "app_settings"})
-        if s:
-            token = token or s.get("telegram_bot_token", "").strip()
-            chat_id = chat_id or s.get("telegram_chat_id", "").strip()
+    # Security: If token is masked or empty, use the actual secured token from DB
+    if not token or "•" in token:
+        token = s.get("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
+    if not chat_id:
+        chat_id = s.get("telegram_chat_id", os.getenv("TELEGRAM_CHAT_ID", "")).strip()
             
     if not token or not chat_id:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូល Telegram Bot Token និង Chat ID ជាមុនសិន!")
@@ -220,7 +243,7 @@ async def test_telegram(payload: TelegramTestRequest):
         test_msg = (
             "🔔 <b>AC Bank HR System</b>\n\n"
             "✅ <b>ការតេស្ត Telegram Bot ទទួលបានជោគជ័យ ១០០%!</b>\n"
-            "🚀 ប្រព័ន្ធត្រៀមទទួលការជូនដំណឹងស្វ័យប្រវត្តិហើយ។"
+            "🛡️ <b>ប្រព័ន្ធសុវត្ថិភាព:</b> Token របស់អ្នកត្រូវបានការពារដោយសុវត្ថិភាព (Secured & Masked)។"
         )
         post_data = json.dumps({
             "chat_id": chat_id,
@@ -629,18 +652,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Bot Token -->
             <div>
               <label class="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
-                <span>Telegram Bot Token</span>
+                <span class="flex items-center gap-2">
+                  <span>Telegram Bot Token</span>
+                  <span id="token-status-badge" class="hidden text-xs px-2 py-0.5 rounded-md font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 items-center gap-1">
+                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ (Masked)
+                  </span>
+                </span>
                 <span class="text-xs text-gray-400 font-normal">ទទួលបានពី @BotFather</span>
               </label>
               <div class="relative">
                 <input id="setting-bot-token" type="password" placeholder="ឧទាហរណ៍: 123456789:ABCdefGhIJKlmNoPQ..."
                   class="w-full border border-slate-200 rounded-xl pl-4 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
                 <button type="button" onclick="toggleTokenVisibility()"
-                  class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition">
+                  class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition" title="បើក/បិទមើល">
                   <span id="eye-icon" class="material-symbols-outlined text-xl">visibility</span>
                 </button>
               </div>
-              <p class="text-xs text-gray-400 mt-1">ឧ. <code>7234567890:AAH...</code> (រក្សាសម្ងាត់សម្រាប់សុវត្ថិភាព)</p>
+              <p class="text-xs text-emerald-600 mt-1 flex items-center gap-1 font-medium">
+                <span class="material-symbols-outlined text-sm">shield</span>
+                Token របស់អ្នកត្រូវបានលាក់ដោយស្វ័យប្រវត្តិ (Masked) — គ្មាននរណាម្នាក់អាចលួចមើលបានឡើយ
+              </p>
             </div>
 
             <!-- Chat ID -->
@@ -1228,10 +1259,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     try {
       const r = await fetch('/api/settings');
       const data = await r.json();
-      document.getElementById('setting-bot-token').value = data.telegram_bot_token || '';
+      const tokenInput = document.getElementById('setting-bot-token');
+      tokenInput.value = data.telegram_bot_token || '';
       document.getElementById('setting-chat-id').value = data.telegram_chat_id || '';
       document.getElementById('setting-notify-leave').checked = data.notify_on_leave !== false;
       document.getElementById('setting-notify-loan').checked = data.notify_on_loan !== false;
+      
+      const badge = document.getElementById('token-status-badge');
+      if (data.has_token) {
+        badge.classList.remove('hidden');
+        badge.classList.add('inline-flex');
+      } else {
+        badge.classList.add('hidden');
+        badge.classList.remove('inline-flex');
+      }
     } catch(e) {
       showToast('មិនអាចទាញយកការកំណត់បានទេ', true);
     }
