@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import base64
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
@@ -57,12 +59,18 @@ class Employee(BaseModel):
 class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
+    gemini_api_key: Optional[str] = ""
+    gemini_model: Optional[str] = "gemini-2.5-flash"
     notify_on_leave: bool = True
     notify_on_loan: bool = True
 
 class TelegramTestRequest(BaseModel):
     bot_token: Optional[str] = ""
     chat_id: Optional[str] = ""
+
+class GeminiTestRequest(BaseModel):
+    gemini_api_key: Optional[str] = ""
+    gemini_model: Optional[str] = "gemini-2.5-flash"
 
 # ===== Helper =====
 def fix_id(doc):
@@ -257,22 +265,31 @@ async def get_settings():
     s = settings_collection.find_one({"_id": "app_settings"})
     token = ""
     chat_id = ""
+    gemini_key = ""
+    gemini_model = "gemini-2.5-flash"
     notify_leave = True
     notify_loan = True
     
     if s:
         token = s.get("telegram_bot_token", "")
         chat_id = s.get("telegram_chat_id", "")
+        gemini_key = s.get("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
+        gemini_model = s.get("gemini_model", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
         notify_leave = s.get("notify_on_leave", True)
         notify_loan = s.get("notify_on_loan", True)
     else:
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         
     return {
         "telegram_bot_token": mask_token(token),
         "has_token": bool(token),
         "telegram_chat_id": chat_id,
+        "gemini_api_key": mask_token(gemini_key),
+        "has_gemini_key": bool(gemini_key),
+        "gemini_model": gemini_model,
         "notify_on_leave": notify_leave,
         "notify_on_loan": notify_loan
     }
@@ -281,10 +298,14 @@ async def get_settings():
 async def save_settings(payload: SettingsUpdate):
     s = settings_collection.find_one({"_id": "app_settings"}) or {}
     token_to_save = (payload.telegram_bot_token or "").strip()
+    gemini_to_save = (payload.gemini_api_key or "").strip()
     
     # Security: If the token contains bullet points (masked) or is empty, keep existing token
     if not token_to_save or "•" in token_to_save:
         token_to_save = s.get("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", ""))
+        
+    if not gemini_to_save or "•" in gemini_to_save:
+        gemini_to_save = s.get("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
         
     settings_collection.replace_one(
         {"_id": "app_settings"},
@@ -292,12 +313,54 @@ async def save_settings(payload: SettingsUpdate):
             "_id": "app_settings",
             "telegram_bot_token": token_to_save,
             "telegram_chat_id": (payload.telegram_chat_id or "").strip(),
+            "gemini_api_key": gemini_to_save,
+            "gemini_model": (payload.gemini_model or "gemini-2.5-flash").strip(),
             "notify_on_leave": payload.notify_on_leave,
             "notify_on_loan": payload.notify_on_loan
         },
         upsert=True
     )
     return {"message": "ការកំណត់ត្រូវបានរក្សាទុកដោយសុវត្ថិភាព (Encrypted & Masked)!"}
+
+@app.post("/api/test-gemini")
+async def test_gemini(payload: GeminiTestRequest):
+    key = (payload.gemini_api_key or "").strip()
+    s = settings_collection.find_one({"_id": "app_settings"}) or {}
+    if not key or "•" in key:
+        key = s.get("gemini_api_key", os.getenv("GEMINI_API_KEY", "")).strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូល Google Gemini API Key ជាមុនសិន!")
+        
+    model = (payload.gemini_model or "gemini-2.5-flash").strip()
+    candidate_models = [model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+    seen = set()
+    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    
+    last_err = ""
+    for m in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
+        test_payload = {
+            "contents": [{"parts": [{"text": "សូមសួស្តីខ្លីមួយម៉ាត់ជាភាសាខ្មែរ"}]}]
+        }
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(test_payload).encode('utf-8'),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read().decode('utf-8'))
+                ans = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                return {
+                    "success": True,
+                    "model_used": m,
+                    "message": f"✅ ជោគជ័យ! Gemini AI ({m}) ឆ្លើយតប: {ans}"
+                }
+        except Exception as e:
+            last_err = str(e)
+            continue
+            
+    raise HTTPException(status_code=400, detail=f"❌ ការតភ្ជាប់ Gemini បរាជ័យ: {last_err}")
 
 @app.post("/api/test-telegram")
 async def test_telegram(payload: TelegramTestRequest):
@@ -692,6 +755,88 @@ PURPOSE_MAP = {
     "family": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ",
 }
 
+def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, audio_mime: str = "audio/ogg") -> Optional[dict]:
+    s = settings_collection.find_one({"_id": "app_settings"}) or {}
+    api_key = (s.get("gemini_api_key", "").strip() if s else "") or os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+        
+    model = s.get("gemini_model", "gemini-2.5-flash").strip()
+    candidate_models = [model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+    seen = set()
+    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    
+    parts = []
+    if audio_bytes:
+        b64_audio = base64.b64encode(audio_bytes).decode('utf-8')
+        parts.append({
+            "inlineData": {
+                "mimeType": audio_mime,
+                "data": b64_audio
+            }
+        })
+    parts.append({"text": prompt})
+    
+    system_instruction = (
+        "You are the official Smart HR & Staff Assistant for 'AC BOMLU' (ក្រុមហ៊ុន សេវាបូមលូ និងដឹកជញ្ជូន AC BOMLU).\n"
+        "Your role is to assist staff with leave requests, loan requests, and general HR questions politely and accurately in Khmer.\n\n"
+        "When analyzing a message (text or audio from a staff member):\n"
+        "1. Determine their intent: 'leave' (សុំច្បាប់), 'loan' (ខ្ចីប្រាក់), 'hr_query' (សួរព័ត៌មាន/ច្បាប់), or 'general_chat' (ជជែកទូទៅ).\n"
+        "2. If intent is 'leave', extract: days (integer, default 1), reason (short clear Khmer summary).\n"
+        "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (short clear Khmer purpose).\n"
+        "4. Always write a warm, polite Khmer response in 'response_text' (use 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n\n"
+        "CRITICAL: Always output strictly valid JSON matching this schema:\n"
+        "{\n"
+        '  "intent": "leave" | "loan" | "hr_query" | "general_chat",\n'
+        '  "days": 1,\n'
+        '  "reason": "...",\n'
+        '  "amount_khr": 100000,\n'
+        '  "purpose": "...",\n'
+        '  "response_text": "..."\n'
+        "}"
+    )
+    
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": parts
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json"
+        }
+    }
+    
+    for m in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=12) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    cand_parts = candidates[0].get("content", {}).get("parts", [])
+                    if cand_parts:
+                        raw_text = cand_parts[0].get("text", "").strip()
+                        if raw_text.startswith("```"):
+                            raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+                            raw_text = re.sub(r"\s*```$", "", raw_text)
+                        return json.loads(raw_text)
+        except Exception as e:
+            print(f"Gemini model {m} failed: {e}")
+            continue
+            
+    return None
+
 @app.post("/api/telegram-webhook")
 async def telegram_webhook(req: Request):
     try:
@@ -1075,31 +1220,115 @@ async def telegram_webhook(req: Request):
                 send_telegram_notify(reply, reply_markup=adm_btn)
                 return {"ok": True}
         
-        # 2. Handle Voice Message for Leave Permission
+        # 2. Handle Voice Message (Powered by Google Gemini Multimodal Audio)
         if has_voice:
-            caption = message.get("caption") or "សារសំឡេង (Voice Message)"
-            v_res = leaves_collection.insert_one({
-                "employee_name": sender_name,
-                "reason": caption,
-                "days": 1,
-                "status": "pending"
-            })
-            leave_id = str(v_res.inserted_id)
-            adm_btn = {
-                "inline_keyboard": [[
-                    {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
-                    {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
-                ]]
-            }
-            reply = (
-                f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេងថ្មី!</b>\n\n"
-                f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                f"📝 <b>មូលហេតុ:</b> {caption}\n"
-                f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
-            )
-            send_telegram_notify(reply, reply_markup=adm_btn)
-            return {"ok": True}
+            caption = message.get("caption") or ""
+            voice_obj = message.get("voice") or message.get("audio")
+            file_id = voice_obj.get("file_id") if voice_obj else None
+            audio_bytes = None
+            if file_id and token:
+                try:
+                    gf_url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+                    gf_req = urllib.request.Request(gf_url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(gf_req, timeout=6) as r:
+                        gf_data = json.loads(r.read().decode())
+                        file_path = gf_data.get("result", {}).get("file_path")
+                        if file_path:
+                            down_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                            with urllib.request.urlopen(urllib.request.Request(down_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as down_r:
+                                audio_bytes = down_r.read()
+                except Exception as ve:
+                    print("Error downloading voice message:", ve)
+                    
+            ai_data = None
+            if audio_bytes:
+                ai_data = call_gemini_ai(
+                    prompt=f"Please listen carefully to this Khmer voice message from staff '{sender_name}' and analyze their intent.",
+                    user_name=sender_name,
+                    audio_bytes=audio_bytes
+                )
+                
+            if ai_data and ai_data.get("intent") == "leave":
+                days = int(ai_data.get("days", 1))
+                reason = ai_data.get("reason") or "សារសំឡេងសុំច្បាប់"
+                l_res = leaves_collection.insert_one({
+                    "employee_name": sender_name,
+                    "reason": reason,
+                    "days": days,
+                    "status": "pending"
+                })
+                leave_id = str(l_res.inserted_id)
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
+                    ]]
+                }
+                reply = (
+                    f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                    f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                )
+                send_telegram_notify(reply, reply_markup=adm_btn)
+                return {"ok": True}
+                
+            elif ai_data and ai_data.get("intent") == "loan":
+                amount = int(ai_data.get("amount_khr", 100000))
+                purpose = ai_data.get("purpose") or "សារសំឡេងសុំខ្ចីប្រាក់"
+                ln_res = loans_collection.insert_one({
+                    "employee_name": sender_name,
+                    "amount_khr": amount,
+                    "purpose": purpose,
+                    "status": "pending"
+                })
+                loan_id = str(ln_res.inserted_id)
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
+                    ]]
+                }
+                reply = (
+                    f"💰 <b>សំណើខ្ចីប្រាក់តាមសំឡេង (វិភាគដោយ AI)!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                    f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                )
+                send_telegram_notify(reply, reply_markup=adm_btn)
+                return {"ok": True}
+                
+            elif ai_data and ai_data.get("response_text"):
+                send_telegram_notify(f"🤖 <b>ឆ្លើយតបសារសំឡេង ({sender_name}):</b>\n{ai_data.get('response_text')}")
+                return {"ok": True}
+                
+            else:
+                # Fallback if Gemini not available
+                voice_label = caption or "សារសំឡេង (Voice Message)"
+                v_res = leaves_collection.insert_one({
+                    "employee_name": sender_name,
+                    "reason": voice_label,
+                    "days": 1,
+                    "status": "pending"
+                })
+                leave_id = str(v_res.inserted_id)
+                adm_btn = {
+                    "inline_keyboard": [[
+                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
+                    ]]
+                }
+                reply = (
+                    f"🎙️ <b>សំណើសុំច្បាប់តាមសំឡេងថ្មី!</b>\n\n"
+                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                    f"📝 <b>មូលហេតុ:</b> {voice_label}\n"
+                    f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                )
+                send_telegram_notify(reply, reply_markup=adm_btn)
+                return {"ok": True}
 
         # 3. Handle Greetings & Casual Messages -> Re-attach 2 Keyboard buttons!
         if text.lower() in ["hi", "hello", "hey", "សួស្តី", "ជំរាបសួរ", "បាទ", "ចាស", "ok"]:
@@ -1132,7 +1361,69 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(msg, reply_markup=inline_days)
             return {"ok": True}
 
-        # 5. Handle Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
+        # 5. Smart AI Understanding with Google Gemini for free-form text:
+        if text and not is_system_cmd:
+            ai_data = call_gemini_ai(prompt=f"Staff member '{sender_name}' wrote: {text}", user_name=sender_name)
+            if ai_data:
+                intent = ai_data.get("intent")
+                if intent == "leave":
+                    days = int(ai_data.get("days", 1))
+                    reason = ai_data.get("reason") or text
+                    l_res = leaves_collection.insert_one({
+                        "employee_name": sender_name,
+                        "reason": reason,
+                        "days": days,
+                        "status": "pending"
+                    })
+                    leave_id = str(l_res.inserted_id)
+                    adm_btn = {
+                        "inline_keyboard": [[
+                            {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
+                            {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
+                        ]]
+                    }
+                    reply = (
+                        f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាក (វិភាគដោយ AI)!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                        f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    )
+                    send_telegram_notify(reply, reply_markup=adm_btn)
+                    return {"ok": True}
+
+                elif intent == "loan":
+                    amount = int(ai_data.get("amount_khr", 100000))
+                    purpose = ai_data.get("purpose") or text
+                    ln_res = loans_collection.insert_one({
+                        "employee_name": sender_name,
+                        "amount_khr": amount,
+                        "purpose": purpose,
+                        "status": "pending"
+                    })
+                    loan_id = str(ln_res.inserted_id)
+                    adm_btn = {
+                        "inline_keyboard": [[
+                            {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
+                            {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
+                        ]]
+                    }
+                    reply = (
+                        f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (វិភាគដោយ AI)!</b>\n\n"
+                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
+                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
+                        f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    )
+                    send_telegram_notify(reply, reply_markup=adm_btn)
+                    return {"ok": True}
+
+                elif intent in ["hr_query", "general_chat"] and ai_data.get("response_text"):
+                    clean_res = ai_data.get("response_text")
+                    send_telegram_notify(f"🤖 <b>ឆ្លើយតប ({sender_name}):</b>\n{clean_res}")
+                    return {"ok": True}
+
+        # 6. Fallback: Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ ២ ថ្ងៃ ឈឺក្បាល...)
         if ("សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower()) and not is_leave_btn and not is_loan_btn:
             days = 1
             import re
@@ -1713,6 +2004,76 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </form>
         </div>
 
+        <!-- Google Gemini AI Assistant Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow">
+                <span class="material-symbols-outlined text-2xl">neurology</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-gray-800">Google Gemini AI Assistant</h3>
+                <p class="text-xs text-gray-500">ជំនួយការឆ្លាតវៃឆ្លើយតបសំណួរ វិភាគពាក្យសុំច្បាប់/ខ្ចីប្រាក់ និងស្តាប់សារសំឡេង Voice</p>
+              </div>
+            </div>
+            <span class="text-xs px-3 py-1 bg-purple-100 text-purple-700 font-semibold rounded-full flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span> Gemini AI
+            </span>
+          </div>
+
+          <div class="p-6 space-y-5">
+            <!-- Gemini API Key -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <span class="flex items-center gap-2">
+                  <span>Google Gemini API Key</span>
+                  <span id="gemini-status-badge" class="hidden text-xs px-2 py-0.5 rounded-md font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 items-center gap-1">
+                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ (Masked)
+                  </span>
+                </span>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-xs text-purple-600 hover:underline flex items-center gap-1 font-medium">
+                  <span>យក Key ឥតគិតថ្លៃ (aistudio.google.com)</span>
+                  <span class="material-symbols-outlined text-xs">open_in_new</span>
+                </a>
+              </label>
+              <div class="relative">
+                <input id="setting-gemini-key" type="password" placeholder="ឧទាហរណ៍: AIzaSy... ឬ AQ.Ab..."
+                  class="w-full border border-slate-200 rounded-xl pl-4 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono transition" />
+                <button type="button" onclick="toggleGeminiKeyVisibility()"
+                  class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition" title="បើក/បិទមើល">
+                  <span id="gemini-eye-icon" class="material-symbols-outlined text-xl">visibility</span>
+                </button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">API Key នេះប្រើសម្រាប់ឱ្យ Bot យល់សារភាសាខ្មែរធម្មជាតិ និងសារសំឡេង (Voice) ដោយស្វ័យប្រវត្តិ។</p>
+            </div>
+
+            <!-- Gemini Model Choice -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                <span>ម៉ូដែល AI (AI Model)</span>
+              </label>
+              <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
+                <option value="gemini-2.5-flash">⚡ Gemini 3.5 Flash (Ultra Fast - លឿនបំផុត)</option>
+                <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash</option>
+                <option value="gemini-1.5-flash">🌟 Gemini 1.5 Flash</option>
+              </select>
+            </div>
+
+            <!-- Buttons -->
+            <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-3">
+              <button type="button" onclick="saveGeminiSettings()" id="btn-save-gemini"
+                class="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold shadow transition">
+                <span class="material-symbols-outlined text-lg">save</span> រក្សាទុកការកំណត់ AI
+              </button>
+              <button type="button" onclick="testGeminiAI()" id="btn-test-gemini"
+                class="bg-purple-50 hover:bg-purple-100 text-purple-700 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-purple-200 transition">
+                <span class="material-symbols-outlined text-lg" id="test-gemini-icon">psychology</span>
+                <span>សាកល្បង Gemini AI (Test AI)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- API & Webhook Card -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
           <div class="flex items-center gap-3">
@@ -2272,13 +2633,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         badge.classList.add('hidden');
         badge.classList.remove('inline-flex');
       }
+
+      // Gemini settings
+      const geminiInput = document.getElementById('setting-gemini-key');
+      if (geminiInput) geminiInput.value = data.gemini_api_key || '';
+      const geminiModel = document.getElementById('setting-gemini-model');
+      if (geminiModel && data.gemini_model) geminiModel.value = data.gemini_model;
+      const geminiBadge = document.getElementById('gemini-status-badge');
+      if (geminiBadge) {
+        if (data.has_gemini_key) {
+          geminiBadge.classList.remove('hidden');
+          geminiBadge.classList.add('inline-flex');
+        } else {
+          geminiBadge.classList.add('hidden');
+          geminiBadge.classList.remove('inline-flex');
+        }
+      }
     } catch(e) {
       showToast('មិនអាចទាញយកការកំណត់បានទេ', true);
     }
   }
 
   async function saveSettings(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const btn = document.getElementById('btn-save-settings');
     btn.disabled = true;
     btn.classList.add('opacity-70');
@@ -2286,6 +2663,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const payload = {
         telegram_bot_token: document.getElementById('setting-bot-token').value.trim(),
         telegram_chat_id: document.getElementById('setting-chat-id').value.trim(),
+        gemini_api_key: document.getElementById('setting-gemini-key').value.trim(),
+        gemini_model: document.getElementById('setting-gemini-model').value.trim(),
         notify_on_leave: document.getElementById('setting-notify-leave').checked,
         notify_on_loan: document.getElementById('setting-notify-loan').checked
       };
@@ -2296,11 +2675,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       });
       const data = await r.json();
       showToast(data.message || 'បានរក្សាទុកការកំណត់ជោគជ័យ!');
+      await loadSettings();
     } catch(err) {
       showToast('មានបញ្ហាក្នុងការរក្សាទុក', true);
     } finally {
       btn.disabled = false;
       btn.classList.remove('opacity-70');
+    }
+  }
+
+  async function saveGeminiSettings() {
+    const btn = document.getElementById('btn-save-gemini');
+    btn.disabled = true;
+    btn.classList.add('opacity-70');
+    try {
+      const payload = {
+        telegram_bot_token: document.getElementById('setting-bot-token').value.trim(),
+        telegram_chat_id: document.getElementById('setting-chat-id').value.trim(),
+        gemini_api_key: document.getElementById('setting-gemini-key').value.trim(),
+        gemini_model: document.getElementById('setting-gemini-model').value.trim(),
+        notify_on_leave: document.getElementById('setting-notify-leave').checked,
+        notify_on_loan: document.getElementById('setting-notify-loan').checked
+      };
+      const r = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      showToast(data.message || 'បានរក្សាទុកការកំណត់ AI ជោគជ័យ!');
+      await loadSettings();
+    } catch(err) {
+      showToast('មានបញ្ហាក្នុងការរក្សាទុក AI', true);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('opacity-70');
+    }
+  }
+
+  async function testGeminiAI() {
+    const key = document.getElementById('setting-gemini-key').value.trim();
+    const model = document.getElementById('setting-gemini-model').value;
+    const icon = document.getElementById('test-gemini-icon');
+    const btn = document.getElementById('btn-test-gemini');
+    icon.classList.add('animate-spin');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/test-gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gemini_api_key: key, gemini_model: model })
+      });
+      const res = await r.json();
+      if (r.ok) {
+        showToast(res.message || '✅ ជោគជ័យ! Gemini AI ដំណើរការល្អ!');
+      } else {
+        showToast(res.detail || '❌ បរាជ័យក្នុងការតេស្ត Gemini', true);
+      }
+    } catch(e) {
+      showToast('❌ បរាជ័យ: ' + e.message, true);
+    } finally {
+      icon.classList.remove('animate-spin');
+      btn.disabled = false;
+    }
+  }
+
+  function toggleGeminiKeyVisibility() {
+    const input = document.getElementById('setting-gemini-key');
+    const icon = document.getElementById('gemini-eye-icon');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility_off';
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility';
     }
   }
 
