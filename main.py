@@ -4123,10 +4123,10 @@ async def telegram_webhook(req: Request):
         bot_username = "ac_bomlu_administration_bot"
         is_reply_to_bot = bool(message.get("reply_to_message", {}).get("from", {}).get("is_bot"))
         is_mentioned = ("@" in text and bot_username.lower() in text.lower()) or is_reply_to_bot
-        is_hr_topic = any(w in text for w in ["សុំច្បាប់", "ច្បាប់", "ឈប់", "leave", "ខ្ចីប្រាក់", "ខ្ចី", "បុរេប្រទាន", "loan", "វត្តមាន", "ប្រាក់ខែ", "លុយ"])
+        is_hr_topic = any(w in text for w in ["សុំច្បាប់", "សុំឈប់", "ឈប់សម្រាក", "leave", "ខ្ចីប្រាក់", "បុរេប្រទាន", "loan", "វត្តមាន"])
 
-        is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់", "ច្បាប់", "ឈប់"] or clean_cmd in ["/leave", "leave", "leav"]
-        is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់", "បុរេប្រទាន"] or clean_cmd in ["/loan", "loan", "lon"]
+        is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
+        is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
         is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Private Chat /start or /share_phone prompt with Contact Request Keyboard Button
@@ -4402,13 +4402,11 @@ async def telegram_webhook(req: Request):
                 reason_msg_id = active_flow.get("reason_msg_id")
                 user_flows_collection.delete_one({"user_id": user_id_str})
                 
-                # Clean up intermediate prompt messages & user's trigger message so ONLY the official card remains!
+                # Clean up intermediate prompt messages so ONLY the official card remains (keep user message untouched)
                 if reason_msg_id:
                     delete_telegram_message(flow_chat_id, reason_msg_id)
                 if step1_msg_id and step1_msg_id != reason_msg_id:
                     delete_telegram_message(flow_chat_id, step1_msg_id)
-                if not is_private_chat and user_msg_id:
-                    delete_telegram_message(chat_id_str, user_msg_id)
                 
                 conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
@@ -4465,13 +4463,11 @@ async def telegram_webhook(req: Request):
                 purpose_msg_id = active_flow.get("purpose_msg_id")
                 user_flows_collection.delete_one({"user_id": user_id_str})
                 
-                # Clean up intermediate prompt messages & user's trigger message so ONLY the official card remains!
+                # Clean up intermediate prompt messages so ONLY the official card remains (keep user message untouched)
                 if purpose_msg_id:
                     delete_telegram_message(flow_chat_id, purpose_msg_id)
                 if step1_msg_id and step1_msg_id != purpose_msg_id:
                     delete_telegram_message(flow_chat_id, step1_msg_id)
-                if not is_private_chat and user_msg_id:
-                    delete_telegram_message(chat_id_str, user_msg_id)
                 
                 adm_btn = {
                     "inline_keyboard": [[
@@ -4508,8 +4504,8 @@ async def telegram_webhook(req: Request):
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
                 return {"ok": True}
 
-        # 2.1 Fallback: If user recently requested leave/loan and now types the reason (like 'រវល់ទៅការកូន')
-        if text and not is_system_cmd:
+        # 2.1 Fallback: If user recently requested leave/loan and now types the reason in private DM
+        if is_private_chat and text and not is_system_cmd:
             recent_leave = leaves_collection.find_one(
                 {"employee_name": sender_name, "status": "pending"},
                 sort=[("_id", -1)]
@@ -4588,11 +4584,6 @@ async def telegram_webhook(req: Request):
             
             # 1. Transcribe spoken Khmer words into natural Khmer text
             transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else ""
-            
-            # Clean up user's voice message in group chat if bot has admin permission
-            user_msg_id = message.get("message_id")
-            if not is_private_chat and user_msg_id:
-                delete_telegram_message(chat_id_str, user_msg_id)
             
             ai_data = None
             if audio_bytes:
@@ -4705,68 +4696,31 @@ async def telegram_webhook(req: Request):
                 return {"ok": True}
                 
             elif ai_data and ai_data.get("response_text"):
-                send_telegram_notify(f"🤖 <b>ឆ្លើយតបសារសំឡេង ({sender_name}):</b>\n{ai_data.get('response_text')}", target_chat_id=chat_id_str)
+                if is_private_chat or is_mentioned:
+                    send_telegram_notify(f"🤖 <b>ឆ្លើយតបសារសំឡេង ({sender_name}):</b>\n{ai_data.get('response_text')}", target_chat_id=chat_id_str)
                 return {"ok": True}
                 
             else:
-                # Fallback using transcribed Khmer text
-                voice_label = transcription or caption or "សារសំឡេងសុំច្បាប់"
-                cambodia_tz = timezone(timedelta(hours=7))
-                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                leave_doc = {
-                    "employee_name": sender_name,
-                    "reason": voice_label,
-                    "days": 1,
-                    "status": "pending",
-                    "date": today_khr
-                }
-                if voice_id:
-                    leave_doc["voice_id"] = voice_id
-                v_res = leaves_collection.insert_one(leave_doc)
-                leave_id = str(v_res.inserted_id)
-                conflict_alert = check_leave_conflicts(sender_name)
-                adm_btn = {
-                    "inline_keyboard": [[
-                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
-                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
-                    ]]
-                }
-                if voice_id:
-                    adm_btn["inline_keyboard"].append([
-                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
-                    ])
-                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
-                admin_card = (
-                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី (តាមសំឡេង)!</b>\n\n"
-                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                    f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
-                    f"{voice_line}\n"
-                    f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
-                )
+                # If voice note is not a leave or loan request:
+                # In group chat: remain completely silent and do NOT create any leave request!
+                # In private DM: inform the employee politely.
                 if is_private_chat:
-                    emp_conf = (
-                        f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
-                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                        f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
-                        f"{voice_line}\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
+                    help_msg = (
+                        f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
+                        f"🤖 ប្រព័ន្ធបានទទួលសារសំឡេងរបស់អ្នក ប៉ុន្តែពុំមានទាក់ទងនឹងការស្នើសុំច្បាប់ ឬខ្ចីប្រាក់ឡើយ។\n"
+                        f"👉 ប្រសិនបើអ្នកចង់ស្នើសុំច្បាប់ ឬខ្ចីប្រាក់ សូមចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម។"
                     )
-                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
-                else:
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
+                    send_telegram_notify(help_msg, target_chat_id=chat_id_str)
                 return {"ok": True}
 
-        # 3. Handle Greetings & Casual Messages -> Re-attach 2 Keyboard buttons!
+        # 3. Handle Greetings & Casual Messages -> Re-attach 2 Keyboard buttons! (Only in private DM)
         if text.lower() in ["hi", "hello", "hey", "សួស្តី", "ជំរាបសួរ", "បាទ", "ចាស", "ok"]:
-            reply = (
-                f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
-                f"👇 ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
-            )
-            send_telegram_notify(reply, target_chat_id=chat_id_str)
+            if is_private_chat:
+                reply = (
+                    f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
+                    f"👇 ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នករួចរាល់។ សូមចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោមដើម្បីប្រើប្រាស់។"
+                )
+                send_telegram_notify(reply, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # 4. Handle Leave Button -> Step 1: Show Days Selection Buttons (ជម្រើសទី ១)!
@@ -4791,12 +4745,12 @@ async def telegram_webhook(req: Request):
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនថ្ងៃឈប់សម្រាក» ខាងក្រោម៖</b>"
             )
             sent_res = send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
-            if not is_private_chat and message.get("message_id"):
-                delete_telegram_message(chat_id_str, message.get("message_id"))
             return {"ok": True}
 
         # 5. Smart AI Understanding with Google Gemini for free-form text:
         if text and not is_system_cmd:
+            if not is_private_chat and not is_mentioned and not is_hr_topic:
+                return {"ok": True}
             ai_data = call_gemini_ai(prompt=f"Staff member '{sender_name}' wrote: {text}", user_name=sender_name)
             if ai_data:
                 intent = ai_data.get("intent")
@@ -4899,12 +4853,13 @@ async def telegram_webhook(req: Request):
                     return {"ok": True}
 
                 elif intent in ["hr_query", "general_chat"] and ai_data.get("response_text"):
-                    clean_res = ai_data.get("response_text")
-                    send_telegram_notify(f"🤖 <b>ជំនួយការ AI:</b>\n{clean_res}", target_chat_id=chat_id_str)
+                    if is_private_chat or is_mentioned:
+                        clean_res = ai_data.get("response_text")
+                        send_telegram_notify(f"🤖 <b>ជំនួយការ AI:</b>\n{clean_res}", target_chat_id=chat_id_str)
                     return {"ok": True}
 
         # 6. Fallback: Detailed Leave Text (e.g. ស្អែកសុំច្បាប់ កន្លះថ្ងៃ / ២ ថ្ងៃ ឈឺក្បាល...)
-        if ("សុំច្បាប់" in text or "ច្បាប់" in text or "leave" in text.lower()) and not is_leave_btn and not is_loan_btn:
+        if ("សុំច្បាប់" in text or "ឈប់សម្រាក" in text or (is_private_chat and "leave" in text.lower())) and not is_leave_btn and not is_loan_btn:
             days = 1.0
             if "កន្លះ" in text or "half" in text.lower() or "0.5" in text:
                 days = 0.5
@@ -4984,12 +4939,10 @@ async def telegram_webhook(req: Request):
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
             )
             sent_res = send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
-            if not is_private_chat and message.get("message_id"):
-                delete_telegram_message(chat_id_str, message.get("message_id"))
             return {"ok": True}
 
         # 7. Handle Detailed Loan Text with custom amount
-        if ("ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "ខ្ចី" in text) and not is_loan_btn and not is_leave_btn:
+        if ("ខ្ចីប្រាក់" in text or "បុរេប្រទាន" in text or "សុំខ្ចី" in text) and not is_loan_btn and not is_leave_btn:
             import re
             amount = 100000
             numbers = re.findall(r'(\d[\d,]*\d|\d+)', text.replace(' ', ''))
@@ -7216,15 +7169,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </button>
     </div>
     <form onsubmit="submitIncome(event)" class="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
-      <div class="grid grid-cols-2 gap-2.5 sm:gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-          <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
-          <input id="inc-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-        </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+        <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+        <input id="inc-form-time" type="hidden" value="" />
       </div>
 
       <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
@@ -7346,15 +7294,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </button>
     </div>
     <form onsubmit="submitExpense(event)" class="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
-      <div class="grid grid-cols-2 gap-2.5 sm:gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
-          <input id="exp-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
-        </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+        <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+        <input id="exp-form-time" type="hidden" value="" />
       </div>
 
       <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
@@ -7384,20 +7327,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </select>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
-          <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
-            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
-            <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
-            <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
-            <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ / បង្កាន់ដៃ</label>
-          <input id="exp-form-ref" type="text" placeholder="ឧ. EXP-001" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
-        </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+        <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+          <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+          <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
+          <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
+          <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+        </select>
+        <input id="exp-form-ref" type="hidden" value="" />
       </div>
 
       <div>
