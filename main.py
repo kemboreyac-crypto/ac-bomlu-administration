@@ -5139,6 +5139,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (typeof showToast === 'function') {
           showToast(data.message || 'សូមស្វាគមន៍!');
         }
+        if (typeof showTab === 'function') {
+          showTab('dashboard', false);
+        }
         if (typeof refreshAll === 'function') {
           await refreshAll();
         } else if (typeof loadStats === 'function') {
@@ -9057,76 +9060,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function handleAdminLogin(event) {
-    event.preventDefault();
-    const uInput = document.getElementById('login-username');
-    const pInput = document.getElementById('login-password');
-    const remember = document.getElementById('login-remember').checked;
-    const alertBox = document.getElementById('login-alert');
-    const submitBtn = document.getElementById('login-submit-btn');
-    const btnText = document.getElementById('login-btn-text');
-
-    const kmNumMap = {'០':'0','១':'1','២':'2','៣':'3','៤':'4','៥':'5','៦':'6','៧':'7','៨':'8','៩':'9'};
-    const rawU = uInput.value || '';
-    const rawP = pInput.value || '';
-    const cleanU = rawU.replace(/[\u200b\u200c\u200d\u200e\u200f\ufeff\u00a0]/g, '').trim();
-    const cleanP = rawP.replace(/[\u200b\u200c\u200d\u200e\u200f\ufeff\u00a0]/g, '').trim();
-    const normP = cleanP.replace(/[០-៩]/g, d => kmNumMap[d] || d);
-
-    const u = cleanU;
-    const p = normP || cleanP;
-
-    if (!u || !p) {
-      showLoginAlert('សូមបញ្ចូលឈ្មោះគណនី និងលេខសម្ងាត់!', true);
-      return;
-    }
-
-    submitBtn.disabled = true;
-    btnText.textContent = 'កំពុងផ្ទៀងផ្ទាត់...';
-    alertBox.classList.add('hidden');
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u, password: p })
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        localStorage.setItem('acbomlu_admin_token', data.token);
-        if (remember) {
-          localStorage.setItem('acbomlu_saved_username', u);
-        } else {
-          localStorage.removeItem('acbomlu_saved_username');
-        }
-        document.getElementById('login-screen').classList.add('hidden');
-        const topAdminName = document.getElementById('top-admin-name');
-        if (topAdminName) topAdminName.textContent = data.username || u;
-        const settingAdminUser = document.getElementById('setting-admin-username');
-        if (settingAdminUser) settingAdminUser.value = data.username || u;
-        showToast(data.message || 'សូមស្វាគមន៍!');
-        await refreshAll();
-      } else {
-        showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!', true);
-      }
-    } catch (e) {
-      showLoginAlert('មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message, true);
-    } finally {
-      submitBtn.disabled = false;
-      btnText.textContent = 'ចូលប្រើប្រព័ន្ធ (Log In)';
-    }
-  }
-
-  function showLoginAlert(msg, isError) {
-    const alertBox = document.getElementById('login-alert');
-    if (!alertBox) return;
-    alertBox.textContent = msg;
-    alertBox.className = isError
-      ? 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-2'
-      : 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2';
-    alertBox.classList.remove('hidden');
-  }
+// (handleAdminLogin & showLoginAlert are defined in early script for zero-latency response)
 
   function toggleLoginPassword() {
     const pInput = document.getElementById('login-password');
