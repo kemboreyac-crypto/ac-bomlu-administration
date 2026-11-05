@@ -142,40 +142,25 @@ def verify_admin_login(username: str, password: str) -> bool:
         rec = settings_collection.find_one({"_id": ADMIN_AUTH_KEY})
         p_hash = hashlib.sha256(p.encode('utf-8')).hexdigest()
         
-        # Check against DB
-        if rec:
-            stored_u = rec.get("username", "admin").strip()
+        # Check against DB credentials
+        if rec and rec.get("password_hash"):
+            stored_u = (rec.get("username") or "admin").strip()
             stored_hash = rec.get("password_hash")
-            stored_raw = rec.get("password")
-            if (u.lower() == stored_u.lower()) and (p_hash == stored_hash or p == stored_raw):
+            
+            # If admin credentials exist in DB, ONLY the stored password hash is accepted.
+            # The 2 old passwords ("admin" and "123456") are STRICTLY DISABLED and will NOT work!
+            if (u.lower() == stored_u.lower()) and (p_hash == stored_hash):
                 return True
+            # Does not match stored password -> reject immediately!
+            return False
                 
-        # Initial defaults / owner recovery:
-        valid_pairs = [
-            ("admin", "admin"),
-            ("admin", "123456"),
-            ("admin", "acbomlu2026"),
-            ("kemborey", "123456"),
-            ("kemborey", "acbomlu"),
-            ("acbomlu", "092673641")
-        ]
-        for v_u, v_p in valid_pairs:
-            if u.lower() == v_u and p == v_p:
-                settings_collection.update_one(
-                    {"_id": ADMIN_AUTH_KEY},
-                    {"$set": {
-                        "username": u,
-                        "password_hash": hashlib.sha256(p.encode('utf-8')).hexdigest(),
-                        "updated_at": datetime.now().isoformat()
-                    }},
-                    upsert=True
-                )
-                return True
-    except Exception as e:
-        print(f"verify_admin_login error: {e}")
-        if u.lower() in ["admin", "kemborey"] and p in ["admin", "123456", "acbomlu2026", "092673641"]:
+        # ONLY on a fresh database setup before any password was changed:
+        if u.lower() == "admin" and p == "admin":
             return True
             
+    except Exception as e:
+        print(f"verify_admin_login error: {e}")
+        
     return False
 
 def generate_session_token(username: str) -> str:
@@ -1347,7 +1332,7 @@ async def api_admin_login(payload: AdminLoginRequest):
     if not u or not p:
         raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះគណនី និងលេខសម្ងាត់!")
     if not verify_admin_login(u, p):
-        raise HTTPException(status_code=401, detail="ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ! (Default: admin / admin)")
+        raise HTTPException(status_code=401, detail="ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!")
         
     token = generate_session_token(u)
     res = JSONResponse(content={
@@ -1388,21 +1373,38 @@ async def api_admin_change_credentials(payload: AdminChangeCredentialsRequest, r
     new_u = payload.new_username.strip()
     new_p = payload.new_password.strip()
     
-    if not new_u or not new_p:
-        raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះគណនីថ្មី និងលេខសម្ងាត់ថ្មី!")
+    if not new_u:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះគណនី!")
+    if not cur_p:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូលលេខសម្ងាត់បច្ចុប្បន្ន!")
+    if not new_p:
+        new_p = cur_p
     if len(new_p) < 4:
         raise HTTPException(status_code=400, detail="លេខសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច ៤ តួអក្សរឡើងទៅ!")
 
-    rec = settings_collection.find_one({"_id": ADMIN_AUTH_KEY}) or {}
-    cur_u = rec.get("username", "admin")
-    if not verify_admin_login(cur_u, cur_p):
+    rec = settings_collection.find_one({"_id": ADMIN_AUTH_KEY})
+    cur_hash = hashlib.sha256(cur_p.encode('utf-8')).hexdigest()
+    is_valid_current = False
+
+    if rec and rec.get("password_hash"):
+        if cur_hash == rec.get("password_hash"):
+            is_valid_current = True
+        elif not rec.get("is_custom_password") and cur_p in ["admin", "123456"]:
+            is_valid_current = True
+    else:
+        if cur_p in ["admin", "123456"]:
+            is_valid_current = True
+
+    if not is_valid_current:
         raise HTTPException(status_code=401, detail="លេខសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវទេ!")
 
+    new_hash = hashlib.sha256(new_p.encode('utf-8')).hexdigest()
     settings_collection.update_one(
         {"_id": ADMIN_AUTH_KEY},
         {"$set": {
             "username": new_u,
-            "password_hash": hashlib.sha256(new_p.encode('utf-8')).hexdigest(),
+            "password_hash": new_hash,
+            "is_custom_password": True,
             "updated_at": datetime.now().isoformat()
         }},
         upsert=True
@@ -1412,7 +1414,7 @@ async def api_admin_change_credentials(payload: AdminChangeCredentialsRequest, r
         "success": True,
         "token": new_token,
         "username": new_u,
-        "message": "បានផ្លាស់ប្ដូរឈ្មោះគណនី និងលេខសម្ងាត់ Admin ជោគជ័យ!"
+        "message": "បានផ្លាស់ប្ដូរឈ្មោះគណនី និងលេខសម្ងាត់ជោគជ័យ! (លេខសម្ងាត់ចាស់ 123456 និង admin ត្រូវបានលុបចោល)"
     })
     res.set_cookie(key="admin_session", value=new_token, max_age=30 * 86400, samesite="lax", secure=False)
     return res
@@ -4383,7 +4385,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span class="material-symbols-outlined text-sm text-blue-600">lock</span>
             <span>លេខសម្ងាត់ (Password)</span>
           </span>
-          <span class="text-[11px] text-gray-400 font-normal">លំនាំដើម: admin</span>
+          <span class="text-[11px] text-gray-400 font-normal">សុវត្ថិភាពខ្ពស់</span>
         </label>
         <div class="relative">
           <input id="login-password" type="password" required autocomplete="current-password"
@@ -4414,8 +4416,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <div class="mt-6 pt-4 border-t border-slate-100 text-center">
       <p class="text-[11px] text-gray-500 flex items-center justify-center gap-1">
-        <span class="material-symbols-outlined text-xs text-amber-500">lightbulb</span>
-        <span>គណនីដំបូង: <b>admin</b> | លេខសម្ងាត់: <b>admin</b> (អាចប្តូរក្នុង Settings)</span>
+        <span class="material-symbols-outlined text-xs text-blue-500">lock</span>
+        <span>ប្រព័ន្ធគ្រប់គ្រងរដ្ឋបាល AC BOMLU — ចូលដោយគណនី និងលេខសម្ងាត់របស់អ្នក</span>
       </p>
     </div>
   </div>
@@ -7460,7 +7462,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         showToast(data.message || 'សូមស្វាគមន៍!');
         await refreshAll();
       } else {
-        showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ! (Default: admin / admin)', true);
+        showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!', true);
       }
     } catch (e) {
       showLoginAlert('មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message, true);
@@ -7517,6 +7519,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     if (!curP) {
       showToast('សូមបញ្ចូលលេខសម្ងាត់បច្ចុប្បន្នដើម្បីបញ្ជាក់!', true);
+      return;
+    }
+    if (newP && !confirmP) {
+      showToast('សូមវាយលេខសម្ងាត់ថ្មីម្តងទៀតក្នុងប្រអប់បញ្ជាក់!', true);
       return;
     }
     if (newP && newP !== confirmP) {
