@@ -2349,6 +2349,63 @@ async def api_delete_transaction(tx_id: str):
 
 # --- Stats & Reports Helpers ---
 
+KHMER_NUM_MAP = {
+    '០': 0, '១': 1, '២': 2, '៣': 3, '៤': 4,
+    '៥': 5, '៦': 6, '៧': 7, '៨': 8, '៩': 9
+}
+
+def parse_khmer_or_arabic_int(s):
+    if not s:
+        return 0
+    res = ""
+    for ch in str(s).strip():
+        if ch in KHMER_NUM_MAP:
+            res += str(KHMER_NUM_MAP[ch])
+        elif ch.isdigit():
+            res += ch
+    try:
+        return int(res) if res else 0
+    except ValueError:
+        return 0
+
+def extract_trips_and_locations(desc, is_sewage_income=True):
+    if not desc:
+        return [("សេវាទូទៅ", 1)] if is_sewage_income else []
+    
+    entries = []
+    lines = [l.strip() for l in str(desc).splitlines() if l.strip()]
+    
+    for line in lines:
+        m1 = re.search(r'ទីតាំង[៖:]\s*([^(\n]+?)\s*\(\s*([០-៩0-9]+)\s*ជើង\s*\)', line)
+        if m1:
+            loc = m1.group(1).strip()
+            trips = parse_khmer_or_arabic_int(m1.group(2)) or 1
+            entries.append((loc, trips))
+            continue
+            
+        m2 = re.search(r'([^\d(\n]+?)\s*\(?\s*([០-៩0-9]+)\s*ជើង\s*\)?', line)
+        if m2:
+            loc = m2.group(1).strip().strip(':').strip('៖').strip()
+            trips = parse_khmer_or_arabic_int(m2.group(2)) or 1
+            if loc:
+                entries.append((loc, trips))
+                continue
+                
+        m3 = re.search(r'^([^\d០-៩]+?)\s*([០-៩0-9]+)$', line)
+        if m3:
+            loc = m3.group(1).strip()
+            trips = parse_khmer_or_arabic_int(m3.group(2)) or 1
+            if loc and len(loc) >= 2:
+                entries.append((loc, trips))
+                continue
+
+    if not entries and is_sewage_income:
+        clean_desc = re.sub(r'[()\[\]]', '', str(desc)).strip()
+        loc = clean_desc[:25] if clean_desc else "សេវាទូទៅ"
+        entries.append((loc, 1))
+        
+    return entries
+
 def calculate_finance_metrics(transactions):
     inc_khr = 0.0
     inc_usd = 0.0
@@ -2358,28 +2415,151 @@ def calculate_finance_metrics(transactions):
     inc_by_cat = {}
     exp_by_cat = {}
 
+    total_trips = 0
+    location_map = {}
+    staff_map = {}
+
+    payment_breakdown = {
+        "income": {
+            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ (Cash)"},
+            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ធនាគារ / KHQR (Bank)"},
+            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ (Other)"}
+        },
+        "expense": {
+            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ (Cash)"},
+            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ធនាគារ / KHQR (Bank)"},
+            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ (Other)"}
+        }
+    }
+
+    expense_structure = {
+        "fuel": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រេងឥន្ធនៈ (Fuel)"},
+        "maintenance": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ជួសជុល & គ្រឿងបន្លាស់ (Repairs)"},
+        "disposal": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ថ្លៃចាក់កាកសំណល់ (Dumping Fee)"},
+        "marketing": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សព្វផ្សាយ & ផ្លាក (Ads/Signs)"},
+        "salary": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រាក់បេសកកម្ម/ប្រាក់ខែ (Wages)"},
+        "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ចំណាយប្រតិបត្តិការផ្សេងៗ (Other)"}
+    }
+
     for tx in transactions:
         t = tx.get("type", "income")
         amt = float(tx.get("amount", 0.0) or 0.0)
         curr = tx.get("currency", "KHR")
         cat = tx.get("category") or ("ចំណូលផ្សេងៗ" if t == "income" else "ចំណាយផ្សេងៗ")
+        pay_method = (tx.get("payment_method") or "").strip().lower()
+        desc = tx.get("description") or ""
+        staff = tx.get("recorded_by") or "រដ្ឋបាល"
+
+        if any(w in pay_method for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]):
+            pay_key = "cash"
+        elif any(w in pay_method for w in ["aba", "ធនាគារ", "bank", "khqr", "acleda", "wing", "ផ្ទេរ"]):
+            pay_key = "bank"
+        else:
+            pay_key = "other"
 
         if t == "income":
-            if curr == "USD": inc_usd += amt
-            else: inc_khr += amt
+            if curr == "USD":
+                inc_usd += amt
+                payment_breakdown["income"][pay_key]["usd"] += amt
+            else:
+                inc_khr += amt
+                payment_breakdown["income"][pay_key]["khr"] += amt
+            payment_breakdown["income"][pay_key]["count"] += 1
+
             if cat not in inc_by_cat:
                 inc_by_cat[cat] = {"khr": 0.0, "usd": 0.0, "count": 0}
             if curr == "USD": inc_by_cat[cat]["usd"] += amt
             else: inc_by_cat[cat]["khr"] += amt
             inc_by_cat[cat]["count"] += 1
+
+            is_service = "បូមលូ" in cat or "សេវា" in cat
+            trips_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
+            if trips_entries:
+                tx_total_trips = sum(tr for _, tr in trips_entries) or 1
+                total_trips += tx_total_trips
+                for loc, tr in trips_entries:
+                    portion = (tr / tx_total_trips)
+                    if loc not in location_map:
+                        location_map[loc] = {"location": loc, "trips": 0, "khr": 0.0, "usd": 0.0, "count": 0}
+                    location_map[loc]["trips"] += tr
+                    location_map[loc]["count"] += 1
+                    if curr == "USD":
+                        location_map[loc]["usd"] += amt * portion
+                    else:
+                        location_map[loc]["khr"] += amt * portion
+
+            if staff not in staff_map:
+                staff_map[staff] = {"staff": staff, "income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "trips": 0, "tx_count": 0}
+            if curr == "USD": staff_map[staff]["income_usd"] += amt
+            else: staff_map[staff]["income_khr"] += amt
+            staff_map[staff]["trips"] += sum(tr for _, tr in trips_entries) if is_service else 0
+            staff_map[staff]["tx_count"] += 1
+
         else:
-            if curr == "USD": exp_usd += amt
-            else: exp_khr += amt
+            if curr == "USD":
+                exp_usd += amt
+                payment_breakdown["expense"][pay_key]["usd"] += amt
+            else:
+                exp_khr += amt
+                payment_breakdown["expense"][pay_key]["khr"] += amt
+            payment_breakdown["expense"][pay_key]["count"] += 1
+
             if cat not in exp_by_cat:
                 exp_by_cat[cat] = {"khr": 0.0, "usd": 0.0, "count": 0}
             if curr == "USD": exp_by_cat[cat]["usd"] += amt
             else: exp_by_cat[cat]["khr"] += amt
             exp_by_cat[cat]["count"] += 1
+
+            cat_lower = (cat + " " + desc).lower()
+            if any(w in cat_lower for w in ["ប្រេង", "សាំង", "ហ្គាស", "fuel"]):
+                exp_struct_key = "fuel"
+            elif any(w in cat_lower for w in ["ជួសជុល", "គ្រឿងបន្លាស់", "ថែទាំ", "repair", "maintenance"]):
+                exp_struct_key = "maintenance"
+            elif any(w in cat_lower for w in ["ចាក់", "កាកសំណល់", "dump", "disposal"]):
+                exp_struct_key = "disposal"
+            elif any(w in cat_lower for w in ["ផ្លាក", "ផ្សាយ", "banner", "ad", "marketing"]):
+                exp_struct_key = "marketing"
+            elif any(w in cat_lower for w in ["បេសកកម្ម", "ប្រាក់ខែ", "ប្រាក់ឈ្នួល", "salary", "wage"]):
+                exp_struct_key = "salary"
+            else:
+                exp_struct_key = "other"
+
+            if curr == "USD":
+                expense_structure[exp_struct_key]["usd"] += amt
+            else:
+                expense_structure[exp_struct_key]["khr"] += amt
+            expense_structure[exp_struct_key]["count"] += 1
+
+            if staff not in staff_map:
+                staff_map[staff] = {"staff": staff, "income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "trips": 0, "tx_count": 0}
+            if curr == "USD": staff_map[staff]["expense_usd"] += amt
+            else: staff_map[staff]["expense_khr"] += amt
+            staff_map[staff]["tx_count"] += 1
+
+    arpt_khr = round(inc_khr / total_trips, 2) if total_trips > 0 else 0.0
+    arpt_usd = round(inc_usd / total_trips, 2) if total_trips > 0 else 0.0
+    locations_list = sorted(location_map.values(), key=lambda x: (x["trips"], x["khr"], x["usd"]), reverse=True)
+
+    cash_net_khr = payment_breakdown["income"]["cash"]["khr"] - payment_breakdown["expense"]["cash"]["khr"]
+    cash_net_usd = payment_breakdown["income"]["cash"]["usd"] - payment_breakdown["expense"]["cash"]["usd"]
+    bank_net_khr = payment_breakdown["income"]["bank"]["khr"] - payment_breakdown["expense"]["bank"]["khr"]
+    bank_net_usd = payment_breakdown["income"]["bank"]["usd"] - payment_breakdown["expense"]["bank"]["usd"]
+
+    reconciliation = {
+        "cash_balance": {"khr": cash_net_khr, "usd": cash_net_usd},
+        "bank_balance": {"khr": bank_net_khr, "usd": bank_net_usd},
+        "cash_income": payment_breakdown["income"]["cash"],
+        "cash_expense": payment_breakdown["expense"]["cash"],
+        "bank_income": payment_breakdown["income"]["bank"],
+        "bank_expense": payment_breakdown["expense"]["bank"]
+    }
+
+    total_rev_approx = inc_khr + (inc_usd * 4100.0)
+    total_exp_approx = exp_khr + (exp_usd * 4100.0)
+    expense_ratio_pct = round((total_exp_approx / total_rev_approx * 100), 1) if total_rev_approx > 0 else 0.0
+    fuel_khr = expense_structure["fuel"]["khr"] + (expense_structure["fuel"]["usd"] * 4100.0)
+    fuel_per_trip_khr = round(fuel_khr / total_trips, 0) if total_trips > 0 else 0.0
+    staff_list = sorted(staff_map.values(), key=lambda x: (x["trips"], x["income_khr"]), reverse=True)
 
     return {
         "income_khr": inc_khr,
@@ -2390,7 +2570,16 @@ def calculate_finance_metrics(transactions):
         "net_usd": inc_usd - exp_usd,
         "income_by_category": sorted([{"category": k, **v} for k, v in inc_by_cat.items()], key=lambda x: (x["khr"], x["usd"]), reverse=True),
         "expense_by_category": sorted([{"category": k, **v} for k, v in exp_by_cat.items()], key=lambda x: (x["khr"], x["usd"]), reverse=True),
-        "count": len(transactions)
+        "count": len(transactions),
+        "total_trips": total_trips,
+        "arpt": {"khr": arpt_khr, "usd": arpt_usd},
+        "locations": locations_list,
+        "payment_breakdown": payment_breakdown,
+        "reconciliation": reconciliation,
+        "expense_structure": expense_structure,
+        "expense_ratio_pct": expense_ratio_pct,
+        "fuel_per_trip_khr": fuel_per_trip_khr,
+        "staff_breakdown": staff_list
     }
 
 @app.get("/api/finance/stats")
@@ -2430,18 +2619,24 @@ async def api_get_daily_report(date: Optional[str] = None):
     }
 
 @app.get("/api/finance/reports/monthly")
-async def api_get_monthly_report(year: Optional[int] = None, month: Optional[int] = None):
+async def api_get_monthly_report(year: Optional[Any] = None, month: Optional[Any] = None):
     cam_tz = timezone(timedelta(hours=7))
     now = datetime.now(cam_tz)
-    y = year or now.year
-    m = month or now.month
+    try:
+        y = int(year) if (year is not None and str(year).strip() != "") else now.year
+    except Exception:
+        y = now.year
+    try:
+        m = int(month) if (month is not None and str(month).strip() != "") else now.month
+    except Exception:
+        m = now.month
     
     days_in_m = calendar.monthrange(y, m)[1]
     month_prefix = f"{y:04d}-{m:02d}"
     txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{month_prefix}"}}).sort([("date", 1), ("time", 1)]))
     metrics = calculate_finance_metrics(txs)
 
-    daily_map = {d: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0} for d in range(1, days_in_m + 1)}
+    daily_map = {d: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0, "trips": 0} for d in range(1, days_in_m + 1)}
     for t in txs:
         d_str = t.get("date", "")
         try:
@@ -2451,9 +2646,16 @@ async def api_get_monthly_report(year: Optional[int] = None, month: Optional[int
         if day_num in daily_map:
             amt = float(t.get("amount", 0.0) or 0.0)
             curr = t.get("currency", "KHR")
-            if t.get("type") == "income":
+            t_type = t.get("type", "income")
+            cat = t.get("category") or ""
+            desc = t.get("description") or ""
+            if t_type == "income":
                 if curr == "USD": daily_map[day_num]["income_usd"] += amt
                 else: daily_map[day_num]["income_khr"] += amt
+                is_service = "បូមលូ" in cat or "សេវា" in cat
+                trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                if trip_entries:
+                    daily_map[day_num]["trips"] += sum(tr for _, tr in trip_entries)
             else:
                 if curr == "USD": daily_map[day_num]["expense_usd"] += amt
                 else: daily_map[day_num]["expense_khr"] += amt
@@ -2472,7 +2674,8 @@ async def api_get_monthly_report(year: Optional[int] = None, month: Optional[int
             "expense_usd": info["expense_usd"],
             "net_khr": info["income_khr"] - info["expense_khr"],
             "net_usd": info["income_usd"] - info["expense_usd"],
-            "count": info["count"]
+            "count": info["count"],
+            "trips": info.get("trips", 0)
         })
 
     return {
@@ -2481,21 +2684,25 @@ async def api_get_monthly_report(year: Optional[int] = None, month: Optional[int
         "month_name": khmer_months[m - 1],
         "summary": metrics,
         "daily_breakdown": daily_list,
-        "total_transactions": len(txs)
+        "total_transactions": len(txs),
+        "transactions": [fix_id(t) for t in txs]
     }
 
 @app.get("/api/finance/reports/yearly")
-async def api_get_yearly_report(year: Optional[int] = None):
+async def api_get_yearly_report(year: Optional[Any] = None):
     cam_tz = timezone(timedelta(hours=7))
     now = datetime.now(cam_tz)
-    y = year or now.year
+    try:
+        y = int(year) if (year is not None and str(year).strip() != "") else now.year
+    except Exception:
+        y = now.year
     
     year_prefix = f"{y:04d}"
     txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{year_prefix}"}}).sort([("date", 1)]))
     metrics = calculate_finance_metrics(txs)
 
     khmer_months = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
-    monthly_map = {m: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0} for m in range(1, 13)}
+    monthly_map = {m: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0, "trips": 0} for m in range(1, 13)}
 
     for t in txs:
         d_str = t.get("date", "")
@@ -2506,9 +2713,16 @@ async def api_get_yearly_report(year: Optional[int] = None):
         if m_num in monthly_map:
             amt = float(t.get("amount", 0.0) or 0.0)
             curr = t.get("currency", "KHR")
-            if t.get("type") == "income":
+            t_type = t.get("type", "income")
+            cat = t.get("category") or ""
+            desc = t.get("description") or ""
+            if t_type == "income":
                 if curr == "USD": monthly_map[m_num]["income_usd"] += amt
                 else: monthly_map[m_num]["income_khr"] += amt
+                is_service = "បូមលូ" in cat or "សេវា" in cat
+                trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                if trip_entries:
+                    monthly_map[m_num]["trips"] += sum(tr for _, tr in trip_entries)
             else:
                 if curr == "USD": monthly_map[m_num]["expense_usd"] += amt
                 else: monthly_map[m_num]["expense_khr"] += amt
@@ -2526,14 +2740,16 @@ async def api_get_yearly_report(year: Optional[int] = None):
             "expense_usd": info["expense_usd"],
             "net_khr": info["income_khr"] - info["expense_khr"],
             "net_usd": info["income_usd"] - info["expense_usd"],
-            "count": info["count"]
+            "count": info["count"],
+            "trips": info.get("trips", 0)
         })
 
     return {
         "year": y,
         "summary": metrics,
         "monthly_breakdown": months_list,
-        "total_transactions": len(txs)
+        "total_transactions": len(txs),
+        "transactions": [fix_id(t) for t in txs]
     }
 
 # ===== Telegram Mini App Web Forms (Option 4) =====
@@ -2543,7 +2759,7 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ទម្រង់សុំច្បាប់ - AC BOMLU</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2732,7 +2948,7 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ទម្រង់ខ្ចីប្រាក់ - AC BOMLU</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3005,7 +3221,7 @@ async def play_voice_page(voice_id: str):
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ស្ដាប់សារសំឡេងបុគ្គលិក - AC BOMLU</title>
   <link rel="icon" type="image/png" href="/logo.png">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
   <style>
@@ -4910,7 +5126,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <link rel="apple-touch-icon" href="/static/ac_logo.jpg" />
 
   <!-- Tailwind CSS v3 CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 
   <!-- Google Material Symbols (Outlined) -->
   <link rel="stylesheet"
@@ -4972,6 +5188,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .btn-primary:hover { background: #1976D2; }
     .btn-secondary { background: #E3F2FD; color: #1565C0; }
     .btn-secondary:hover { background: #BBDEFB; }
+
+    /* Print styles for Executive Report */
+    @media print {
+      body { background: #ffffff !important; color: #000000 !important; overflow: visible !important; height: auto !important; }
+      #sidebar, #sidebar-backdrop, header, .no-print, #login-screen { display: none !important; }
+      main { margin: 0 !important; padding: 0 !important; width: 100% !important; overflow: visible !important; height: auto !important; }
+      .print-only { display: block !important; }
+      .no-break-inside { break-inside: avoid; page-break-inside: avoid; }
+      .page-break { break-before: page; page-break-before: always; }
+      .bg-white { box-shadow: none !important; border-color: #cbd5e1 !important; }
+    }
   </style>
 </head>
 
@@ -6459,6 +6686,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <p class="text-xs text-gray-500 mt-0.5">របាយការណ៍ចំណូល ចំណាយ និងប្រាក់ចំណេញសុទ្ធ ប្រចាំថ្ងៃ ប្រចាំខែ និងប្រចាំឆ្នាំ</p>
         </div>
         <div class="flex items-center gap-2 flex-wrap no-print">
+          <button onclick="openExecutiveReportPreview()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 shadow-sm transition" title="ពិនិត្យ និងបោះពុម្ពទម្រង់របាយការណ៍ផ្លូវការ">
+            <span class="material-symbols-outlined text-base">verified</span> ទម្រង់ផ្លូវការថ្នាក់ដឹកនាំ
+          </button>
           <button onclick="printFinanceReport()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 shadow-sm transition">
             <span class="material-symbols-outlined text-base">print</span> បោះពុម្ព
           </button>
@@ -6528,31 +6758,68 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Financial Report Summary Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6">
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> សរុបចំណូល (Income)
+      <!-- Financial Report Summary Cards (8 Key Metrics) -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-3">
+        <!-- Row 1: Core Financial Performance -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
+          <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> សរុបចំណូល (Income)</span>
+            <span class="material-symbols-outlined text-emerald-500 text-sm">trending_up</span>
           </p>
           <p id="rep-summary-income" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
         </div>
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-rose-500"></span> សរុបចំណាយ (Expense)
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
+          <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span> សរុបចំណាយ (Expense)</span>
+            <span class="material-symbols-outlined text-rose-500 text-sm">trending_down</span>
           </p>
           <p id="rep-summary-expense" class="text-base sm:text-xl font-bold text-rose-600 mt-1.5">0 ៛</p>
         </div>
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-blue-500"></span> ចំណេញ/ខាតសុទ្ធ (Net Profit)
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
+          <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span> ចំណេញ/ខាតសុទ្ធ (Net Profit)</span>
+            <span class="material-symbols-outlined text-blue-500 text-sm">account_balance_wallet</span>
           </p>
           <p id="rep-summary-net" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
         </div>
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span> ប្រតិបត្តិការសរុប (Records)
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
+          <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> ប្រតិបត្តិការ (Records)</span>
+            <span class="material-symbols-outlined text-amber-500 text-sm">receipt_long</span>
           </p>
           <p id="rep-summary-count" class="text-base sm:text-xl font-bold text-gray-800 mt-1.5">0</p>
+        </div>
+      </div>
+
+      <!-- Row 2: Operational & Treasury Performance (Trips, ARPT, Cash vs Bank) -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6">
+        <div class="bg-gradient-to-br from-blue-50 to-indigo-50/50 rounded-2xl p-4 shadow-sm border border-blue-100/80 transition hover:shadow-md">
+          <p class="text-xs text-blue-900 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-blue-600 text-base">commute</span> សរុបជើងផ្ដល់សេវា</span>
+            <span class="text-[10px] bg-blue-200/60 text-blue-800 font-bold px-1.5 py-0.5 rounded-full">សេវាកម្ម</span>
+          </p>
+          <p id="rep-summary-trips" class="text-base sm:text-xl font-bold text-blue-700 mt-1.5">0 ជើង</p>
+        </div>
+        <div class="bg-gradient-to-br from-indigo-50 to-purple-50/50 rounded-2xl p-4 shadow-sm border border-indigo-100/80 transition hover:shadow-md">
+          <p class="text-xs text-indigo-900 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-indigo-600 text-base">price_check</span> ចំណូលមធ្យម/ជើង</span>
+            <span class="text-[10px] bg-indigo-200/60 text-indigo-800 font-bold px-1.5 py-0.5 rounded-full">ARPT</span>
+          </p>
+          <p id="rep-summary-arpt" class="text-base sm:text-xl font-bold text-indigo-700 mt-1.5">0 ៛</p>
+        </div>
+        <div class="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-2xl p-4 shadow-sm border border-emerald-100/80 transition hover:shadow-md">
+          <p class="text-xs text-emerald-900 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-emerald-600 text-base">payments</span> សាច់ប្រាក់ក្នុងដៃ</span>
+            <span class="text-[10px] bg-emerald-200/60 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">Cash In Hand</span>
+          </p>
+          <p id="rep-summary-cash" class="text-base sm:text-xl font-bold text-emerald-700 mt-1.5">0 ៛</p>
+        </div>
+        <div class="bg-gradient-to-br from-cyan-50 to-sky-50/50 rounded-2xl p-4 shadow-sm border border-cyan-100/80 transition hover:shadow-md">
+          <p class="text-xs text-cyan-900 font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-cyan-600 text-base">account_balance</span> សមតុល្យធនាគារ</span>
+            <span class="text-[10px] bg-cyan-200/60 text-cyan-800 font-bold px-1.5 py-0.5 rounded-full">Bank / KHQR</span>
+          </p>
+          <p id="rep-summary-bank" class="text-base sm:text-xl font-bold text-cyan-700 mt-1.5">0 ៛</p>
         </div>
       </div>
 
@@ -6567,6 +6834,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <!-- ======================================================
      MODALS
 ====================================================== -->
+<!-- Executive Official Report Modal (របាយការណ៍ផ្លូវការថ្នាក់ដឹកនាំ) -->
+<div id="executive-report-modal" class="fixed inset-0 bg-black/60 modal-overlay z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+  <div class="modal-box bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 no-print">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-blue-600">verified</span>
+        <h3 class="font-bold text-gray-800 text-sm sm:text-base">ទម្រង់របាយការណ៍ផ្លូវការសម្រាប់ថ្នាក់ដឹកនាំ (Executive Report)</h3>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="printExecutiveReportDoc()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow transition">
+          <span class="material-symbols-outlined text-base">print</span> បោះពុម្ពទម្រង់ផ្លូវការ
+        </button>
+        <button onclick="closeModal('executive-report-modal')" class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+    </div>
+    <div id="executive-report-modal-body" class="p-4 sm:p-8 overflow-y-auto bg-white text-gray-800 space-y-6">
+      <!-- Injected by JavaScript -->
+    </div>
+  </div>
+</div>
+
 <!-- Leave Modal -->
 <div id="leave-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -10211,15 +10501,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         updateReportSummaryCards(data.summary);
         renderFinanceReportDaily(data);
       } else if (currentReportPeriod === 'monthly') {
-        const m = document.getElementById('rep-finance-month').value;
-        const y = document.getElementById('rep-finance-year-m').value;
+        const today = new Date();
+        const mEl = document.getElementById('rep-finance-month');
+        const yEl = document.getElementById('rep-finance-year-m');
+        const m = (mEl && mEl.value) ? mEl.value : (today.getMonth() + 1);
+        const y = (yEl && yEl.value) ? yEl.value : today.getFullYear();
         const res = await fetch(`/api/finance/reports/monthly?year=${y}&month=${m}`);
         const data = await res.json();
         activeFinanceReportData = { type: 'monthly', data };
         updateReportSummaryCards(data.summary);
         renderFinanceReportMonthly(data);
       } else if (currentReportPeriod === 'yearly') {
-        const y = document.getElementById('rep-finance-year-y').value;
+        const today = new Date();
+        const yEl = document.getElementById('rep-finance-year-y');
+        const y = (yEl && yEl.value) ? yEl.value : today.getFullYear();
         const res = await fetch(`/api/finance/reports/yearly?year=${y}`);
         const data = await res.json();
         activeFinanceReportData = { type: 'yearly', data };
@@ -10233,18 +10528,293 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   function updateReportSummaryCards(summary) {
     if (!summary) return;
-    document.getElementById('rep-summary-income').textContent = formatDualMoney(summary.income_khr, summary.income_usd);
-    document.getElementById('rep-summary-expense').textContent = formatDualMoney(summary.expense_khr, summary.expense_usd);
+    const incEl = document.getElementById('rep-summary-income');
+    if (incEl) incEl.textContent = formatDualMoney(summary.income_khr, summary.income_usd);
+
+    const expEl = document.getElementById('rep-summary-expense');
+    if (expEl) expEl.textContent = formatDualMoney(summary.expense_khr, summary.expense_usd);
     
     const netEl = document.getElementById('rep-summary-net');
-    netEl.textContent = formatDualMoney(summary.net_khr, summary.net_usd);
-    if (summary.net_khr >= 0 && summary.net_usd >= 0) {
-      netEl.className = 'text-base sm:text-xl font-bold text-emerald-600 mt-1.5';
-    } else {
-      netEl.className = 'text-base sm:text-xl font-bold text-rose-600 mt-1.5';
+    if (netEl) {
+      netEl.textContent = formatDualMoney(summary.net_khr, summary.net_usd);
+      if (summary.net_khr >= 0 && summary.net_usd >= 0) {
+        netEl.className = 'text-base sm:text-xl font-bold text-emerald-600 mt-1.5';
+      } else {
+        netEl.className = 'text-base sm:text-xl font-bold text-rose-600 mt-1.5';
+      }
     }
 
-    document.getElementById('rep-summary-count').textContent = summary.count || 0;
+    const cntEl = document.getElementById('rep-summary-count');
+    if (cntEl) cntEl.textContent = summary.count || 0;
+
+    // Advanced Operational KPIs
+    const tripsEl = document.getElementById('rep-summary-trips');
+    if (tripsEl) tripsEl.textContent = (summary.total_trips || 0) + ' ជើង';
+
+    const arptEl = document.getElementById('rep-summary-arpt');
+    if (arptEl) {
+      arptEl.textContent = formatDualMoney(summary.arpt ? summary.arpt.khr : 0, summary.arpt ? summary.arpt.usd : 0);
+    }
+
+    const cashEl = document.getElementById('rep-summary-cash');
+    if (cashEl) {
+      const cBal = (summary.reconciliation && summary.reconciliation.cash_balance) ? summary.reconciliation.cash_balance : { khr: 0, usd: 0 };
+      cashEl.textContent = formatDualMoney(cBal.khr, cBal.usd);
+    }
+
+    const bankEl = document.getElementById('rep-summary-bank');
+    if (bankEl) {
+      const bBal = (summary.reconciliation && summary.reconciliation.bank_balance) ? summary.reconciliation.bank_balance : { khr: 0, usd: 0 };
+      bankEl.textContent = formatDualMoney(bBal.khr, bBal.usd);
+    }
+  }
+
+  function renderExecutiveAnalyticsHTML(summary, periodTitle) {
+    if (!summary) return '';
+    const locs = summary.locations || [];
+    const maxTrips = locs.reduce((m, l) => Math.max(m, l.trips || 0), 1);
+    const totalTrips = summary.total_trips || 0;
+    const rec = summary.reconciliation || {
+      cash_income: { khr: 0, usd: 0, count: 0 },
+      cash_expense: { khr: 0, usd: 0, count: 0 },
+      cash_balance: { khr: 0, usd: 0 },
+      bank_income: { khr: 0, usd: 0, count: 0 },
+      bank_expense: { khr: 0, usd: 0, count: 0 },
+      bank_balance: { khr: 0, usd: 0 }
+    };
+    const expStruct = summary.expense_structure || {};
+    const staffList = summary.staff_breakdown || [];
+    const expRatio = summary.expense_ratio_pct || 0;
+
+    let ratioBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    let ratioStatusText = 'ចំណេញខ្ពស់ (Healthy Profit Margin)';
+    if (expRatio > 60) {
+      ratioBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
+      ratioStatusText = 'ចំណាយខ្ពស់គួរត្រួតពិនិត្យ (High Cost)';
+    } else if (expRatio > 35) {
+      ratioBadgeClass = 'bg-amber-100 text-amber-800 border-amber-200';
+      ratioStatusText = 'កម្រិតមធ្យម (Moderate Cost)';
+    }
+
+    return `
+      <!-- 1. Cash vs Bank Reconciliation Hub -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600">account_balance_wallet</span>
+            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)</h4>
+          </div>
+          <span class="text-xs text-gray-500 font-medium">${escapeHtml(periodTitle)}</span>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <!-- Cash in Hand Safe Box -->
+          <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ (Cash In Hand)
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់ / Drawer</span>
+            </div>
+            <div class="space-y-2 text-xs text-gray-700">
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span class="text-gray-600">ចំណូលសាច់ប្រាក់ (+)</span>
+                <span class="font-bold text-emerald-700 font-mono">${formatDualMoney(rec.cash_income.khr, rec.cash_income.usd)}</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span class="text-gray-600">ចំណាយសាច់ប្រាក់ (-)</span>
+                <span class="font-bold text-rose-600 font-mono">${formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd)}</span>
+              </div>
+              <div class="flex items-center justify-between pt-2">
+                <span class="font-bold text-gray-800">សាច់ប្រាក់នៅសល់ជាក់ស្ដែង៖</span>
+                <span class="text-sm font-black text-emerald-800 font-mono">${formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bank Account Box -->
+          <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> គណនីធនាគារ (ABA / Bank Transfer)
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
+            </div>
+            <div class="space-y-2 text-xs text-gray-700">
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
+                <span class="text-gray-600">ប្រាក់ផ្ទេរចូល (+)</span>
+                <span class="font-bold text-blue-700 font-mono">${formatDualMoney(rec.bank_income.khr, rec.bank_income.usd)}</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
+                <span class="text-gray-600">ប្រាក់ផ្ទេរចេញ (-)</span>
+                <span class="font-bold text-rose-600 font-mono">${formatDualMoney(rec.bank_expense.khr, rec.bank_expense.usd)}</span>
+              </div>
+              <div class="flex items-center justify-between pt-2">
+                <span class="font-bold text-gray-800">សមតុល្យធនាគារកើនឡើង៖</span>
+                <span class="text-sm font-black text-blue-800 font-mono">${formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Locations & Trips Performance Leaderboard -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-blue-50/30 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-indigo-600">location_on</span>
+            <h4 class="font-bold text-gray-800 text-sm">វិភាគទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Locations & Trips Leaderboard)</h4>
+          </div>
+          <div class="flex items-center gap-2 sm:gap-3 text-xs">
+            <span class="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+              សរុប៖ <b>${totalTrips}</b> ជើង
+            </span>
+            <span class="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+              មធ្យម/ជើង៖ <b>${formatDualMoney(summary.arpt ? summary.arpt.khr : 0, summary.arpt ? summary.arpt.usd : 0)}</b>
+            </span>
+          </div>
+        </div>
+
+        <div class="p-5">
+          ${locs.length ? `
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-50 text-gray-600 border-b border-slate-100 font-semibold">
+                  <tr>
+                    <th class="px-4 py-2.5 rounded-l-xl">ចំណាត់ថ្នាក់</th>
+                    <th class="px-4 py-2.5">ទីតាំងផ្ដល់សេវា</th>
+                    <th class="px-4 py-2.5 text-center">ចំនួនជើងសេវា</th>
+                    <th class="px-4 py-2.5">សមាមាត្រ (% ជើង)</th>
+                    <th class="px-4 py-2.5 text-right">ចំណូលសរុប</th>
+                    <th class="px-4 py-2.5 text-right rounded-r-xl">មធ្យម/ជើង</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-gray-700">
+                  ${locs.map((l, idx) => {
+                    const pct = totalTrips ? ((l.trips / totalTrips) * 100).toFixed(1) : '0';
+                    const barWidth = Math.round((l.trips / maxTrips) * 100);
+                    const avgKhr = l.trips ? (l.khr / l.trips) : 0;
+                    const avgUsd = l.trips ? (l.usd / l.trips) : 0;
+                    const rankColors = ['bg-amber-400 text-white', 'bg-slate-400 text-white', 'bg-amber-700 text-white'];
+                    const rankClass = idx < 3 ? rankColors[idx] : 'bg-slate-100 text-gray-600';
+                    return `
+                      <tr class="hover:bg-slate-50/80 transition">
+                        <td class="px-4 py-3 whitespace-nowrap">
+                          <span class="w-6 h-6 inline-flex items-center justify-center rounded-full text-[11px] font-bold ${rankClass}">
+                            ${idx + 1}
+                          </span>
+                        </td>
+                        <td class="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap flex items-center gap-1.5">
+                          <span class="material-symbols-outlined text-red-500 text-base">pin_drop</span>
+                          ${escapeHtml(l.location)}
+                        </td>
+                        <td class="px-4 py-3 text-center whitespace-nowrap font-bold text-indigo-700">
+                          ${l.trips} ជើង
+                        </td>
+                        <td class="px-4 py-3 w-44">
+                          <div class="flex items-center gap-2">
+                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div class="bg-indigo-600 h-2 rounded-full" style="width: ${barWidth}%"></div>
+                            </div>
+                            <span class="text-[10px] text-gray-500 font-mono">${pct}%</span>
+                          </div>
+                        </td>
+                        <td class="px-4 py-3 text-right font-bold text-emerald-600 font-mono whitespace-nowrap">
+                          ${formatDualMoney(l.khr, l.usd)}
+                        </td>
+                        <td class="px-4 py-3 text-right font-semibold text-gray-600 font-mono whitespace-nowrap">
+                          ${formatDualMoney(avgKhr, avgUsd)}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : `
+            <div class="text-center py-6 text-gray-400 text-xs">
+              <span class="material-symbols-outlined text-3xl mb-1 text-gray-300">map</span>
+              <p>មិនទាន់មានទិន្នន័យទីតាំងសេវាសម្រាប់កាលបរិច្ឆេទនេះទេ</p>
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- 3. Operating Cost Structure & Staff Contribution -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Expense Structure (2 Cols) -->
+        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-5 py-3.5 bg-rose-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-rose-600">pie_chart</span>
+              <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ (Operating Cost Structure)</h4>
+            </div>
+            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full border ${ratioBadgeClass}">
+              សមាមាត្រចំណាយ៖ ${expRatio}% (${ratioStatusText})
+            </span>
+          </div>
+
+          <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            ${Object.keys(expStruct).map(k => {
+              const item = expStruct[k];
+              const hasVal = item.khr > 0 || item.usd > 0;
+              const iconsMap = {
+                fuel: 'local_gas_station',
+                maintenance: 'build',
+                disposal: 'delete_sweep',
+                marketing: 'campaign',
+                salary: 'badge',
+                other: 'receipt'
+              };
+              const icon = iconsMap[k] || 'payments';
+              return `
+                <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                      <span class="material-symbols-outlined text-base text-rose-500">${icon}</span>
+                      ${escapeHtml(item.label)}
+                    </span>
+                    <span class="text-[10px] text-gray-400 font-mono">${item.count} ប្រតិបត្តិការ</span>
+                  </div>
+                  <p class="text-sm font-bold ${hasVal ? 'text-rose-600' : 'text-gray-400'} font-mono">
+                    ${formatDualMoney(item.khr, item.usd)}
+                  </p>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Staff Contribution Card (1 Col) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+          <div class="px-5 py-3.5 bg-blue-50/40 border-b border-slate-100 flex items-center justify-between">
+            <h4 class="font-bold text-gray-800 text-sm flex items-center gap-2">
+              <span class="material-symbols-outlined text-blue-600">group</span> ការបំពេញការងារតាមបុគ្គលិក
+            </h4>
+            <span class="text-[11px] text-gray-500 font-mono">${staffList.length} នាក់</span>
+          </div>
+          <div class="p-4 space-y-3 flex-1 overflow-y-auto">
+            ${staffList.length ? staffList.map(s => `
+              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/60">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-xs text-gray-800 flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-blue-500 text-base">person</span>
+                    ${escapeHtml(s.staff)}
+                  </span>
+                  <span class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                    ${s.trips} ជើង
+                  </span>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-gray-600 font-mono">
+                  <span>ចំណូលកត់ត្រា៖</span>
+                  <span class="font-bold text-emerald-600">${formatDualMoney(s.income_khr, s.income_usd)}</span>
+                </div>
+              </div>
+            `).join('') : '<p class="text-center py-6 text-xs text-gray-400">មិនមានទិន្នន័យបុគ្គលិក</p>'}
+          </div>
+        </div>
+      </div>
+    </div>
+    `;
   }
 
   function renderFinanceReportDaily(data) {
@@ -10255,8 +10825,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const expCats = summary.expense_by_category || [];
 
     content.innerHTML = `
+      <!-- Executive Operational & Financial Analytics Sections -->
+      ${renderExecutiveAnalyticsHTML(summary, `របាយការណ៍ប្រចាំថ្ងៃ ទី ${date}`)}
+
       <!-- Category Breakdown Cards (2 columns) -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
         <!-- Income Categories -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div class="px-5 py-3.5 bg-emerald-50/50 border-b border-slate-100 flex items-center justify-between">
@@ -10269,7 +10842,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${incCats.length ? incCats.map(c => `
               <div class="flex items-center justify-between text-xs">
                 <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
-                <span class="font-bold text-emerald-600">${formatDualMoney(c.khr, c.usd)}</span>
+                <span class="font-bold text-emerald-600 font-mono">${formatDualMoney(c.khr, c.usd)}</span>
               </div>
             `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណូលក្នុងថ្ងៃនេះទេ</p>'}
           </div>
@@ -10287,7 +10860,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${expCats.length ? expCats.map(c => `
               <div class="flex items-center justify-between text-xs">
                 <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
-                <span class="font-bold text-rose-600">${formatDualMoney(c.khr, c.usd)}</span>
+                <span class="font-bold text-rose-600 font-mono">${formatDualMoney(c.khr, c.usd)}</span>
               </div>
             `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណាយក្នុងថ្ងៃនេះទេ</p>'}
           </div>
@@ -10295,7 +10868,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <!-- Transactions List for the Day -->
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
             <span class="material-symbols-outlined text-blue-600">receipt_long</span> បញ្ជីប្រតិបត្តិការថ្ងៃទី ${date}
@@ -10309,7 +10882,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <th class="px-5 py-3">ម៉ោង</th>
                 <th class="px-5 py-3">ប្រភេទ</th>
                 <th class="px-5 py-3">កាតាឡុក</th>
-                <th class="px-5 py-3">ពិពណ៌នា</th>
+                <th class="px-5 py-3">ពិពណ៌នា / ទីតាំង & ជើង</th>
                 <th class="px-5 py-3">ការទូទាត់</th>
                 <th class="px-5 py-3 text-right">ចំនួនទឹកប្រាក់</th>
               </tr>
@@ -10322,9 +10895,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     ${t.type === 'income' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">ចំណូល</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">ចំណាយ</span>'}
                   </td>
                   <td class="px-5 py-3 font-medium whitespace-nowrap">${escapeHtml(t.category)}</td>
-                  <td class="px-5 py-3 text-gray-600">${escapeHtml(t.description || '—')}</td>
-                  <td class="px-5 py-3 text-gray-500 whitespace-nowrap">${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</td>
-                  <td class="px-5 py-3 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
+                  <td class="px-5 py-3 text-gray-600">
+                    <span class="whitespace-pre-line">${escapeHtml(t.description || '—')}</span>
+                  </td>
+                  <td class="px-5 py-3 text-gray-500 whitespace-nowrap">
+                    <span class="px-2 py-0.5 rounded-md text-[11px] font-medium ${(t.payment_method || '').includes('សាច់ប្រាក់') ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-blue-50 text-blue-800 border border-blue-100'}">
+                      ${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-right font-bold whitespace-nowrap font-mono ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
                     ${t.type === 'income' ? '+ ' : '- '}${formatMoney(t.amount, t.currency)}
                   </td>
                 </tr>
@@ -10344,8 +10923,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const expCats = summary.expense_by_category || [];
 
     content.innerHTML = `
+      <!-- Executive Operational & Financial Analytics Sections -->
+      ${renderExecutiveAnalyticsHTML(summary, `ខែ ${month_name} ឆ្នាំ ${year}`)}
+
       <!-- Category Breakdown Cards -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
           <h4 class="font-bold text-emerald-800 text-sm flex items-center gap-2 mb-3">
             <span class="material-symbols-outlined text-emerald-600">trending_up</span> ចំណូលខែ ${month_name} តាមកាតាឡុក
@@ -10354,7 +10936,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${incCats.length ? incCats.map(c => `
               <div class="flex items-center justify-between text-xs">
                 <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
-                <span class="font-bold text-emerald-600">${formatDualMoney(c.khr, c.usd)}</span>
+                <span class="font-bold text-emerald-600 font-mono">${formatDualMoney(c.khr, c.usd)}</span>
               </div>
             `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណូលក្នុងខែនេះទេ</p>'}
           </div>
@@ -10368,7 +10950,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${expCats.length ? expCats.map(c => `
               <div class="flex items-center justify-between text-xs">
                 <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
-                <span class="font-bold text-rose-600">${formatDualMoney(c.khr, c.usd)}</span>
+                <span class="font-bold text-rose-600 font-mono">${formatDualMoney(c.khr, c.usd)}</span>
               </div>
             `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណាយក្នុងខែនេះទេ</p>'}
           </div>
@@ -10376,7 +10958,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <!-- Daily Breakdown Table -->
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
             <span class="material-symbols-outlined text-blue-600">calendar_view_day</span> តារាងលម្អិតតាមថ្ងៃនីមួយៗ (ខែ ${month_name} ឆ្នាំ ${year})
@@ -10388,6 +10970,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
               <tr>
                 <th class="px-5 py-3">កាលបរិច្ឆេទ</th>
+                <th class="px-5 py-3 text-center">ចំនួនជើង (Trips)</th>
                 <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
                 <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
                 <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
@@ -10404,6 +10987,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return `
                   <tr class="hover:bg-slate-50 transition ${hasData ? 'bg-white' : 'opacity-60'}">
                     <td class="px-5 py-2.5 font-sans font-medium text-gray-800">${escapeHtml(d.date)}</td>
+                    <td class="px-5 py-2.5 text-center font-sans font-bold text-indigo-700">${d.trips || 0} ជើង</td>
                     <td class="px-5 py-2.5 text-right font-bold text-emerald-600">${Math.round(d.income_khr).toLocaleString('en-US')} ៛</td>
                     <td class="px-5 py-2.5 text-right font-bold text-emerald-600">$${d.income_usd.toFixed(2)}</td>
                     <td class="px-5 py-2.5 text-right font-bold text-rose-600">${Math.round(d.expense_khr).toLocaleString('en-US')} ៛</td>
@@ -10417,6 +11001,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200">
               <tr>
                 <td class="px-5 py-3 font-sans text-gray-900">សរុបប្រចាំខែ</td>
+                <td class="px-5 py-3 text-center font-sans text-indigo-800">${summary.total_trips || 0} ជើង</td>
                 <td class="px-5 py-3 text-right text-emerald-700 font-mono">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
                 <td class="px-5 py-3 text-right text-emerald-700 font-mono">$${summary.income_usd.toFixed(2)}</td>
                 <td class="px-5 py-3 text-right text-rose-700 font-mono">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
@@ -10436,19 +11021,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const { year, summary, monthly_breakdown } = data;
 
     content.innerHTML = `
+      <!-- Executive Operational & Financial Analytics Sections -->
+      ${renderExecutiveAnalyticsHTML(summary, `ឆ្នាំ ${year}`)}
+
       <!-- Yearly 12-Month Summary Table -->
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
             <span class="material-symbols-outlined text-blue-600">table_chart</span> តារាងសង្ខេប ១២ ខែ ប្រចាំឆ្នាំ ${year}
           </h4>
-          <span class="text-xs text-gray-500 font-medium">ក្រុមហ៊ុន AC Bomlu</span>
+          <span class="text-xs text-gray-500 font-medium">ក្រុមហ៊ុន AC BOMLU</span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
               <tr>
                 <th class="px-5 py-3">ខែ</th>
+                <th class="px-5 py-3 text-center">ចំនួនជើង (Trips)</th>
                 <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
                 <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
                 <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
@@ -10464,6 +11053,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return `
                   <tr class="hover:bg-slate-50 transition">
                     <td class="px-5 py-3 font-sans font-bold text-gray-800">ខែ${escapeHtml(m.month_name)} (${m.month})</td>
+                    <td class="px-5 py-3 text-center font-sans font-bold text-indigo-700">${m.trips || 0} ជើង</td>
                     <td class="px-5 py-3 text-right font-bold text-emerald-600">${Math.round(m.income_khr).toLocaleString('en-US')} ៛</td>
                     <td class="px-5 py-3 text-right font-bold text-emerald-600">$${m.income_usd.toFixed(2)}</td>
                     <td class="px-5 py-3 text-right font-bold text-rose-600">${Math.round(m.expense_khr).toLocaleString('en-US')} ៛</td>
@@ -10477,6 +11067,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200">
               <tr>
                 <td class="px-5 py-3 font-sans text-gray-900">សរុបឆ្នាំ ${year}</td>
+                <td class="px-5 py-3 text-center font-sans text-indigo-800">${summary.total_trips || 0} ជើង</td>
                 <td class="px-5 py-3 text-right text-emerald-700 font-mono">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
                 <td class="px-5 py-3 text-right text-emerald-700 font-mono">$${summary.income_usd.toFixed(2)}</td>
                 <td class="px-5 py-3 text-right text-rose-700 font-mono">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
@@ -10493,8 +11084,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   // --- PRINT & EXPORT ---
 
+  function openExecutiveReportPreview() {
+    if (!activeFinanceReportData) {
+      showToast('សូមរង់ចាំរបាយការណ៍ដំណើរការរួចសិន!', true);
+      return;
+    }
+    const modal = document.getElementById('executive-report-modal');
+    const body = document.getElementById('executive-report-modal-body');
+    if (!modal || !body) return;
+
+    body.innerHTML = renderExecutivePrintableHTML(activeFinanceReportData);
+    modal.classList.remove('hidden');
+  }
+
+  function printExecutiveReportDoc() {
+    const body = document.getElementById('executive-report-modal-body');
+    if (!body) return;
+    
+    const printWin = window.open('', '_blank', 'width=950,height=900');
+    if (!printWin) {
+      window.print();
+      return;
+    }
+    printWin.document.write(`<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8">
+  <title>របាយការណ៍ផ្លូវការ AC BOMLU</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Kantumruy Pro', sans-serif; background: #fff; color: #111827; padding: 20px; }
+    @media print {
+      body { padding: 0; }
+      @page { size: A4; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  ${body.innerHTML}
+</body>
+</html>`);
+    printWin.document.close();
+    printWin.focus();
+    setTimeout(() => {
+      printWin.print();
+    }, 400);
+  }
+
   function printFinanceReport() {
-    window.print();
+    openExecutiveReportPreview();
   }
 
   function exportFinanceReportCSV() {
@@ -10505,36 +11144,59 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     let csv = '\uFEFF'; // UTF-8 BOM
     const { type, data } = activeFinanceReportData;
+    const summary = data.summary || {};
 
     if (type === 'daily') {
-      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំថ្ងៃ,${data.date}\n`;
-      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំថ្ងៃ,${data.date}\n`;
+      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n`;
+      csv += `សាច់ប្រាក់ក្នុងដៃ (KHR),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (KHR),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
 
-      csv += `កាលបរិច្ឆេទ,ម៉ោង,ប្រភេទ,កាតាឡុក,ពិពណ៌នា,ការទូទាត់,លេខវិក្កយបត្រ,ចំនួនទឹកប្រាក់,រូបិយប័ណ្ណ,អ្នកកត់ត្រា\n`;
-      data.transactions.forEach(t => {
-        csv += `"${t.date}","${t.time||''}","${t.type==='income'?'ចំណូល':'ចំណាយ'}","${t.category}","${t.description||''}","${t.payment_method||''}","${t.reference_no||''}","${t.amount}","${t.currency}","${t.recorded_by||''}"\n`;
+      csv += `--- តារាងទីតាំងផ្ដល់សេវា ---\n`;
+      csv += `ទីតាំង,ចំនួនជើង,ចំណូល KHR,ចំណូល USD\n`;
+      (summary.locations || []).forEach(l => {
+        csv += `"${l.location}",${l.trips},${l.khr},${l.usd}\n`;
+      });
+      csv += `\n`;
+
+      csv += `--- បញ្ជីប្រតិបត្តិការលម្អិត ---\n`;
+      csv += `កាលបរិច្ឆេទ,ម៉ោង,ប្រភេទ,កាតាឡុក,ពិពណ៌នា/ទីតាំង,ការទូទាត់,លេខវិក្កយបត្រ,ចំនួនទឹកប្រាក់,រូបិយប័ណ្ណ,អ្នកកត់ត្រា\n`;
+      (data.transactions || []).forEach(t => {
+        csv += `"${t.date}","${t.time||''}","${t.type==='income'?'ចំណូល':'ចំណាយ'}","${t.category}","${(t.description||'').replace(/"/g, '""')}","${t.payment_method||''}","${t.reference_no||''}","${t.amount}","${t.currency}","${t.recorded_by||''}"\n`;
       });
     } else if (type === 'monthly') {
-      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំខែ,ខែ ${data.month_name} ឆ្នាំ ${data.year}\n`;
-      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំខែ,ខែ ${data.month_name} ឆ្នាំ ${data.year}\n`;
+      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n`;
+      csv += `សាច់ប្រាក់ក្នុងដៃ (KHR),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (KHR),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
 
-      csv += `កាលបរិច្ឆេទ,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      csv += `--- តារាងទីតាំងផ្ដល់សេវា ---\n`;
+      csv += `ទីតាំង,ចំនួនជើង,ចំណូល KHR,ចំណូល USD\n`;
+      (summary.locations || []).forEach(l => {
+        csv += `"${l.location}",${l.trips},${l.khr},${l.usd}\n`;
+      });
+      csv += `\n`;
+
+      csv += `--- តារាងលម្អិតតាមថ្ងៃ ---\n`;
+      csv += `កាលបរិច្ឆេទ,ចំនួនជើង,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
       data.daily_breakdown.forEach(d => {
-        csv += `"${d.date}",${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
+        csv += `"${d.date}",${d.trips||0},${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
       });
     } else if (type === 'yearly') {
-      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំឆ្នាំ,ឆ្នាំ ${data.year}\n`;
-      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំឆ្នាំ,ឆ្នាំ ${data.year}\n`;
+      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n\n`;
 
-      csv += `ខែ,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      csv += `--- តារាងលម្អិត ១២ ខែ ---\n`;
+      csv += `ខែ,ចំនួនជើង,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
       data.monthly_breakdown.forEach(m => {
-        csv += `"ខែ${m.month_name}",${m.income_khr},${m.income_usd},${m.expense_khr},${m.expense_usd},${m.net_khr},${m.net_usd},${m.count}\n`;
+        csv += `"ខែ${m.month_name}",${m.trips||0},${m.income_khr},${m.income_usd},${m.expense_khr},${m.expense_usd},${m.net_khr},${m.net_usd},${m.count}\n`;
       });
     }
 
@@ -10549,10 +11211,222 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     showToast('បានទាញយករបាយការណ៍ជា Excel/CSV រួចរាល់!');
   }
 
+  function renderExecutivePrintableHTML(activeData) {
+    if (!activeData || !activeData.data) return '';
+    const { type, data } = activeData;
+    const summary = data.summary || {};
+    const rec = summary.reconciliation || {
+      cash_income: { khr: 0, usd: 0 },
+      cash_expense: { khr: 0, usd: 0 },
+      cash_balance: { khr: 0, usd: 0 },
+      bank_income: { khr: 0, usd: 0 },
+      bank_expense: { khr: 0, usd: 0 },
+      bank_balance: { khr: 0, usd: 0 }
+    };
+    const locs = summary.locations || [];
+    const expStruct = summary.expense_structure || {};
+    const nowStr = new Date().toLocaleDateString('km-KH', { year: 'numeric', month: 'long', day: 'numeric' });
 
+    let periodTitle = '';
+    if (type === 'daily') {
+      periodTitle = `របាយការណ៍ប្រចាំថ្ងៃ ទី ${escapeHtml(data.date)}`;
+    } else if (type === 'monthly') {
+      periodTitle = `របាយការណ៍ប្រចាំខែ ${escapeHtml(data.month_name)} ឆ្នាំ ${data.year}`;
+    } else if (type === 'yearly') {
+      periodTitle = `របាយការណ៍ប្រចាំឆ្នាំ ${data.year}`;
+    }
+
+    return `
+      <div class="max-w-4xl mx-auto p-4 sm:p-8 bg-white text-gray-900 font-sans printable-sheet">
+        <!-- 1. Formal Letterhead Header -->
+        <div class="border-b-2 border-blue-900 pb-4 mb-6">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <img src="/static/ac_logo.jpg" alt="AC Logo" class="w-16 h-16 rounded-full border-2 border-blue-800 object-cover shadow-sm" onerror="this.style.display='none'">
+              <div>
+                <h1 class="text-xl sm:text-2xl font-black text-blue-950 uppercase tracking-tight">ក្រុមហ៊ុន អេស៊ី បូមលូ</h1>
+                <p class="text-xs font-bold text-gray-700 tracking-wide">AC BOMLU SERVICE CO., LTD.</p>
+                <p class="text-[11px] text-gray-500 mt-0.5">សេវាកម្មបូមលូ លាងសម្អាត និងដោះស្រាយបញ្ហាប្រព័ន្ធលូស្ដង់ដារ</p>
+              </div>
+            </div>
+            <div class="text-right text-xs text-gray-600">
+              <p class="font-bold text-blue-900">ការិយាល័យរដ្ឋបាល & ហិរញ្ញវត្ថុ</p>
+              <p>ទូរស័ព្ទ៖ <span class="font-bold text-gray-800">092 673 641</span></p>
+              <p>រាជធានីភ្នំពេញ & ខេត្តកំពង់ចាម</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Formal Title -->
+        <div class="text-center mb-6">
+          <h2 class="text-lg sm:text-xl font-black text-gray-900 uppercase">របាយការណ៍បូកសរុបប្រតិបត្តិការ និងហិរញ្ញវត្ថុផ្លូវការ</h2>
+          <p class="text-xs font-bold text-blue-800 mt-1">${periodTitle}</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">កាលបរិច្ឆេទបង្កើតឯកសារ៖ ${nowStr}</p>
+        </div>
+
+        <!-- 3. Executive KPI Summary Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណូល (Income)</p>
+            <p class="text-sm sm:text-base font-bold text-emerald-700 font-mono mt-1">${formatDualMoney(summary.income_khr, summary.income_usd)}</p>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណាយ (Expense)</p>
+            <p class="text-sm sm:text-base font-bold text-rose-700 font-mono mt-1">${formatDualMoney(summary.expense_khr, summary.expense_usd)}</p>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+            <p class="text-[11px] text-gray-500 font-medium">ចំណេញ/ខាតសុទ្ធ (Net)</p>
+            <p class="text-sm sm:text-base font-bold ${summary.net_khr >= 0 ? 'text-emerald-700' : 'text-rose-700'} font-mono mt-1">${formatDualMoney(summary.net_khr, summary.net_usd)}</p>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+            <p class="text-[11px] text-gray-500 font-medium">សរុបជើងសេវា (Trips)</p>
+            <p class="text-sm sm:text-base font-bold text-blue-700 font-mono mt-1">${summary.total_trips || 0} ជើង</p>
+          </div>
+        </div>
+
+        <!-- 4. Cash vs Bank Reconciliation Table -->
+        <div class="mb-6">
+          <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-3.5 bg-blue-700 rounded-sm"></span> ១. ការផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)
+          </h3>
+          <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+            <thead class="bg-slate-100 font-semibold text-gray-700">
+              <tr>
+                <th class="p-2.5 border-b border-slate-200">ឆានែលទូទាត់</th>
+                <th class="p-2.5 border-b border-slate-200 text-right">ចំណូលចូល (+)</th>
+                <th class="p-2.5 border-b border-slate-200 text-right">ចំណាយចេញ (-)</th>
+                <th class="p-2.5 border-b border-slate-200 text-right">សមតុល្យនៅសល់ជាក់ស្ដែង</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-gray-800 font-mono">
+              <tr>
+                <td class="p-2.5 font-sans font-medium">សាច់ប្រាក់សុទ្ធក្នុងដៃ (Cash In Hand / Safe)</td>
+                <td class="p-2.5 text-right text-emerald-700 font-bold">${formatDualMoney(rec.cash_income.khr, rec.cash_income.usd)}</td>
+                <td class="p-2.5 text-right text-rose-600 font-bold">${formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd)}</td>
+                <td class="p-2.5 text-right font-black text-emerald-800 bg-emerald-50/50">${formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd)}</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-sans font-medium">គណនីធនាគារ / ABA / KHQR</td>
+                <td class="p-2.5 text-right text-blue-700 font-bold">${formatDualMoney(rec.bank_income.khr, rec.bank_income.usd)}</td>
+                <td class="p-2.5 text-right text-rose-600 font-bold">${formatDualMoney(rec.bank_expense.khr, rec.bank_expense.usd)}</td>
+                <td class="p-2.5 text-right font-black text-blue-800 bg-blue-50/50">${formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 5. Locations & Trips Breakdown Table -->
+        <div class="mb-6">
+          <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-3.5 bg-indigo-700 rounded-sm"></span> ២. តារាងលម្អិតទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Locations & Trips)
+          </h3>
+          <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+            <thead class="bg-slate-100 font-semibold text-gray-700">
+              <tr>
+                <th class="p-2 border-b border-slate-200 w-12 text-center">ល.រ</th>
+                <th class="p-2 border-b border-slate-200">ទីតាំងផ្ដល់សេវា</th>
+                <th class="p-2 border-b border-slate-200 text-center">ចំនួនជើង</th>
+                <th class="p-2 border-b border-slate-200 text-right">ចំណូលសរុប</th>
+                <th class="p-2 border-b border-slate-200 text-right">មធ្យម/១ជើង</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-gray-800 font-mono">
+              ${locs.length ? locs.map((l, i) => `
+                <tr>
+                  <td class="p-2 text-center font-sans text-gray-500">${i + 1}</td>
+                  <td class="p-2 font-sans font-semibold">${escapeHtml(l.location)}</td>
+                  <td class="p-2 text-center font-bold text-indigo-700 font-sans">${l.trips} ជើង</td>
+                  <td class="p-2 text-right font-bold text-emerald-700">${formatDualMoney(l.khr, l.usd)}</td>
+                  <td class="p-2 text-right text-gray-600">${formatDualMoney(l.trips ? l.khr / l.trips : 0, l.trips ? l.usd / l.trips : 0)}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="5" class="p-3 text-center text-gray-400 font-sans">គ្មានទិន្នន័យទីតាំង</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 6. Operating Expenses Breakdown Table -->
+        <div class="mb-6">
+          <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-3.5 bg-rose-700 rounded-sm"></span> ៣. រចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ (Operating Cost Breakdown)
+          </h3>
+          <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+            <thead class="bg-slate-100 font-semibold text-gray-700">
+              <tr>
+                <th class="p-2 border-b border-slate-200">ប្រភេទចំណាយ</th>
+                <th class="p-2 border-b border-slate-200 text-center">ចំនួនប្រតិបត្តិការ</th>
+                <th class="p-2 border-b border-slate-200 text-right">ទឹកប្រាក់សរុប</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-gray-800 font-mono">
+              ${Object.keys(expStruct).map(k => {
+                const item = expStruct[k];
+                return `
+                  <tr>
+                    <td class="p-2 font-sans font-medium">${escapeHtml(item.label)}</td>
+                    <td class="p-2 text-center text-gray-600 font-sans">${item.count}</td>
+                    <td class="p-2 text-right font-bold text-rose-700">${formatDualMoney(item.khr, item.usd)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 7. Formal 3-Signatures Section (ហត្ថលេខា ៣ ថ្នាក់) -->
+        <div class="pt-8 mt-10 border-t-2 border-slate-200 no-break-inside">
+          <div class="grid grid-cols-3 gap-6 text-center">
+            <!-- Col 1: Secretary / Accountant -->
+            <div class="flex flex-col items-center">
+              <p class="text-xs font-bold text-gray-900">អ្នករៀបចំរបាយការណ៍</p>
+              <p class="text-[10px] text-gray-500">(Prepared By)</p>
+              <div class="h-20 flex items-center justify-center">
+                <span class="text-xs text-slate-300 italic">ហត្ថលេខា</span>
+              </div>
+              <p class="text-xs font-semibold text-gray-800 border-t border-dashed border-gray-400 pt-1.5 w-44">
+                លេខាធិការដ្ឋាន / គណនេយ្យ
+              </p>
+            </div>
+
+            <!-- Col 2: Administration -->
+            <div class="flex flex-col items-center">
+              <p class="text-xs font-bold text-gray-900">អ្នកត្រួតពិនិត្យ</p>
+              <p class="text-[10px] text-gray-500">(Reviewed By)</p>
+              <div class="h-20 flex items-center justify-center">
+                <span class="text-xs text-slate-300 italic">ហត្ថលេខា</span>
+              </div>
+              <p class="text-xs font-semibold text-gray-800 border-t border-dashed border-gray-400 pt-1.5 w-44">
+                ប្រធានផ្នែករដ្ឋបាល
+              </p>
+            </div>
+
+            <!-- Col 3: Managing Director / Owner -->
+            <div class="flex flex-col items-center">
+              <p class="text-xs font-bold text-blue-950">ការឯកភាព និងអនុម័ត</p>
+              <p class="text-[10px] text-gray-500">(Approved By - CEO)</p>
+              <div class="h-20 flex items-center justify-center">
+                <div class="w-16 h-16 rounded-full border border-dashed border-red-300 flex items-center justify-center text-[9px] text-red-500 font-bold">
+                  ត្រា & ហត្ថលេខា
+                </div>
+              </div>
+              <p class="text-xs font-bold text-blue-900 border-t border-dashed border-gray-400 pt-1.5 w-44">
+                លោក កឹម បូរី (Kem Borey)
+              </p>
+              <p class="text-[10px] text-gray-500">នាយកប្រតិបត្តិ / ម្ចាស់ក្រុមហ៊ុន</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Note -->
+        <div class="mt-8 pt-4 border-t border-slate-100 text-center text-[10px] text-gray-400">
+          ឯកសារផ្លូវការចេញដោយប្រព័ន្ធគ្រប់គ្រងស្វ័យប្រវត្ត AC BOMLU System • រក្សាសិទ្ធិគ្រប់យ៉ាង
+        </div>
+      </div>
+    `;
+  }
   // ===== Init =====
   (async function init() {
     initPWA();
+    initFinanceReportFilters();
 
     // Check if URL has a hash for deep-linking (e.g. #reports-leave, #income)
     const initialHash = window.location.hash ? window.location.hash.replace('#', '') : '';
