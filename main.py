@@ -1524,35 +1524,7 @@ async def api_admin_login(payload: AdminLoginRequest):
     )
     return res
 
-@app.post("/api/auth/request-telegram-login")
-async def api_auth_request_telegram_login():
-    try:
-        s = settings_collection.find_one({"_id": "app_settings"})
-        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
-        chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
-        
-        if not token or not chat_id:
-            raise HTTPException(status_code=400, detail="មិនទាន់កំណត់ Telegram Bot Token ឬ Chat ID នៅឡើយទេ!")
-            
-        login_token = generate_session_token("admin")
-        login_url = f"https://admin.acbomlu.com?token={login_token}"
-        
-        msg = (
-            "🔐 <b>តំណភ្ជាប់ចូលប្រព័ន្ធ AC BOMLU Administration</b>\n\n"
-            "លោកអ្នកទើបតែបានស្នើសុំព័ត៌មានចូលប្រើប្រព័ន្ធពីទំព័រ Login៖\n\n"
-            "👤 <b>ឈ្មោះគណនី (Username):</b> <code>admin</code> (ឬ <code>រដ្ឋបាល</code>)\n"
-            "🔑 <b>លេខសម្ងាត់ (Password):</b> <code>092673641</code> (ឬ <code>០៩២៦៧៣៦៤១</code>)\n\n"
-            "👉 <b>ចុចតំណភ្ជាប់នេះដើម្បីចូលភ្លាមៗ (One-Click Login):</b>\n"
-            f"{login_url}\n\n"
-            "<i>(ចុចចូលភ្លាមៗដោយមិនបាច់វាយលេខសម្ងាត់ឡើយ — មានសុពលភាព 30 ថ្ងៃ)</i>"
-        )
-        
-        send_telegram_notify(msg, target_chat_id=chat_id)
-        return {"success": True, "message": "បានផ្ញើតំណភ្ជាប់ចូលប្រព័ន្ធ និងលេខសម្ងាត់ទៅកាន់គ្រុប Telegram Admin រួចរាល់!"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"មិនអាចផ្ញើទៅ Telegram បានទេ: {e}")
+
 
 @app.get("/api/auth/verify")
 async def api_admin_verify(req: Request):
@@ -3964,22 +3936,6 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         # /request_phone command in Telegram group or DM
-        # Quick Admin Login via Telegram Command (/login, /admin, /password)
-        if clean_cmd in ["/login", "/admin_login", "/admin", "/password", "/pass", "/admin_link", "/link_login"]:
-            login_token = generate_session_token("admin")
-            login_url = f"https://admin.acbomlu.com?token={login_token}"
-            reply_txt = (
-                f"🔐 <b>ព័ត៌មានគណនី AC BOMLU Administration</b>\n\n"
-                f"សួស្ដី {sender_name}! នេះជាព័ត៌មានសម្រាប់ចូលប្រើប្រព័ន្ធ:\n\n"
-                f"👤 <b>ឈ្មោះគណនី (Username):</b> <code>admin</code> (ឬ <code>រដ្ឋបាល</code>)\n"
-                f"🔑 <b>លេខសម្ងាត់ (Password):</b> <code>092673641</code> (ឬ <code>០៩២៦៧៣៦៤១</code>)\n\n"
-                f"👉 <b>ចុចតំណភ្ជាប់នេះដើម្បីចូលភ្លាមៗ (One-Click Login):</b>\n"
-                f"{login_url}\n\n"
-                f"<i>(ចុច Link នេះដើម្បីចូលប្រើប្រព័ន្ធភ្លាមៗ ដោយមិនបាច់វាយលេខសម្ងាត់)</i>"
-            )
-            send_telegram_notify(reply_txt, target_chat_id=chat_id_str)
-            return {"ok": True}
-
         if clean_cmd in ["/request_phone", "/phone_request", "/get_phone"]:
             inline_btn = {
                 "inline_keyboard": [[
@@ -5098,14 +5054,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </button>
     </form>
 
-    <div class="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
-      <button type="button" onclick="requestTelegramLoginCode()" id="btn-forgot-pw"
-        class="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 border border-blue-200">
-        <span class="material-symbols-outlined text-sm text-blue-600">send</span>
-        <span>ភ្លេចលេខសម្ងាត់? / ផ្ញើតំណភ្ជាប់ចូលតាម Telegram</span>
-      </button>
-      <div id="forgot-pw-status" class="hidden text-[11px] text-center font-medium"></div>
-    </div>
+
 
     <div class="mt-6 pt-4 border-t border-slate-100 text-center">
       <p class="text-[11px] text-gray-500 flex items-center justify-center gap-1">
@@ -9012,39 +8961,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       // In case of temporary network glitch, allow dashboard if local token exists
       if (loginScreen) loginScreen.classList.add('hidden');
       await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
-    }
-  }
-
-  async function requestTelegramLoginCode() {
-    const btn = document.getElementById('btn-forgot-pw');
-    const status = document.getElementById('forgot-pw-status');
-    if (!btn || !status) return;
-
-    btn.disabled = true;
-    const oldText = btn.innerHTML;
-    btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">refresh</span><span>កំពុងផ្ញើ...</span>';
-    status.classList.add('hidden');
-
-    try {
-      const res = await fetch('/api/auth/request-telegram-login', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        status.textContent = '✅ ' + (data.message || 'បានផ្ញើតំណភ្ជាប់ One-Click Login ទៅកាន់គ្រុប Telegram Admin រួចរាល់!');
-        status.className = 'text-[11px] text-center font-medium text-emerald-600';
-        status.classList.remove('hidden');
-        showToast('បានផ្ញើតំណភ្ជាប់ចូលប្រព័ន្ធ និងលេខសម្ងាត់ទៅកាន់ Telegram រួចរាល់!');
-      } else {
-        status.textContent = '❌ ' + (data.detail || 'មិនអាចផ្ញើបានទេ');
-        status.className = 'text-[11px] text-center font-medium text-red-600';
-        status.classList.remove('hidden');
-      }
-    } catch (e) {
-      status.textContent = '❌ មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message;
-      status.className = 'text-[11px] text-center font-medium text-red-600';
-      status.classList.remove('hidden');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = oldText;
     }
   }
 
