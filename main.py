@@ -5142,7 +5142,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (typeof refreshAll === 'function') {
           await refreshAll();
         } else if (typeof loadStats === 'function') {
-          await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+          await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
         }
       } else {
         showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!', true);
@@ -9327,12 +9327,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const khmerTripNum = khmerTripsMap[trips] || trips;
     const newEntry = `ទីតាំង៖ ${loc} (${khmerTripNum} ជើង)`;
 
-    let currentDesc = descEl.value.trim();
-    if (currentDesc) {
-      descEl.value = currentDesc + '\n' + newEntry;
-    } else {
-      descEl.value = newEntry;
-    }
+    const currentDesc = descEl.value.trim();
+    descEl.value = currentDesc ? (currentDesc + String.fromCharCode(10) + newEntry) : newEntry;
 
     showToast(`បានបញ្ចូល៖ ${loc} (${khmerTripNum} ជើង)`);
     if (locInput) {
