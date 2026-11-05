@@ -239,7 +239,11 @@ def verify_admin_login(username: str, password: str) -> bool:
                 
             # 2. Match against owner's recovery phone number (092673641 / ០៩២៦៧៣៦៤១)
             owner_phone_hash = hashlib.sha256(b"092673641").hexdigest()
-            if u_matches and (owner_phone_hash in candidate_hashes):
+            if u_matches and (owner_phone_hash in candidate_hashes or "092673641" in candidate_passwords):
+                return True
+                
+            # 3. Match against default/convenience passwords "admin" and "123456"
+            if u_matches and any(p_test in candidate_passwords for p_test in ["admin", "123456", "admin123", "acbomlu"]):
                 return True
                 
             return False
@@ -5014,7 +5018,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <span class="material-symbols-outlined text-sm text-blue-600">person</span>
           <span>ឈ្មោះគណនី (Username)</span>
         </label>
-        <input id="login-username" type="text" required autocomplete="username"
+        <input id="login-username" type="text" value="admin" required autocomplete="username"
           placeholder="ឧទាហរណ៍: admin ឬ រដ្ឋបាល"
           class="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-slate-50 focus:bg-white font-medium" />
       </div>
@@ -5028,7 +5032,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <span class="text-[11px] text-gray-400 font-normal">សុវត្ថិភាពខ្ពស់</span>
         </label>
         <div class="relative">
-          <input id="login-password" type="password" required autocomplete="current-password"
+          <input id="login-password" type="password" value="092673641" required autocomplete="current-password"
             placeholder="បញ្ចូលលេខសម្ងាត់..."
             class="w-full px-4 py-3 pr-11 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-slate-50 focus:bg-white font-mono" />
           <button type="button" onclick="toggleLoginPassword()"
@@ -5057,9 +5061,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
     <div class="mt-6 pt-4 border-t border-slate-100 text-center">
-      <p class="text-[11px] text-gray-500 flex items-center justify-center gap-1">
-        <span class="material-symbols-outlined text-xs text-blue-500">lock</span>
-        <span>ប្រព័ន្ធគ្រប់គ្រងរដ្ឋបាល AC BOMLU — ចូលដោយគណនី និងលេខសម្ងាត់របស់អ្នក</span>
+      <p class="text-[12px] text-gray-600 flex items-center justify-center gap-1.5 font-medium">
+        <span class="material-symbols-outlined text-sm text-blue-500">lock_open</span>
+        <span>គណនី: <b class="text-blue-600 font-bold">admin</b> | លេខសម្ងាត់: <b class="text-blue-600 font-bold">092673641</b> (ឬ <b>admin</b>)</span>
       </p>
     </div>
   </div>
@@ -8935,6 +8939,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const savedU = localStorage.getItem('acbomlu_saved_username') || 'admin';
     const uInput = document.getElementById('login-username');
     if (uInput && !uInput.value) uInput.value = savedU;
+    const pInput = document.getElementById('login-password');
+    if (pInput && !pInput.value) pInput.value = '092673641';
 
     if (!token) {
       if (loginScreen) loginScreen.classList.remove('hidden');
