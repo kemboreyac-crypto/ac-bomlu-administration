@@ -233,17 +233,8 @@ def verify_admin_login(username: str, password: str) -> bool:
                 (raw_u.lower() in allowed_usernames)
             )
             
-            # 1. Match against stored DB password hash
+            # Match strictly against the single password stored in DB (including Khmer numerals normalization):
             if u_matches and (stored_hash in candidate_hashes):
-                return True
-                
-            # 2. Match against owner's recovery phone number (092673641 / ០៩២៦៧៣៦៤១)
-            owner_phone_hash = hashlib.sha256(b"092673641").hexdigest()
-            if u_matches and (owner_phone_hash in candidate_hashes or "092673641" in candidate_passwords):
-                return True
-                
-            # 3. Match against default/convenience passwords "admin" and "123456"
-            if u_matches and any(p_test in candidate_passwords for p_test in ["admin", "123456", "admin123", "acbomlu"]):
                 return True
                 
             return False
@@ -5012,7 +5003,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="login-alert" class="hidden mb-4 p-3 rounded-2xl text-xs font-semibold border flex items-center gap-2"></div>
 
     <!-- Form -->
-    <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+    <form onsubmit="event.preventDefault(); handleAdminLogin(event); return false;" class="space-y-4">
       <div>
         <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1.5">
           <span class="material-symbols-outlined text-sm text-blue-600">person</span>
@@ -5032,11 +5023,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <span class="text-[11px] text-gray-400 font-normal">សុវត្ថិភាពខ្ពស់</span>
         </label>
         <div class="relative">
-          <input id="login-password" type="password" value="092673641" required autocomplete="current-password"
+          <input id="login-password" type="password" required autocomplete="current-password"
             placeholder="បញ្ចូលលេខសម្ងាត់..."
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); handleAdminLogin(event);}"
             class="w-full px-4 py-3 pr-11 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-slate-50 focus:bg-white font-mono" />
           <button type="button" onclick="toggleLoginPassword()"
-            class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600">
+            class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer">
             <span id="login-pw-icon" class="material-symbols-outlined text-lg">visibility</span>
           </button>
         </div>
@@ -5051,23 +5043,119 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="text-[11px] text-blue-600 font-medium">🔒 256-bit Encrypted</span>
       </div>
 
-      <button type="submit" id="login-submit-btn"
-        class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/25 transition transform active:scale-[0.99] flex items-center justify-center gap-2">
+      <button type="button" onclick="handleAdminLogin(event)" id="login-submit-btn"
+        class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/25 transition transform active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer">
         <span class="material-symbols-outlined text-lg">login</span>
         <span id="login-btn-text">ចូលប្រើប្រព័ន្ធ (Log In)</span>
       </button>
     </form>
 
-
-
     <div class="mt-6 pt-4 border-t border-slate-100 text-center">
-      <p class="text-[12px] text-gray-600 flex items-center justify-center gap-1.5 font-medium">
-        <span class="material-symbols-outlined text-sm text-blue-500">lock_open</span>
-        <span>គណនី: <b class="text-blue-600 font-bold">admin</b> | លេខសម្ងាត់: <b class="text-blue-600 font-bold">092673641</b> (ឬ <b>admin</b>)</span>
+      <p class="text-[12px] text-gray-500 flex items-center justify-center gap-1.5 font-medium">
+        <span class="material-symbols-outlined text-sm text-blue-500">lock</span>
+        <span>គណនី: <b class="text-blue-600 font-bold">admin</b> | លេខសម្ងាត់: <span class="text-slate-500 font-normal">អាចផ្លាស់ប្តូរបានក្នុង Settings</span></span>
       </p>
     </div>
   </div>
 </div>
+
+<script>
+  function toggleLoginPassword() {
+    const pInput = document.getElementById('login-password');
+    const icon = document.getElementById('login-pw-icon');
+    if (!pInput || !icon) return;
+    if (pInput.type === 'password') {
+      pInput.type = 'text';
+      icon.textContent = 'visibility_off';
+    } else {
+      pInput.type = 'password';
+      icon.textContent = 'visibility';
+    }
+  }
+
+  function showLoginAlert(msg, isError) {
+    const alertBox = document.getElementById('login-alert');
+    if (!alertBox) return;
+    alertBox.textContent = msg;
+    alertBox.className = isError
+      ? 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-2'
+      : 'mb-4 p-3 rounded-2xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2';
+    alertBox.classList.remove('hidden');
+  }
+
+  async function handleAdminLogin(event) {
+    if (event) {
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+    }
+    const uInput = document.getElementById('login-username');
+    const pInput = document.getElementById('login-password');
+    const rememberEl = document.getElementById('login-remember');
+    const remember = rememberEl ? rememberEl.checked : true;
+    const alertBox = document.getElementById('login-alert');
+    const submitBtn = document.getElementById('login-submit-btn');
+    const btnText = document.getElementById('login-btn-text');
+
+    const kmNumMap = {'០':'0','១':'1','២':'2','៣':'3','៤':'4','៥':'5','៦':'6','៧':'7','៨':'8','៩':'9'};
+    const rawU = uInput ? uInput.value : '';
+    const rawP = pInput ? pInput.value : '';
+    const cleanU = rawU.replace(/[\u200b\u200c\u200d\u200e\u200f\ufeff\u00a0]/g, '').trim();
+    const cleanP = rawP.replace(/[\u200b\u200c\u200d\u200e\u200f\ufeff\u00a0]/g, '').trim();
+    const normP = cleanP.replace(/[០-៩]/g, d => kmNumMap[d] || d);
+
+    const u = cleanU;
+    const p = normP || cleanP;
+
+    if (!u || !p) {
+      showLoginAlert('សូមបញ្ចូលឈ្មោះគណនី និងលេខសម្ងាត់!', true);
+      return false;
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (btnText) btnText.textContent = 'កំពុងផ្ទៀងផ្ទាត់...';
+    if (alertBox) alertBox.classList.add('hidden');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        localStorage.setItem('acbomlu_admin_token', data.token);
+        if (remember) {
+          localStorage.setItem('acbomlu_saved_username', u);
+        } else {
+          localStorage.removeItem('acbomlu_saved_username');
+        }
+        const scr = document.getElementById('login-screen');
+        if (scr) scr.classList.add('hidden');
+        const topAdminName = document.getElementById('top-admin-name');
+        if (topAdminName) topAdminName.textContent = data.username || u;
+        const settingAdminUser = document.getElementById('setting-admin-username');
+        if (settingAdminUser) settingAdminUser.value = data.username || u;
+        if (typeof showToast === 'function') {
+          showToast(data.message || 'សូមស្វាគមន៍!');
+        }
+        if (typeof refreshAll === 'function') {
+          await refreshAll();
+        } else if (typeof loadStats === 'function') {
+          await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+        }
+      } else {
+        showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!', true);
+      }
+    } catch (e) {
+      showLoginAlert('មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message, true);
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+      if (btnText) btnText.textContent = 'ចូលប្រើប្រព័ន្ធ (Log In)';
+    }
+    return false;
+  }
+</script>
 
 <!-- ======================================================
      2. PWA INSTALL GUIDE MODAL (FOR IOS & MANUAL INSTALL)
@@ -8939,8 +9027,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const savedU = localStorage.getItem('acbomlu_saved_username') || 'admin';
     const uInput = document.getElementById('login-username');
     if (uInput && !uInput.value) uInput.value = savedU;
-    const pInput = document.getElementById('login-password');
-    if (pInput && !pInput.value) pInput.value = '092673641';
+    // Password remains clean and blank
 
     if (!token) {
       if (loginScreen) loginScreen.classList.remove('hidden');
