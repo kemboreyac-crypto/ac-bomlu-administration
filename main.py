@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import time
 from datetime import datetime, timezone, timedelta
+import calendar
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
@@ -56,6 +57,49 @@ employees_collection = db["employees"]
 settings_collection = db["settings"]
 user_flows_collection = db["user_flows"]
 voice_messages_collection = db["voice_messages"]
+finance_transactions_collection = db["finance_transactions"]
+finance_catalogs_collection = db["finance_catalogs"]
+
+# ===== Finance & Accounting Models =====
+class FinanceCatalogCreate(BaseModel):
+    name: str
+    type: str = "both"  # "income", "expense", or "both"
+    icon: Optional[str] = "category"
+    color: Optional[str] = "blue"
+    description: Optional[str] = ""
+
+class FinanceCatalogUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+class FinanceTransactionCreate(BaseModel):
+    type: str  # "income" or "expense"
+    amount: float
+    currency: str = "KHR"  # "KHR" or "USD"
+    category: str
+    catalog_id: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    payment_method: Optional[str] = "សាច់ប្រាក់សុទ្ធ"
+    reference_no: Optional[str] = ""
+    description: Optional[str] = ""
+    recorded_by: Optional[str] = "រដ្ឋបាល"
+
+class FinanceTransactionUpdate(BaseModel):
+    type: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    category: Optional[str] = None
+    catalog_id: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    payment_method: Optional[str] = None
+    reference_no: Optional[str] = None
+    description: Optional[str] = None
+    recorded_by: Optional[str] = None
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -1924,6 +1968,448 @@ async def api_repay_loan(req: LoanRepaymentRequest):
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
+# ==============================================================================
+# FINANCE & ACCOUNTING API (ចំណូល, ចំណាយ, កាតាឡុក, របាយការណ៍)
+# ==============================================================================
+
+DEFAULT_FINANCE_CATALOGS = [
+    # ចំណូល (Income)
+    {"name": "ចំណូលពីការលក់ទំនិញ", "type": "income", "icon": "storefront", "color": "emerald", "description": "ចំណូលបានពីការលក់ទំនិញប្រចាំថ្ងៃ"},
+    {"name": "ចំណូលពីសេវាកម្ម", "type": "income", "icon": "handshake", "color": "blue", "description": "ចំណូលពីការផ្តល់សេវាកម្មអតិថិជន"},
+    {"name": "ចំណូលពីកម្រៃជើងសារ", "type": "income", "icon": "percent", "color": "teal", "description": "ប្រាក់កម្រៃជើងសារ និងភាគរយផ្សេងៗ"},
+    {"name": "ចំណូលផ្សេងៗ", "type": "income", "icon": "savings", "color": "amber", "description": "ចំណូលបន្ទាប់បន្សំ ឬប្រភពផ្សេងៗ"},
+    # ចំណាយ (Expense)
+    {"name": "ទិញទំនិញស្តុក / ផ្គត់ផ្គង់", "type": "expense", "icon": "shopping_cart", "color": "rose", "description": "ចំណាយលើការទិញទំនិញចូលស្តុក"},
+    {"name": "ថ្លៃជួលទីតាំង / ហាង", "type": "expense", "icon": "home_work", "color": "purple", "description": "ថ្លៃឈ្នួលទីតាំងអាជីវកម្មប្រចាំខែ"},
+    {"name": "ថ្លៃទឹក ភ្លើង និងអ៊ីនធឺណិត", "type": "expense", "icon": "bolt", "color": "amber", "description": "ថ្លៃទឹក អគ្គិសនី សេវាអ៊ីនធឺណិត និងទូរស័ព្ទ"},
+    {"name": "ថ្លៃដឹកជញ្ជូន និងប្រេងសាំង", "type": "expense", "icon": "local_shipping", "color": "indigo", "description": "ចំណាយលើការដឹកជញ្ជូន និងការធ្វើដំណើរ"},
+    {"name": "ថ្លៃផ្សព្វផ្សាយ / ទីផ្សារ", "type": "expense", "icon": "campaign", "color": "pink", "description": "ចំណាយលើការផ្សាយពាណិជ្ជកម្ម និងម៉ាឃីតធីង"},
+    {"name": "បៀវត្សរ៍ / ប្រាក់ខែបុគ្គលិក", "type": "expense", "icon": "badge", "color": "orange", "description": "បើកប្រាក់បៀវត្សរ៍ និងប្រាក់ឧបត្ថម្ភបុគ្គលិក"},
+    {"name": "ថ្លៃជួសជុល និងសម្ភារៈប្រើប្រាស់", "type": "expense", "icon": "build", "color": "cyan", "description": "សម្ភារៈការិយាល័យ និងការជួសជុលកែលម្អ"},
+    {"name": "ចំណាយរដ្ឋបាល និងផ្សេងៗ", "type": "expense", "icon": "receipt_long", "color": "slate", "description": "ចំណាយទូទៅ និងចំណាយរដ្ឋបាលផ្សេងៗ"}
+]
+
+def seed_default_catalogs_if_needed():
+    try:
+        if finance_catalogs_collection.count_documents({}) == 0:
+            now_iso = datetime.now(timezone(timedelta(hours=7))).isoformat()
+            docs = []
+            for item in DEFAULT_FINANCE_CATALOGS:
+                docs.append({
+                    **item,
+                    "created_at": now_iso,
+                    "updated_at": now_iso
+                })
+            finance_catalogs_collection.insert_many(docs)
+    except Exception as e:
+        print(f"seed_default_catalogs_if_needed error: {e}")
+
+@app.get("/api/finance/catalogs")
+async def api_get_catalogs(type: Optional[str] = None):
+    seed_default_catalogs_if_needed()
+    query = {}
+    if type and type != "all":
+        query["$or"] = [{"type": type}, {"type": "both"}]
+    docs = list(finance_catalogs_collection.find(query).sort("name", 1))
+    return [fix_id(d) for d in docs]
+
+@app.post("/api/finance/catalogs")
+async def api_create_catalog(payload: FinanceCatalogCreate):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="សូមបញ្ចូលឈ្មោះកាតាឡុក!")
+    existing = finance_catalogs_collection.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+    if existing:
+        raise HTTPException(status_code=400, detail="ឈ្មោះកាតាឡុកនេះមានរួចហើយ!")
+    now_iso = datetime.now(timezone(timedelta(hours=7))).isoformat()
+    doc = {
+        "name": name,
+        "type": payload.type or "both",
+        "icon": payload.icon or "category",
+        "color": payload.color or "blue",
+        "description": payload.description or "",
+        "created_at": now_iso,
+        "updated_at": now_iso
+    }
+    res = finance_catalogs_collection.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return {"success": True, "message": "បានបង្កើតកាតាឡុកថ្មីជោគជ័យ!", "catalog": doc}
+
+@app.put("/api/finance/catalogs/{cat_id}")
+async def api_update_catalog(cat_id: str, payload: FinanceCatalogUpdate):
+    update_data = {}
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="ឈ្មោះកាតាឡុកមិនអាចទទេបានទេ!")
+        update_data["name"] = name
+    if payload.type is not None:
+        update_data["type"] = payload.type
+    if payload.icon is not None:
+        update_data["icon"] = payload.icon
+    if payload.color is not None:
+        update_data["color"] = payload.color
+    if payload.description is not None:
+        update_data["description"] = payload.description
+
+    update_data["updated_at"] = datetime.now(timezone(timedelta(hours=7))).isoformat()
+    r = finance_catalogs_collection.update_one({"_id": ObjectId(cat_id)}, {"$set": update_data})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញកាតាឡុកនេះទេ!")
+    return {"success": True, "message": "បានកែប្រែកាតាឡុកជោគជ័យ!"}
+
+@app.delete("/api/finance/catalogs/{cat_id}")
+async def api_delete_catalog(cat_id: str):
+    r = finance_catalogs_collection.delete_one({"_id": ObjectId(cat_id)})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញកាតាឡុកនេះទេ!")
+    return {"success": True, "message": "បានលុបកាតាឡុកជោគជ័យ!"}
+
+# --- Transactions API ---
+
+@app.get("/api/finance/transactions")
+async def api_get_transactions(
+    type: Optional[str] = None,
+    category: Optional[str] = None,
+    date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 150,
+    skip: int = 0
+):
+    query = {}
+    if type and type in ["income", "expense"]:
+        query["type"] = type
+    if category and category != "all":
+        query["category"] = category
+    if date:
+        query["date"] = date
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+    elif start_date:
+        query["date"] = {"$gte": start_date}
+    elif end_date:
+        query["date"] = {"$lte": end_date}
+
+    if search:
+        s_regex = {"$regex": re.escape(search.strip()), "$options": "i"}
+        query["$or"] = [
+            {"description": s_regex},
+            {"reference_no": s_regex},
+            {"category": s_regex},
+            {"recorded_by": s_regex},
+            {"payment_method": s_regex}
+        ]
+
+    cursor = finance_transactions_collection.find(query).sort([("date", -1), ("time", -1), ("_id", -1)]).skip(skip).limit(limit)
+    docs = list(cursor)
+    total_docs = finance_transactions_collection.count_documents(query)
+
+    inc_khr = 0.0
+    inc_usd = 0.0
+    exp_khr = 0.0
+    exp_usd = 0.0
+    for d in docs:
+        amt = float(d.get("amount", 0.0) or 0.0)
+        curr = d.get("currency", "KHR")
+        t = d.get("type", "income")
+        if t == "income":
+            if curr == "USD": inc_usd += amt
+            else: inc_khr += amt
+        else:
+            if curr == "USD": exp_usd += amt
+            else: exp_khr += amt
+
+    return {
+        "transactions": [fix_id(d) for d in docs],
+        "total": total_docs,
+        "summary": {
+            "income_khr": inc_khr,
+            "income_usd": inc_usd,
+            "expense_khr": exp_khr,
+            "expense_usd": exp_usd,
+            "net_khr": inc_khr - exp_khr,
+            "net_usd": inc_usd - exp_usd
+        }
+    }
+
+@app.post("/api/finance/transactions")
+async def api_create_transaction(payload: FinanceTransactionCreate):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
+    
+    t_type = (payload.type or "income").strip().lower()
+    if t_type not in ["income", "expense"]:
+        raise HTTPException(status_code=400, detail="ប្រភេទប្រតិបត្តិការត្រូវតែជា ចំណូល (income) ឬ ចំណាយ (expense)!")
+    
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="ចំនួនទឹកប្រាក់ត្រូវតែធំជាង ០!")
+
+    currency = (payload.currency or "KHR").strip().upper()
+    if currency not in ["KHR", "USD"]:
+        currency = "KHR"
+
+    date_str = (payload.date or "").strip() or now.strftime("%Y-%m-%d")
+    time_str = (payload.time or "").strip() or now.strftime("%H:%M")
+    category = (payload.category or "").strip() or ("ចំណូលផ្សេងៗ" if t_type == "income" else "ចំណាយផ្សេងៗ")
+
+    doc = {
+        "type": t_type,
+        "amount": float(payload.amount),
+        "currency": currency,
+        "category": category,
+        "catalog_id": payload.catalog_id,
+        "date": date_str,
+        "time": time_str,
+        "payment_method": payload.payment_method or "សាច់ប្រាក់សុទ្ធ",
+        "reference_no": (payload.reference_no or "").strip(),
+        "description": (payload.description or "").strip(),
+        "recorded_by": (payload.recorded_by or "").strip() or "រដ្ឋបាល",
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat()
+    }
+    res = finance_transactions_collection.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return {"success": True, "message": "បានកត់ត្រាប្រតិបត្តិការជោគជ័យ!", "transaction": doc}
+
+@app.get("/api/finance/transactions/{tx_id}")
+async def api_get_single_transaction(tx_id: str):
+    doc = finance_transactions_collection.find_one({"_id": ObjectId(tx_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញប្រតិបត្តិការនេះទេ!")
+    return fix_id(doc)
+
+@app.put("/api/finance/transactions/{tx_id}")
+async def api_update_transaction(tx_id: str, payload: FinanceTransactionUpdate):
+    update_data = {}
+    if payload.type is not None:
+        update_data["type"] = payload.type.strip().lower()
+    if payload.amount is not None:
+        if payload.amount <= 0:
+            raise HTTPException(status_code=400, detail="ចំនួនទឹកប្រាក់ត្រូវតែធំជាង ០!")
+        update_data["amount"] = float(payload.amount)
+    if payload.currency is not None:
+        update_data["currency"] = payload.currency.strip().upper()
+    if payload.category is not None:
+        update_data["category"] = payload.category.strip()
+    if payload.catalog_id is not None:
+        update_data["catalog_id"] = payload.catalog_id
+    if payload.date is not None:
+        update_data["date"] = payload.date.strip()
+    if payload.time is not None:
+        update_data["time"] = payload.time.strip()
+    if payload.payment_method is not None:
+        update_data["payment_method"] = payload.payment_method.strip()
+    if payload.reference_no is not None:
+        update_data["reference_no"] = payload.reference_no.strip()
+    if payload.description is not None:
+        update_data["description"] = payload.description.strip()
+    if payload.recorded_by is not None:
+        update_data["recorded_by"] = payload.recorded_by.strip()
+
+    update_data["updated_at"] = datetime.now(timezone(timedelta(hours=7))).isoformat()
+    r = finance_transactions_collection.update_one({"_id": ObjectId(tx_id)}, {"$set": update_data})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញប្រតិបត្តិការនេះទេ!")
+    return {"success": True, "message": "បានកែប្រែប្រតិបត្តិការជោគជ័យ!"}
+
+@app.delete("/api/finance/transactions/{tx_id}")
+async def api_delete_transaction(tx_id: str):
+    r = finance_transactions_collection.delete_one({"_id": ObjectId(tx_id)})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញប្រតិបត្តិការនេះទេ!")
+    return {"success": True, "message": "បានលុបប្រតិបត្តិការជោគជ័យ!"}
+
+# --- Stats & Reports Helpers ---
+
+def calculate_finance_metrics(transactions):
+    inc_khr = 0.0
+    inc_usd = 0.0
+    exp_khr = 0.0
+    exp_usd = 0.0
+    
+    inc_by_cat = {}
+    exp_by_cat = {}
+
+    for tx in transactions:
+        t = tx.get("type", "income")
+        amt = float(tx.get("amount", 0.0) or 0.0)
+        curr = tx.get("currency", "KHR")
+        cat = tx.get("category") or ("ចំណូលផ្សេងៗ" if t == "income" else "ចំណាយផ្សេងៗ")
+
+        if t == "income":
+            if curr == "USD": inc_usd += amt
+            else: inc_khr += amt
+            if cat not in inc_by_cat:
+                inc_by_cat[cat] = {"khr": 0.0, "usd": 0.0, "count": 0}
+            if curr == "USD": inc_by_cat[cat]["usd"] += amt
+            else: inc_by_cat[cat]["khr"] += amt
+            inc_by_cat[cat]["count"] += 1
+        else:
+            if curr == "USD": exp_usd += amt
+            else: exp_khr += amt
+            if cat not in exp_by_cat:
+                exp_by_cat[cat] = {"khr": 0.0, "usd": 0.0, "count": 0}
+            if curr == "USD": exp_by_cat[cat]["usd"] += amt
+            else: exp_by_cat[cat]["khr"] += amt
+            exp_by_cat[cat]["count"] += 1
+
+    return {
+        "income_khr": inc_khr,
+        "income_usd": inc_usd,
+        "expense_khr": exp_khr,
+        "expense_usd": exp_usd,
+        "net_khr": inc_khr - exp_khr,
+        "net_usd": inc_usd - exp_usd,
+        "income_by_category": sorted([{"category": k, **v} for k, v in inc_by_cat.items()], key=lambda x: (x["khr"], x["usd"]), reverse=True),
+        "expense_by_category": sorted([{"category": k, **v} for k, v in exp_by_cat.items()], key=lambda x: (x["khr"], x["usd"]), reverse=True),
+        "count": len(transactions)
+    }
+
+@app.get("/api/finance/stats")
+async def api_get_finance_stats():
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
+    today_str = now.strftime("%Y-%m-%d")
+    month_prefix = now.strftime("%Y-%m")
+    year_prefix = now.strftime("%Y")
+
+    today_txs = list(finance_transactions_collection.find({"date": today_str}))
+    month_txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{month_prefix}"}}))
+    year_txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{year_prefix}"}}))
+
+    return {
+        "today": calculate_finance_metrics(today_txs),
+        "this_month": calculate_finance_metrics(month_txs),
+        "this_year": calculate_finance_metrics(year_txs),
+        "today_date": today_str,
+        "current_month": now.month,
+        "current_year": now.year
+    }
+
+@app.get("/api/finance/reports/daily")
+async def api_get_daily_report(date: Optional[str] = None):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
+    target_date = (date or "").strip() or now.strftime("%Y-%m-%d")
+    
+    txs = list(finance_transactions_collection.find({"date": target_date}).sort([("time", -1), ("_id", -1)]))
+    metrics = calculate_finance_metrics(txs)
+    
+    return {
+        "date": target_date,
+        "summary": metrics,
+        "transactions": [fix_id(t) for t in txs]
+    }
+
+@app.get("/api/finance/reports/monthly")
+async def api_get_monthly_report(year: Optional[int] = None, month: Optional[int] = None):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
+    y = year or now.year
+    m = month or now.month
+    
+    days_in_m = calendar.monthrange(y, m)[1]
+    month_prefix = f"{y:04d}-{m:02d}"
+    txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{month_prefix}"}}).sort([("date", 1), ("time", 1)]))
+    metrics = calculate_finance_metrics(txs)
+
+    daily_map = {d: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0} for d in range(1, days_in_m + 1)}
+    for t in txs:
+        d_str = t.get("date", "")
+        try:
+            day_num = int(d_str.split("-")[2])
+        except Exception:
+            continue
+        if day_num in daily_map:
+            amt = float(t.get("amount", 0.0) or 0.0)
+            curr = t.get("currency", "KHR")
+            if t.get("type") == "income":
+                if curr == "USD": daily_map[day_num]["income_usd"] += amt
+                else: daily_map[day_num]["income_khr"] += amt
+            else:
+                if curr == "USD": daily_map[day_num]["expense_usd"] += amt
+                else: daily_map[day_num]["expense_khr"] += amt
+            daily_map[day_num]["count"] += 1
+
+    khmer_months = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+    daily_list = []
+    for d in range(1, days_in_m + 1):
+        info = daily_map[d]
+        daily_list.append({
+            "day": d,
+            "date": f"{y:04d}-{m:02d}-{d:02d}",
+            "income_khr": info["income_khr"],
+            "income_usd": info["income_usd"],
+            "expense_khr": info["expense_khr"],
+            "expense_usd": info["expense_usd"],
+            "net_khr": info["income_khr"] - info["expense_khr"],
+            "net_usd": info["income_usd"] - info["expense_usd"],
+            "count": info["count"]
+        })
+
+    return {
+        "year": y,
+        "month": m,
+        "month_name": khmer_months[m - 1],
+        "summary": metrics,
+        "daily_breakdown": daily_list,
+        "total_transactions": len(txs)
+    }
+
+@app.get("/api/finance/reports/yearly")
+async def api_get_yearly_report(year: Optional[int] = None):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
+    y = year or now.year
+    
+    year_prefix = f"{y:04d}"
+    txs = list(finance_transactions_collection.find({"date": {"$regex": f"^{year_prefix}"}}).sort([("date", 1)]))
+    metrics = calculate_finance_metrics(txs)
+
+    khmer_months = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+    monthly_map = {m: {"income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "count": 0} for m in range(1, 13)}
+
+    for t in txs:
+        d_str = t.get("date", "")
+        try:
+            m_num = int(d_str.split("-")[1])
+        except Exception:
+            continue
+        if m_num in monthly_map:
+            amt = float(t.get("amount", 0.0) or 0.0)
+            curr = t.get("currency", "KHR")
+            if t.get("type") == "income":
+                if curr == "USD": monthly_map[m_num]["income_usd"] += amt
+                else: monthly_map[m_num]["income_khr"] += amt
+            else:
+                if curr == "USD": monthly_map[m_num]["expense_usd"] += amt
+                else: monthly_map[m_num]["expense_khr"] += amt
+            monthly_map[m_num]["count"] += 1
+
+    months_list = []
+    for m in range(1, 13):
+        info = monthly_map[m]
+        months_list.append({
+            "month": m,
+            "month_name": khmer_months[m - 1],
+            "income_khr": info["income_khr"],
+            "income_usd": info["income_usd"],
+            "expense_khr": info["expense_khr"],
+            "expense_usd": info["expense_usd"],
+            "net_khr": info["income_khr"] - info["expense_khr"],
+            "net_usd": info["income_usd"] - info["expense_usd"],
+            "count": info["count"]
+        })
+
+    return {
+        "year": y,
+        "summary": metrics,
+        "monthly_breakdown": months_list,
+        "total_transactions": len(txs)
+    }
+
 # ===== Telegram Mini App Web Forms (Option 4) =====
 LEAVE_FORM_HTML = """<!DOCTYPE html>
 <html lang="km">
@@ -1940,6 +2426,29 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
   <style>
     body { font-family: 'Kantumruy Pro', sans-serif; background: #0b1329; color: #f8fafc; }
     .glass-card { background: rgba(23, 37, 84, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(59, 130, 246, 0.2); }
+
+    /* Print styles */
+    @media print {
+      #sidebar, #sidebar-backdrop, header, .no-print, button, #pwa-install-sidebar-box, .modal-overlay {
+        display: none !important;
+      }
+      main {
+        overflow: visible !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+      }
+      body {
+        background: white !important;
+        overflow: visible !important;
+        height: auto !important;
+      }
+      .bg-white {
+        box-shadow: none !important;
+        border: 1px solid #E2E8F0 !important;
+      }
+    }
   </style>
 </head>
 <body class="p-4 min-h-screen flex items-center justify-center">
@@ -4494,6 +5003,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="material-symbols-outlined text-xl">home</span>
       <span>ទំព័រដើម</span>
     </button>
+    <button onclick="showTab('income')"
+      id="nav-income"
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
+      <span class="material-symbols-outlined text-xl text-emerald-400">trending_up</span>
+      <span class="font-medium">ចំណូល</span>
+      <span id="badge-income-count" class="ml-auto text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full px-2 py-0.5 hidden">0</span>
+    </button>
+    <button onclick="showTab('expense')"
+      id="nav-expense"
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
+      <span class="material-symbols-outlined text-xl text-rose-400">trending_down</span>
+      <span class="font-medium">ចំណាយ</span>
+      <span id="badge-expense-count" class="ml-auto text-[11px] bg-rose-500/20 text-rose-300 border border-rose-400/30 rounded-full px-2 py-0.5 hidden">0</span>
+    </button>
+    <button onclick="showTab('catalog')"
+      id="nav-catalog"
+      class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
+      <span class="material-symbols-outlined text-xl text-amber-300">category</span>
+      <span class="font-medium">កាតាឡុក</span>
+    </button>
     <button onclick="showTab('leaves')"
       id="nav-leaves"
       class="nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-blue-200 hover:text-white transition">
@@ -4527,6 +5056,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-lg transition-transform duration-200" id="reports-chevron">expand_more</span>
       </button>
       <div id="sub-reports-menu" class="pl-6 pr-1 mt-1 space-y-1">
+        <button onclick="showTab('reports-finance')"
+          id="nav-reports-finance"
+          class="nav-link w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs font-medium text-blue-200 hover:text-white transition">
+          <span class="material-symbols-outlined text-base text-emerald-300">account_balance_wallet</span>
+          <span>ចំណូល-ចំណាយ (ថ្ងៃ/ខែ/ឆ្នាំ)</span>
+        </button>
         <button onclick="showTab('reports-leave')"
           id="nav-reports-leave"
           class="nav-link w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs font-medium text-blue-200 hover:text-white transition">
@@ -4677,6 +5212,53 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="min-w-0">
             <p class="text-[11px] sm:text-xs text-gray-500 mb-0.5 truncate">ខ្ចីប្រាក់អនុញ្ញាតិ</p>
             <p id="stat-approved" class="text-lg sm:text-2xl font-bold text-gray-800 leading-tight">—</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Financial Overview Widget (Today) -->
+      <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl p-4 sm:p-5 shadow-sm text-white mb-6 border border-blue-900/40">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
+          <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-blue-600/30 border border-blue-400/30 flex items-center justify-center text-blue-300">
+              <span class="material-symbols-outlined text-lg">account_balance_wallet</span>
+            </span>
+            <div>
+              <h3 class="font-bold text-sm sm:text-base text-white">សង្ខេបហិរញ្ញវត្ថុថ្ងៃនេះ (Financial Summary Today)</h3>
+              <p id="dash-finance-date" class="text-xs text-blue-300">កំពុងទាញទិន្នន័យ...</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="openIncomeModal()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow transition active:scale-95">
+              <span class="material-symbols-outlined text-sm">add_circle</span> + បញ្ចូលចំណូល
+            </button>
+            <button onclick="openExpenseModal()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow transition active:scale-95">
+              <span class="material-symbols-outlined text-sm">remove_circle</span> + បញ្ចូលចំណាយ
+            </button>
+            <button onclick="showTab('reports-finance')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition">
+              <span class="material-symbols-outlined text-sm">bar_chart</span> របាយការណ៍
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+            <p class="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">trending_up</span> ចំណូលថ្ងៃនេះ
+            </p>
+            <p id="dash-income-today" class="text-base sm:text-lg font-bold text-white mt-1">0 ៛</p>
+          </div>
+          <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+            <p class="text-[11px] text-rose-400 font-medium flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">trending_down</span> ចំណាយថ្ងៃនេះ
+            </p>
+            <p id="dash-expense-today" class="text-base sm:text-lg font-bold text-white mt-1">0 ៛</p>
+          </div>
+          <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+            <p class="text-[11px] text-blue-300 font-medium flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">balance</span> សមតុល្យសុទ្ធថ្ងៃនេះ
+            </p>
+            <p id="dash-net-today" class="text-base sm:text-lg font-bold text-emerald-300 mt-1">0 ៛</p>
           </div>
         </div>
       </div>
@@ -5419,6 +6001,325 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- ===== INCOME TAB ===== -->
+    <div id="tab-income" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span class="material-symbols-outlined text-emerald-600 text-2xl">trending_up</span> ការគ្រប់គ្រងចំណូល (Income)
+          </h2>
+          <p class="text-xs text-gray-500 mt-0.5">កត់ត្រា និងតាមដានរាល់ប្រតិបត្តិការចំណូលប្រចាំថ្ងៃរបស់ក្រុមហ៊ុន AC Bomlu</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="showTab('reports-finance')" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition shadow-sm border border-blue-200">
+            <span class="material-symbols-outlined text-base">analytics</span> របាយការណ៍ចំណូល
+          </button>
+          <button onclick="openIncomeModal()" class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow active:scale-95">
+            <span class="material-symbols-outlined text-base">add_circle</span> + បញ្ចូលចំណូលថ្មី
+          </button>
+        </div>
+      </div>
+
+      <!-- Income Summary KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-emerald-500 text-sm">today</span> ចំណូលថ្ងៃនេះ
+          </p>
+          <p id="inc-stat-today" class="text-base sm:text-xl font-bold text-emerald-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-blue-500 text-sm">calendar_month</span> ចំណូលខែនេះ
+          </p>
+          <p id="inc-stat-month" class="text-base sm:text-xl font-bold text-blue-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-indigo-500 text-sm">event_note</span> ចំណូលឆ្នាំនេះ
+          </p>
+          <p id="inc-stat-year" class="text-base sm:text-xl font-bold text-indigo-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-slate-500 text-sm">receipt</span> ចំនួនប្រតិបត្តិការ
+          </p>
+          <p id="inc-stat-count" class="text-base sm:text-xl font-bold text-gray-800 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-100 mb-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button onclick="setIncomeDateFilter('today')" id="inc-filter-today" class="px-3 py-1.5 rounded-xl font-medium bg-emerald-600 text-white shadow-sm transition">ថ្ងៃនេះ</button>
+          <button onclick="setIncomeDateFilter('yesterday')" id="inc-filter-yesterday" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ម្សិលមិញ</button>
+          <button onclick="setIncomeDateFilter('month')" id="inc-filter-month" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ខែនេះ</button>
+          <button onclick="setIncomeDateFilter('all')" id="inc-filter-all" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ទាំងអស់</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <input type="date" id="inc-filter-date" onchange="handleIncomeCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          <select id="inc-filter-category" onchange="loadIncome()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            <option value="all">គ្រប់កាតាឡុក</option>
+          </select>
+          <input type="text" id="inc-filter-search" oninput="debounceIncomeSearch()" placeholder="ស្វែងរកចំណាំ/វិក្កយបត្រ..." class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 w-36 sm:w-48" />
+        </div>
+      </div>
+
+      <!-- Transactions List (Desktop Table + Mobile Cards) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="bg-slate-50 text-gray-500 border-b border-slate-100">
+              <tr>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">លេខវិក្កយបត្រ</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">សកម្មភាព</th>
+              </tr>
+            </thead>
+            <tbody id="income-tbody" class="divide-y divide-slate-50 text-gray-700">
+              <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="income-mobile-cards" class="md:hidden p-3 space-y-3 bg-slate-50/50">
+          <div class="text-center py-8 text-gray-400 text-sm">កំពុងទាញទិន្នន័យ...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== EXPENSE TAB ===== -->
+    <div id="tab-expense" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span class="material-symbols-outlined text-rose-600 text-2xl">trending_down</span> ការគ្រប់គ្រងចំណាយ (Expense)
+          </h2>
+          <p class="text-xs text-gray-500 mt-0.5">កត់ត្រា និងតាមដានរាល់ការចំណាយប្រចាំថ្ងៃរបស់ក្រុមហ៊ុន AC Bomlu</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="showTab('reports-finance')" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition shadow-sm border border-blue-200">
+            <span class="material-symbols-outlined text-base">analytics</span> របាយការណ៍ចំណាយ
+          </button>
+          <button onclick="openExpenseModal()" class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition shadow active:scale-95">
+            <span class="material-symbols-outlined text-base">remove_circle</span> + បញ្ចូលចំណាយថ្មី
+          </button>
+        </div>
+      </div>
+
+      <!-- Expense Summary KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-rose-500 text-sm">today</span> ចំណាយថ្ងៃនេះ
+          </p>
+          <p id="exp-stat-today" class="text-base sm:text-xl font-bold text-rose-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-amber-500 text-sm">calendar_month</span> ចំណាយខែនេះ
+          </p>
+          <p id="exp-stat-month" class="text-base sm:text-xl font-bold text-amber-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-purple-500 text-sm">event_note</span> ចំណាយឆ្នាំនេះ
+          </p>
+          <p id="exp-stat-year" class="text-base sm:text-xl font-bold text-purple-600 mt-1">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100">
+          <p class="text-[11px] sm:text-xs text-gray-500 font-medium flex items-center gap-1">
+            <span class="material-symbols-outlined text-slate-500 text-sm">receipt</span> ចំនួនប្រតិបត្តិការ
+          </p>
+          <p id="exp-stat-count" class="text-base sm:text-xl font-bold text-gray-800 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-100 mb-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button onclick="setExpenseDateFilter('today')" id="exp-filter-today" class="px-3 py-1.5 rounded-xl font-medium bg-rose-600 text-white shadow-sm transition">ថ្ងៃនេះ</button>
+          <button onclick="setExpenseDateFilter('yesterday')" id="exp-filter-yesterday" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ម្សិលមិញ</button>
+          <button onclick="setExpenseDateFilter('month')" id="exp-filter-month" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ខែនេះ</button>
+          <button onclick="setExpenseDateFilter('all')" id="exp-filter-all" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ទាំងអស់</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <input type="date" id="exp-filter-date" onchange="handleExpenseCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <select id="exp-filter-category" onchange="loadExpense()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400">
+            <option value="all">គ្រប់កាតាឡុក</option>
+          </select>
+          <input type="text" id="exp-filter-search" oninput="debounceExpenseSearch()" placeholder="ស្វែងរកចំណាំ/វិក្កយបត្រ..." class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400 w-36 sm:w-48" />
+        </div>
+      </div>
+
+      <!-- Transactions List -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="bg-slate-50 text-gray-500 border-b border-slate-100">
+              <tr>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-5 py-3 font-medium whitespace-nowrap">លេខវិក្កយបត្រ</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
+                <th class="px-5 py-3 font-medium text-right whitespace-nowrap">សកម្មភាព</th>
+              </tr>
+            </thead>
+            <tbody id="expense-tbody" class="divide-y divide-slate-50 text-gray-700">
+              <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="expense-mobile-cards" class="md:hidden p-3 space-y-3 bg-slate-50/50">
+          <div class="text-center py-8 text-gray-400 text-sm">កំពុងទាញទិន្នន័យ...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== CATALOG TAB ===== -->
+    <div id="tab-catalog" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span class="material-symbols-outlined text-amber-500 text-2xl">category</span> កាតាឡុក និងប្រភេទប្រតិបត្តិការ (Catalogs)
+          </h2>
+          <p class="text-xs text-gray-500 mt-0.5">កំណត់ និងគ្រប់គ្រងប្រភេទចំណូល និងចំណាយ ដើម្បីងាយស្រួលធ្វើរបាយការណ៍ហិរញ្ញវត្ថុ</p>
+        </div>
+        <button onclick="openCatalogModal()" class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow active:scale-95">
+          <span class="material-symbols-outlined text-base">add</span> + បង្កើតកាតាឡុកថ្មី
+        </button>
+      </div>
+
+      <!-- Filter Category Types -->
+      <div class="flex gap-2 mb-5">
+        <button onclick="filterCatalogType('all')" id="cat-tab-all" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 text-white shadow-sm transition">ទាំងអស់</button>
+        <button onclick="filterCatalogType('income')" id="cat-tab-income" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណូល</button>
+        <button onclick="filterCatalogType('expense')" id="cat-tab-expense" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណាយ</button>
+      </div>
+
+      <!-- Catalogs Grid -->
+      <div id="catalogs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div class="col-span-full text-center py-12 text-gray-400">កំពុងទាញទិន្នន័យកាតាឡុក...</div>
+      </div>
+    </div>
+
+    <!-- ===== FINANCIAL REPORTS TAB ===== -->
+    <div id="tab-reports-finance" class="p-3 sm:p-6 animate-fadeIn hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600 text-2xl">analytics</span> របាយការណ៍ហិរញ្ញវត្ថុ (Financial Reports)
+          </h2>
+          <p class="text-xs text-gray-500 mt-0.5">របាយការណ៍ចំណូល ចំណាយ និងប្រាក់ចំណេញសុទ្ធ ប្រចាំថ្ងៃ ប្រចាំខែ និងប្រចាំឆ្នាំ</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap no-print">
+          <button onclick="printFinanceReport()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 shadow-sm transition">
+            <span class="material-symbols-outlined text-base">print</span> បោះពុម្ព
+          </button>
+          <button onclick="exportFinanceReportCSV()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition">
+            <span class="material-symbols-outlined text-base">download</span> ទាញយកជា Excel/CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Period Tabs -->
+      <div class="bg-white rounded-2xl p-2 shadow-sm border border-slate-100 mb-5 flex items-center gap-2 no-print">
+        <button onclick="switchFinanceReportPeriod('daily')" id="rep-period-daily" class="flex-1 py-2 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-sm transition flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-base">today</span> របាយការណ៍ប្រចាំថ្ងៃ
+        </button>
+        <button onclick="switchFinanceReportPeriod('monthly')" id="rep-period-monthly" class="flex-1 py-2 rounded-xl text-xs sm:text-sm font-medium bg-transparent text-gray-600 hover:bg-slate-100 transition flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-base">calendar_month</span> របាយការណ៍ប្រចាំខែ
+        </button>
+        <button onclick="switchFinanceReportPeriod('yearly')" id="rep-period-yearly" class="flex-1 py-2 rounded-xl text-xs sm:text-sm font-medium bg-transparent text-gray-600 hover:bg-slate-100 transition flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-base">event_note</span> របាយការណ៍ប្រចាំឆ្នាំ
+        </button>
+      </div>
+
+      <!-- Period Filter Controls -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 mb-5 flex flex-wrap items-center justify-between gap-3 no-print">
+        <!-- Daily Controls -->
+        <div id="rep-ctrl-daily" class="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <button onclick="changeDailyReportDate(-1)" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-gray-600 transition" title="ថ្ងៃមុន">
+            <span class="material-symbols-outlined text-base">chevron_left</span>
+          </button>
+          <input type="date" id="rep-finance-date" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <button onclick="changeDailyReportDate(1)" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-gray-600 transition" title="ថ្ងៃបន្ទាប់">
+            <span class="material-symbols-outlined text-base">chevron_right</span>
+          </button>
+          <button onclick="changeDailyReportDate(0)" class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-blue-600 transition">ថ្ងៃនេះ</button>
+        </div>
+
+        <!-- Monthly Controls -->
+        <div id="rep-ctrl-monthly" class="hidden flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <label class="text-xs text-gray-500 font-medium">ជ្រើសរើសខែ៖</label>
+          <select id="rep-finance-month" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="1">ខែមករា (Jan)</option>
+            <option value="2">ខែកុម្ភៈ (Feb)</option>
+            <option value="3">ខែមីនា (Mar)</option>
+            <option value="4">ខែមេសា (Apr)</option>
+            <option value="5">ខែឧសភា (May)</option>
+            <option value="6">ខែមិថុនា (Jun)</option>
+            <option value="7">ខែកក្កដា (Jul)</option>
+            <option value="8">ខែសីហា (Aug)</option>
+            <option value="9">ខែកញ្ញា (Sep)</option>
+            <option value="10">ខែតុលា (Oct)</option>
+            <option value="11">ខែវិច្ឆិកា (Nov)</option>
+            <option value="12">ខែធ្នូ (Dec)</option>
+          </select>
+          <select id="rep-finance-year-m" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </select>
+        </div>
+
+        <!-- Yearly Controls -->
+        <div id="rep-ctrl-yearly" class="hidden flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <label class="text-xs text-gray-500 font-medium">ជ្រើសរើសឆ្នាំ៖</label>
+          <select id="rep-finance-year-y" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </select>
+        </div>
+
+        <div class="text-xs text-gray-500" id="rep-finance-period-label">
+          របាយការណ៍ហិរញ្ញវត្ថុប្រចាំថ្ងៃ
+        </div>
+      </div>
+
+      <!-- Financial Report Summary Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6">
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> សរុបចំណូល (Income)
+          </p>
+          <p id="rep-summary-income" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span> សរុបចំណាយ (Expense)
+          </p>
+          <p id="rep-summary-expense" class="text-base sm:text-xl font-bold text-rose-600 mt-1.5">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span> ចំណេញ/ខាតសុទ្ធ (Net Profit)
+          </p>
+          <p id="rep-summary-net" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <p class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> ប្រតិបត្តិការសរុប (Records)
+          </p>
+          <p id="rep-summary-count" class="text-base sm:text-xl font-bold text-gray-800 mt-1.5">0</p>
+        </div>
+      </div>
+
+      <!-- Dynamic Report Content Area (Daily / Monthly / Yearly) -->
+      <div id="rep-finance-content" class="space-y-6">
+        <div class="text-center py-12 text-gray-400 bg-white rounded-2xl border border-slate-100">កំពុងរៀបចំរបាយការណ៍...</div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -5766,6 +6667,320 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- =================== FINANCE MODALS =================== -->
+
+<!-- Income Modal -->
+<div id="income-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-emerald-600 text-xl">add_circle</span> បញ្ចូលចំណូលថ្មី (Add Income)
+      </h3>
+      <button onclick="closeModal('income-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitIncome(event)" class="p-6 space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
+          <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
+          <input id="inc-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
+          <input id="inc-form-amount" type="number" step="any" min="0.01" required placeholder="ឧទាហរណ៍: 50000" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+          <select id="inc-form-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            <option value="KHR">៛ (រៀល)</option>
+            <option value="USD">$ (ដុល្លារ)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណូល *</label>
+          <button type="button" onclick="openCatalogModal('income')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
+            <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+          </button>
+        </div>
+        <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+          <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+            <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
+            <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
+            <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ / បង្កាន់ដៃ</label>
+          <input id="inc-form-ref" type="text" placeholder="ឧ. INV-001" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
+        <textarea id="inc-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីចំណូលនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-3">
+        <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95">រក្សាទុកចំណូល</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Expense Modal -->
+<div id="expense-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-rose-600 text-xl">remove_circle</span> បញ្ចូលចំណាយថ្មី (Add Expense)
+      </h3>
+      <button onclick="closeModal('expense-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitExpense(event)" class="p-6 space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
+          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
+          <input id="exp-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
+          <input id="exp-form-amount" type="number" step="any" min="0.01" required placeholder="ឧទាហរណ៍: 25000" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+          <select id="exp-form-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400">
+            <option value="KHR">៛ (រៀល)</option>
+            <option value="USD">$ (ដុល្លារ)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណាយ *</label>
+          <button type="button" onclick="openCatalogModal('expense')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
+            <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+          </button>
+        </div>
+        <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+        </select>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+          <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+            <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
+            <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
+            <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ / បង្កាន់ដៃ</label>
+          <input id="exp-form-ref" type="text" placeholder="ឧ. EXP-001" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
+        <textarea id="exp-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីការចំណាយនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-3">
+        <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95">រក្សាទុកចំណាយ</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Catalog Modal -->
+<div id="catalog-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2" id="catalog-modal-title">
+        <span class="material-symbols-outlined text-amber-500 text-xl">category</span> បង្កើតកាតាឡុកថ្មី
+      </h3>
+      <button onclick="closeModal('catalog-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitCatalog(event)" class="p-6 space-y-4">
+      <input type="hidden" id="cat-form-id" value="" />
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ឈ្មោះកាតាឡុក *</label>
+        <input id="cat-form-name" type="text" required placeholder="ឧ. ថ្លៃទឹកភ្លើង, លក់ទំនិញ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ប្រភេទ</label>
+          <select id="cat-form-type" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="income">🟢 ចំណូល (Income)</option>
+            <option value="expense">🔴 ចំណាយ (Expense)</option>
+            <option value="both">⚪ ទាំងពីរ (Both)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ពណ៌ Theme</label>
+          <select id="cat-form-color" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="emerald">Emerald (បៃតង)</option>
+            <option value="rose">Rose (ក្រហម)</option>
+            <option value="blue">Blue (ខៀវ)</option>
+            <option value="amber">Amber (លឿងទុំ)</option>
+            <option value="purple">Purple (ស្វាយ)</option>
+            <option value="indigo">Indigo (ទឹកប៊ិច)</option>
+            <option value="teal">Teal (ខៀវស្រាល)</option>
+            <option value="cyan">Cyan (ផ្ទៃមេឃ)</option>
+            <option value="slate">Slate (ប្រផេះ)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">រូបតំណាង Icon</label>
+        <select id="cat-form-icon" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="category">category (កាតាឡុក)</option>
+          <option value="storefront">storefront (ហាងទំនិញ)</option>
+          <option value="shopping_cart">shopping_cart (រទេះទិញទំនិញ)</option>
+          <option value="payments">payments (លុយកាក់)</option>
+          <option value="home_work">home_work (ទីតាំង/ផ្ទះ)</option>
+          <option value="bolt">bolt (អគ្គិសនី/ទឹក)</option>
+          <option value="local_shipping">local_shipping (ដឹកជញ្ជូន)</option>
+          <option value="campaign">campaign (ផ្សព្វផ្សាយ)</option>
+          <option value="badge">badge (បុគ្គលិក)</option>
+          <option value="build">build (ជួសជុល)</option>
+          <option value="receipt_long">receipt_long (វិក្កយបត្រ)</option>
+          <option value="handshake">handshake (ដៃគូ/សេវាកម្ម)</option>
+          <option value="percent">percent (ភាគរយ/កម្រៃ)</option>
+          <option value="savings">savings (សន្សំ/ចំណូល)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា</label>
+        <textarea id="cat-form-desc" rows="2" placeholder="ព័ត៌មានលម្អិត..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-3">
+        <button type="button" onclick="closeModal('catalog-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-catalog" class="btn-primary flex-1 py-2.5 rounded-xl text-sm font-semibold transition">រក្សាទុក</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Transaction Modal -->
+<div id="edit-tx-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-blue-600 text-xl">edit_note</span> កែប្រែប្រតិបត្តិការ (Edit Transaction)
+      </h3>
+      <button onclick="closeModal('edit-tx-modal')" class="text-gray-400 hover:text-gray-600">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form onsubmit="submitEditTransaction(event)" class="p-6 space-y-4">
+      <input type="hidden" id="edit-tx-id" value="" />
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ប្រភេទប្រតិបត្តិការ</label>
+          <select id="edit-tx-type" onchange="updateEditCategoriesDropdown()" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="income">🟢 ចំណូល (Income)</option>
+            <option value="expense">🔴 ចំណាយ (Expense)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាតាឡុក / ប្រភេទ</label>
+          <select id="edit-tx-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
+          <input id="edit-tx-amount" type="number" step="any" min="0.01" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+          <select id="edit-tx-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="KHR">៛ (រៀល)</option>
+            <option value="USD">$ (ដុល្លារ)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
+          <input id="edit-tx-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
+          <input id="edit-tx-time" type="time" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+          <select id="edit-tx-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+            <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
+            <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
+            <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ</label>
+          <input id="edit-tx-ref" type="text" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
+        <textarea id="edit-tx-desc" rows="2" class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-3">
+        <button type="button" onclick="closeModal('edit-tx-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-edit-tx" class="btn-primary flex-1 py-2.5 rounded-xl text-sm font-semibold transition">រក្សាទុកការកែប្រែ</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"
   class="fixed bottom-6 right-6 z-50 hidden max-w-xs bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
@@ -5840,13 +7055,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== Tab switching =====
-  const tabs = ['dashboard','leaves','loans','employees','settings','reports-leave','reports-loan'];
+  const tabs = ['dashboard','income','expense','catalog','leaves','loans','employees','settings','reports-finance','reports-leave','reports-loan'];
   const titles = {
     dashboard: 'ទំព័រដើម',
+    income: 'ការគ្រប់គ្រងចំណូល',
+    expense: 'ការគ្រប់គ្រងចំណាយ',
+    catalog: 'កាតាឡុក និងប្រភេទប្រតិបត្តិការ',
     leaves: 'ច្បាប់ឈប់សម្រាក',
     loans: 'ខ្ចីប្រាក់ / បុរេប្រទាន',
     employees: 'បុគ្គលិកទាំងអស់',
     settings: 'ការកំណត់ប្រព័ន្ធ',
+    'reports-finance': 'របាយការណ៍ហិរញ្ញវត្ថុ (ចំណូល-ចំណាយ)',
     'reports-leave': 'របាយការណ៍ច្បាប់ (សងថ្ងៃសៅរ៍-អាទិត្យ)',
     'reports-loan': 'របាយការណ៍ខ្ចីប្រាក់ (កាត់ប្រាក់ខែចុងខែ)'
   };
@@ -5880,6 +7099,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (tab === 'settings') loadSettings();
     if (tab === 'reports-leave') loadWeekendLeaveReport();
     if (tab === 'reports-loan') loadMonthlyLoanReport();
+    if (tab === 'income') { loadCatalogs(); loadIncome(); }
+    if (tab === 'expense') { loadCatalogs(); loadExpense(); }
+    if (tab === 'catalog') { loadCatalogs(); }
+    if (tab === 'reports-finance') { initFinanceReportFilters(); loadFinanceReports(); }
   }
 
   // ===== Badge =====
@@ -7405,7 +8628,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (topAdminName) topAdminName.textContent = data.username || 'Admin';
         const settingAdminUser = document.getElementById('setting-admin-username');
         if (settingAdminUser) settingAdminUser.value = data.username || 'admin';
-        await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+        await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
       } else {
         localStorage.removeItem('acbomlu_admin_token');
         if (loginScreen) loginScreen.classList.remove('hidden');
@@ -7414,7 +8637,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       console.error('Auth verification error:', e);
       // In case of temporary network glitch, allow dashboard if local token exists
       if (loginScreen) loginScreen.classList.add('hidden');
-      await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+      await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
     }
   }
 
@@ -7571,10 +8794,1295 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function refreshAll() {
     const btn = document.getElementById('refresh-btn').querySelector('span');
     btn.classList.add('animate-spin');
-    await Promise.all([loadStats(), loadLeaves(), loadLoans()]);
+    await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
     setTimeout(() => btn.classList.remove('animate-spin'), 500);
     showToast('ទិន្នន័យស្រស់ហើយ!');
   }
+
+  // ======================================================
+  // FINANCE & ACCOUNTING JAVASCRIPT
+  // ======================================================
+
+  let financeCatalogs = [];
+  let incomeTransactions = [];
+  let expenseTransactions = [];
+  let currentIncomeFilter = { period: 'today', date: '', category: 'all', search: '' };
+  let currentExpenseFilter = { period: 'today', date: '', category: 'all', search: '' };
+  let currentReportPeriod = 'daily'; // 'daily' | 'monthly' | 'yearly'
+  let currentCatalogFilterType = 'all';
+  let activeFinanceReportData = null;
+
+  // Helpers
+  function formatMoney(amount, currency = 'KHR') {
+    const num = Number(amount) || 0;
+    if (currency === 'USD') {
+      return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return Math.round(num).toLocaleString('en-US') + ' ៛';
+  }
+
+  function formatDualMoney(khr, usd) {
+    const k = Number(khr) || 0;
+    const u = Number(usd) || 0;
+    if (k === 0 && u === 0) return '0 ៛';
+    const parts = [];
+    if (k !== 0 || u === 0) {
+      parts.push(Math.round(k).toLocaleString('en-US') + ' ៛');
+    }
+    if (u !== 0) {
+      parts.push('$' + u.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }
+    return parts.join(' + ');
+  }
+
+  function getTodayString() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function getYesterdayString() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function getCurrentMonthPrefix() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  function getCurrentTimeString() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  // --- Catalogs ---
+
+  async function loadCatalogs() {
+    try {
+      const res = await fetch('/api/finance/catalogs');
+      financeCatalogs = await res.json();
+      populateCatalogDropdowns();
+      renderCatalogs();
+    } catch (e) {
+      console.warn('loadCatalogs error:', e);
+    }
+  }
+
+  function populateCatalogDropdowns() {
+    const incSelect = document.getElementById('inc-form-category');
+    const expSelect = document.getElementById('exp-form-category');
+    const incFilterSelect = document.getElementById('inc-filter-category');
+    const expFilterSelect = document.getElementById('exp-filter-category');
+
+    const incCats = financeCatalogs.filter(c => c.type === 'income' || c.type === 'both');
+    const expCats = financeCatalogs.filter(c => c.type === 'expense' || c.type === 'both');
+
+    if (incSelect) {
+      incSelect.innerHTML = incCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    }
+    if (expSelect) {
+      expSelect.innerHTML = expCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    }
+
+    if (incFilterSelect) {
+      const curVal = incFilterSelect.value || 'all';
+      incFilterSelect.innerHTML = '<option value="all">គ្រប់កាតាឡុក</option>' +
+        incCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      incFilterSelect.value = curVal;
+    }
+    if (expFilterSelect) {
+      const curVal = expFilterSelect.value || 'all';
+      expFilterSelect.innerHTML = '<option value="all">គ្រប់កាតាឡុក</option>' +
+        expCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      expFilterSelect.value = curVal;
+    }
+  }
+
+  function filterCatalogType(type) {
+    currentCatalogFilterType = type;
+    ['all', 'income', 'expense'].forEach(t => {
+      const btn = document.getElementById('cat-tab-' + t);
+      if (btn) {
+        if (t === type) {
+          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 text-white shadow-sm transition';
+        } else {
+          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition';
+        }
+      }
+    });
+    renderCatalogs();
+  }
+
+  function renderCatalogs() {
+    const container = document.getElementById('catalogs-grid');
+    if (!container) return;
+
+    let filtered = financeCatalogs;
+    if (currentCatalogFilterType !== 'all') {
+      filtered = financeCatalogs.filter(c => c.type === currentCatalogFilterType || c.type === 'both');
+    }
+
+    if (!filtered.length) {
+      container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400">មិនមានកាតាឡុកក្នុងប្រភេទនេះឡើយ</div>';
+      return;
+    }
+
+    const colorMap = {
+      emerald: { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'text-emerald-600' },
+      rose: { bg: 'bg-rose-50 text-rose-700 border-rose-200', icon: 'text-rose-600' },
+      blue: { bg: 'bg-blue-50 text-blue-700 border-blue-200', icon: 'text-blue-600' },
+      amber: { bg: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'text-amber-600' },
+      purple: { bg: 'bg-purple-50 text-purple-700 border-purple-200', icon: 'text-purple-600' },
+      indigo: { bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: 'text-indigo-600' },
+      teal: { bg: 'bg-teal-50 text-teal-700 border-teal-200', icon: 'text-teal-600' },
+      cyan: { bg: 'bg-cyan-50 text-cyan-700 border-cyan-200', icon: 'text-cyan-600' },
+      slate: { bg: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'text-slate-600' }
+    };
+
+    container.innerHTML = filtered.map(c => {
+      const col = colorMap[c.color] || colorMap.blue;
+      const typeLabel = c.type === 'income' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">🟢 ចំណូល</span>' :
+                        c.type === 'expense' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">🔴 ចំណាយ</span>' :
+                        '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">⚪ ទាំងពីរ</span>';
+
+      return `
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="w-10 h-10 rounded-xl ${col.bg} border flex items-center justify-center">
+                <span class="material-symbols-outlined text-xl ${col.icon}">${escapeHtml(c.icon || 'category')}</span>
+              </div>
+              ${typeLabel}
+            </div>
+            <h4 class="font-bold text-gray-800 text-sm sm:text-base">${escapeHtml(c.name)}</h4>
+            <p class="text-xs text-gray-500 mt-1 line-clamp-2">${escapeHtml(c.description || 'គ្មានការពិពណ៌នា')}</p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+            <button onclick="openCatalogModal('edit', '${c._id}')" class="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+              <span class="material-symbols-outlined text-base">edit</span>
+            </button>
+            <button onclick="deleteCatalog('${c._id}', '${escapeHtml(c.name)}')" class="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+              <span class="material-symbols-outlined text-base">delete</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openCatalogModal(mode = 'create', catId = null) {
+    const form = document.querySelector('#catalog-modal form');
+    if (form) form.reset();
+    document.getElementById('cat-form-id').value = '';
+
+    if (mode === 'edit' && catId) {
+      const cat = financeCatalogs.find(c => c._id === catId);
+      if (cat) {
+        document.getElementById('catalog-modal-title').innerHTML = '<span class="material-symbols-outlined text-blue-600 text-xl">edit</span> កែប្រែកាតាឡុក';
+        document.getElementById('cat-form-id').value = cat._id;
+        document.getElementById('cat-form-name').value = cat.name;
+        document.getElementById('cat-form-type').value = cat.type || 'both';
+        document.getElementById('cat-form-color').value = cat.color || 'blue';
+        document.getElementById('cat-form-icon').value = cat.icon || 'category';
+        document.getElementById('cat-form-desc').value = cat.description || '';
+      }
+    } else {
+      document.getElementById('catalog-modal-title').innerHTML = '<span class="material-symbols-outlined text-amber-500 text-xl">category</span> បង្កើតកាតាឡុកថ្មី';
+      if (mode === 'income') document.getElementById('cat-form-type').value = 'income';
+      else if (mode === 'expense') document.getElementById('cat-form-type').value = 'expense';
+    }
+    openModal('catalog-modal');
+  }
+
+  async function submitCatalog(e) {
+    e.preventDefault();
+    const id = document.getElementById('cat-form-id').value;
+    const name = document.getElementById('cat-form-name').value.trim();
+    const type = document.getElementById('cat-form-type').value;
+    const color = document.getElementById('cat-form-color').value;
+    const icon = document.getElementById('cat-form-icon').value;
+    const desc = document.getElementById('cat-form-desc').value.trim();
+    const btn = document.getElementById('btn-save-catalog');
+
+    if (!name) {
+      showToast('សូមបញ្ចូលឈ្មោះកាតាឡុក!', true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      let res;
+      if (id) {
+        res = await fetch('/api/finance/catalogs/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, color, icon, description: desc })
+        });
+      } else {
+        res = await fetch('/api/finance/catalogs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, color, icon, description: desc })
+        });
+      }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានរក្សាទុកកាតាឡុកជោគជ័យ!');
+        closeModal('catalog-modal');
+        await loadCatalogs();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការរក្សាទុកកាតាឡុក!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function deleteCatalog(id, name) {
+    if (!confirm(`តើលោកអ្នកពិតជាចង់លុបកាតាឡុក «${name}» មែនទេ?`)) return;
+    try {
+      const res = await fetch('/api/finance/catalogs/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានលុបកាតាឡុកជោគជ័យ!');
+        await loadCatalogs();
+      } else {
+        showToast(data.detail || 'មិនអាចលុបកាតាឡុកបានទេ!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    }
+  }
+
+  // --- Quick Finance Stats (Dashboard + Badges) ---
+
+  async function loadFinanceStats() {
+    try {
+      const res = await fetch('/api/finance/stats');
+      const data = await res.json();
+      if (!data || !data.today) return;
+
+      const dateEl = document.getElementById('dash-finance-date');
+      if (dateEl && data.today_date) {
+        dateEl.textContent = 'កាលបរិច្ឆេទថ្ងៃនេះ៖ ' + data.today_date;
+      }
+
+      const incEl = document.getElementById('dash-income-today');
+      if (incEl) incEl.textContent = formatDualMoney(data.today.income_khr, data.today.income_usd);
+
+      const expEl = document.getElementById('dash-expense-today');
+      if (expEl) expEl.textContent = formatDualMoney(data.today.expense_khr, data.today.expense_usd);
+
+      const netEl = document.getElementById('dash-net-today');
+      if (netEl) {
+        netEl.textContent = formatDualMoney(data.today.net_khr, data.today.net_usd);
+        if (data.today.net_khr >= 0 && data.today.net_usd >= 0) {
+          netEl.className = 'text-base sm:text-lg font-bold text-emerald-300 mt-1';
+        } else {
+          netEl.className = 'text-base sm:text-lg font-bold text-rose-300 mt-1';
+        }
+      }
+
+      // Sidebar badges
+      const incBadge = document.getElementById('badge-income-count');
+      if (incBadge) {
+        const count = data.today.income_by_category ? data.today.income_by_category.reduce((s, c) => s + c.count, 0) : 0;
+        if (count > 0) {
+          incBadge.textContent = count;
+          incBadge.classList.remove('hidden');
+        } else incBadge.classList.add('hidden');
+      }
+
+      const expBadge = document.getElementById('badge-expense-count');
+      if (expBadge) {
+        const count = data.today.expense_by_category ? data.today.expense_by_category.reduce((s, c) => s + c.count, 0) : 0;
+        if (count > 0) {
+          expBadge.textContent = count;
+          expBadge.classList.remove('hidden');
+        } else expBadge.classList.add('hidden');
+      }
+    } catch (e) {
+      console.warn('loadFinanceStats error:', e);
+    }
+  }
+
+  // --- INCOME VIEW ---
+
+  function setIncomeDateFilter(period) {
+    currentIncomeFilter.period = period;
+    ['today', 'yesterday', 'month', 'all'].forEach(p => {
+      const btn = document.getElementById('inc-filter-' + p);
+      if (btn) {
+        if (p === period) {
+          btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-emerald-600 text-white shadow-sm transition';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition';
+        }
+      }
+    });
+
+    const dateInput = document.getElementById('inc-filter-date');
+    if (period === 'today') currentIncomeFilter.date = getTodayString();
+    else if (period === 'yesterday') currentIncomeFilter.date = getYesterdayString();
+    else currentIncomeFilter.date = '';
+
+    if (dateInput) dateInput.value = currentIncomeFilter.date;
+    loadIncome();
+  }
+
+  function handleIncomeCustomDate(val) {
+    currentIncomeFilter.date = val;
+    currentIncomeFilter.period = 'custom';
+    ['today', 'yesterday', 'month', 'all'].forEach(p => {
+      const btn = document.getElementById('inc-filter-' + p);
+      if (btn) btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition';
+    });
+    loadIncome();
+  }
+
+  let incomeSearchTimeout;
+  function debounceIncomeSearch() {
+    clearTimeout(incomeSearchTimeout);
+    incomeSearchTimeout = setTimeout(() => {
+      currentIncomeFilter.search = document.getElementById('inc-filter-search').value.trim();
+      loadIncome();
+    }, 300);
+  }
+
+  async function loadIncome() {
+    try {
+      // 1. Load Stats for Income cards
+      const statsRes = await fetch('/api/finance/stats');
+      const statsData = await statsRes.json();
+      if (statsData) {
+        document.getElementById('inc-stat-today').textContent = formatDualMoney(statsData.today.income_khr, statsData.today.income_usd);
+        document.getElementById('inc-stat-month').textContent = formatDualMoney(statsData.this_month.income_khr, statsData.this_month.income_usd);
+        document.getElementById('inc-stat-year').textContent = formatDualMoney(statsData.this_year.income_khr, statsData.this_year.income_usd);
+      }
+
+      // 2. Build Query
+      const params = new URLSearchParams({ type: 'income', limit: '150' });
+      const catVal = document.getElementById('inc-filter-category').value;
+      if (catVal && catVal !== 'all') params.append('category', catVal);
+
+      if (currentIncomeFilter.period === 'today') {
+        params.append('date', getTodayString());
+      } else if (currentIncomeFilter.period === 'yesterday') {
+        params.append('date', getYesterdayString());
+      } else if (currentIncomeFilter.period === 'month') {
+        params.append('start_date', getCurrentMonthPrefix() + '-01');
+        params.append('end_date', getCurrentMonthPrefix() + '-31');
+      } else if (currentIncomeFilter.date) {
+        params.append('date', currentIncomeFilter.date);
+      }
+
+      if (currentIncomeFilter.search) {
+        params.append('search', currentIncomeFilter.search);
+      }
+
+      const res = await fetch('/api/finance/transactions?' + params.toString());
+      const data = await res.json();
+      incomeTransactions = data.transactions || [];
+      document.getElementById('inc-stat-count').textContent = data.total || incomeTransactions.length;
+      renderIncomeTable();
+    } catch (e) {
+      console.warn('loadIncome error:', e);
+      document.getElementById('income-tbody').innerHTML = '<tr><td colspan="7" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណូល</td></tr>';
+    }
+  }
+
+  function renderIncomeTable() {
+    const tbody = document.getElementById('income-tbody');
+    const mobileContainer = document.getElementById('income-mobile-cards');
+
+    if (!incomeTransactions.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណូលក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
+      mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">មិនមានទិន្នន័យចំណូលឡើយ</div>';
+      return;
+    }
+
+    tbody.innerHTML = incomeTransactions.map(tx => {
+      const amtStr = formatMoney(tx.amount, tx.currency);
+      return `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="px-5 py-3 whitespace-nowrap">
+            <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
+            <div class="text-[11px] text-gray-400">${escapeHtml(tx.time || '')}</div>
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="material-symbols-outlined text-xs">storefront</span>
+              ${escapeHtml(tx.category)}
+            </span>
+          </td>
+          <td class="px-5 py-3">
+            <div class="text-xs text-gray-700 font-medium max-w-xs truncate" title="${escapeHtml(tx.description || '')}">${escapeHtml(tx.description || '—')}</div>
+            <div class="text-[10px] text-gray-400">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+            ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-xs font-mono text-gray-500">
+            ${escapeHtml(tx.reference_no || '—')}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
+            + ${amtStr}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-right">
+            <div class="inline-flex items-center gap-1">
+              <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+                <span class="material-symbols-outlined text-base">edit</span>
+              </button>
+              <button onclick="deleteTransaction('${tx._id}')" class="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+                <span class="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    mobileContainer.innerHTML = incomeTransactions.map(tx => {
+      const amtStr = formatMoney(tx.amount, tx.currency);
+      return `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-2.5">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                ${escapeHtml(tx.category)}
+              </span>
+              <p class="text-[11px] text-gray-400 mt-1">${escapeHtml(tx.date)} ${escapeHtml(tx.time || '')}</p>
+            </div>
+            <p class="text-base font-extrabold text-emerald-600">+ ${amtStr}</p>
+          </div>
+          ${tx.description ? `<p class="text-xs text-gray-700 font-medium">${escapeHtml(tx.description)}</p>` : ''}
+          <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-gray-500">
+            <span>💳 ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')} ${tx.reference_no ? '(' + escapeHtml(tx.reference_no) + ')' : ''}</span>
+            <div class="flex items-center gap-1">
+              <button onclick="openEditTransactionModal('${tx._id}')" class="px-2.5 py-1 rounded-lg text-blue-600 hover:bg-blue-50 font-medium transition">កែប្រែ</button>
+              <button onclick="deleteTransaction('${tx._id}')" class="px-2.5 py-1 rounded-lg text-rose-500 hover:bg-rose-50 font-medium transition">លុប</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openIncomeModal() {
+    const form = document.querySelector('#income-modal form');
+    if (form) form.reset();
+    document.getElementById('inc-form-date').value = getTodayString();
+    document.getElementById('inc-form-time').value = getCurrentTimeString();
+    document.getElementById('inc-form-currency').value = 'KHR';
+    populateCatalogDropdowns();
+    openModal('income-modal');
+  }
+
+  async function submitIncome(e) {
+    e.preventDefault();
+    const date = document.getElementById('inc-form-date').value;
+    const time = document.getElementById('inc-form-time').value;
+    const amount = parseFloat(document.getElementById('inc-form-amount').value);
+    const currency = document.getElementById('inc-form-currency').value;
+    const category = document.getElementById('inc-form-category').value;
+    const method = document.getElementById('inc-form-method').value;
+    const ref = document.getElementById('inc-form-ref').value.trim();
+    const desc = document.getElementById('inc-form-desc').value.trim();
+    const btn = document.getElementById('btn-save-income');
+
+    if (!amount || amount <= 0) {
+      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/finance/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'income',
+          amount,
+          currency,
+          category,
+          date,
+          time,
+          payment_method: method,
+          reference_no: ref,
+          description: desc,
+          recorded_by: (localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល')
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានកត់ត្រាចំណូលជោគជ័យ!');
+        closeModal('income-modal');
+        await loadIncome();
+        await loadFinanceStats();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការកត់ត្រាចំណូល!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // --- EXPENSE VIEW ---
+
+  function setExpenseDateFilter(period) {
+    currentExpenseFilter.period = period;
+    ['today', 'yesterday', 'month', 'all'].forEach(p => {
+      const btn = document.getElementById('exp-filter-' + p);
+      if (btn) {
+        if (p === period) {
+          btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-rose-600 text-white shadow-sm transition';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition';
+        }
+      }
+    });
+
+    const dateInput = document.getElementById('exp-filter-date');
+    if (period === 'today') currentExpenseFilter.date = getTodayString();
+    else if (period === 'yesterday') currentExpenseFilter.date = getYesterdayString();
+    else currentExpenseFilter.date = '';
+
+    if (dateInput) dateInput.value = currentExpenseFilter.date;
+    loadExpense();
+  }
+
+  function handleExpenseCustomDate(val) {
+    currentExpenseFilter.date = val;
+    currentExpenseFilter.period = 'custom';
+    ['today', 'yesterday', 'month', 'all'].forEach(p => {
+      const btn = document.getElementById('exp-filter-' + p);
+      if (btn) btn.className = 'px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition';
+    });
+    loadExpense();
+  }
+
+  let expenseSearchTimeout;
+  function debounceExpenseSearch() {
+    clearTimeout(expenseSearchTimeout);
+    expenseSearchTimeout = setTimeout(() => {
+      currentExpenseFilter.search = document.getElementById('exp-filter-search').value.trim();
+      loadExpense();
+    }, 300);
+  }
+
+  async function loadExpense() {
+    try {
+      // 1. Load Stats
+      const statsRes = await fetch('/api/finance/stats');
+      const statsData = await statsRes.json();
+      if (statsData) {
+        document.getElementById('exp-stat-today').textContent = formatDualMoney(statsData.today.expense_khr, statsData.today.expense_usd);
+        document.getElementById('exp-stat-month').textContent = formatDualMoney(statsData.this_month.expense_khr, statsData.this_month.expense_usd);
+        document.getElementById('exp-stat-year').textContent = formatDualMoney(statsData.this_year.expense_khr, statsData.this_year.expense_usd);
+      }
+
+      // 2. Build Query
+      const params = new URLSearchParams({ type: 'expense', limit: '150' });
+      const catVal = document.getElementById('exp-filter-category').value;
+      if (catVal && catVal !== 'all') params.append('category', catVal);
+
+      if (currentExpenseFilter.period === 'today') {
+        params.append('date', getTodayString());
+      } else if (currentExpenseFilter.period === 'yesterday') {
+        params.append('date', getYesterdayString());
+      } else if (currentExpenseFilter.period === 'month') {
+        params.append('start_date', getCurrentMonthPrefix() + '-01');
+        params.append('end_date', getCurrentMonthPrefix() + '-31');
+      } else if (currentExpenseFilter.date) {
+        params.append('date', currentExpenseFilter.date);
+      }
+
+      if (currentExpenseFilter.search) {
+        params.append('search', currentExpenseFilter.search);
+      }
+
+      const res = await fetch('/api/finance/transactions?' + params.toString());
+      const data = await res.json();
+      expenseTransactions = data.transactions || [];
+      document.getElementById('exp-stat-count').textContent = data.total || expenseTransactions.length;
+      renderExpenseTable();
+    } catch (e) {
+      console.warn('loadExpense error:', e);
+      document.getElementById('expense-tbody').innerHTML = '<tr><td colspan="7" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណាយ</td></tr>';
+    }
+  }
+
+  function renderExpenseTable() {
+    const tbody = document.getElementById('expense-tbody');
+    const mobileContainer = document.getElementById('expense-mobile-cards');
+
+    if (!expenseTransactions.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណាយក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
+      mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">មិនមានទិន្នន័យចំណាយឡើយ</div>';
+      return;
+    }
+
+    tbody.innerHTML = expenseTransactions.map(tx => {
+      const amtStr = formatMoney(tx.amount, tx.currency);
+      return `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="px-5 py-3 whitespace-nowrap">
+            <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
+            <div class="text-[11px] text-gray-400">${escapeHtml(tx.time || '')}</div>
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+              <span class="material-symbols-outlined text-xs">shopping_cart</span>
+              ${escapeHtml(tx.category)}
+            </span>
+          </td>
+          <td class="px-5 py-3">
+            <div class="text-xs text-gray-700 font-medium max-w-xs truncate" title="${escapeHtml(tx.description || '')}">${escapeHtml(tx.description || '—')}</div>
+            <div class="text-[10px] text-gray-400">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+            ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-xs font-mono text-gray-500">
+            ${escapeHtml(tx.reference_no || '—')}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
+            - ${amtStr}
+          </td>
+          <td class="px-5 py-3 whitespace-nowrap text-right">
+            <div class="inline-flex items-center gap-1">
+              <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+                <span class="material-symbols-outlined text-base">edit</span>
+              </button>
+              <button onclick="deleteTransaction('${tx._id}')" class="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+                <span class="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    mobileContainer.innerHTML = expenseTransactions.map(tx => {
+      const amtStr = formatMoney(tx.amount, tx.currency);
+      return `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-2.5">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                ${escapeHtml(tx.category)}
+              </span>
+              <p class="text-[11px] text-gray-400 mt-1">${escapeHtml(tx.date)} ${escapeHtml(tx.time || '')}</p>
+            </div>
+            <p class="text-base font-extrabold text-rose-600">- ${amtStr}</p>
+          </div>
+          ${tx.description ? `<p class="text-xs text-gray-700 font-medium">${escapeHtml(tx.description)}</p>` : ''}
+          <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-gray-500">
+            <span>💳 ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')} ${tx.reference_no ? '(' + escapeHtml(tx.reference_no) + ')' : ''}</span>
+            <div class="flex items-center gap-1">
+              <button onclick="openEditTransactionModal('${tx._id}')" class="px-2.5 py-1 rounded-lg text-blue-600 hover:bg-blue-50 font-medium transition">កែប្រែ</button>
+              <button onclick="deleteTransaction('${tx._id}')" class="px-2.5 py-1 rounded-lg text-rose-500 hover:bg-rose-50 font-medium transition">លុប</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openExpenseModal() {
+    const form = document.querySelector('#expense-modal form');
+    if (form) form.reset();
+    document.getElementById('exp-form-date').value = getTodayString();
+    document.getElementById('exp-form-time').value = getCurrentTimeString();
+    document.getElementById('exp-form-currency').value = 'KHR';
+    populateCatalogDropdowns();
+    openModal('expense-modal');
+  }
+
+  async function submitExpense(e) {
+    e.preventDefault();
+    const date = document.getElementById('exp-form-date').value;
+    const time = document.getElementById('exp-form-time').value;
+    const amount = parseFloat(document.getElementById('exp-form-amount').value);
+    const currency = document.getElementById('exp-form-currency').value;
+    const category = document.getElementById('exp-form-category').value;
+    const method = document.getElementById('exp-form-method').value;
+    const ref = document.getElementById('exp-form-ref').value.trim();
+    const desc = document.getElementById('exp-form-desc').value.trim();
+    const btn = document.getElementById('btn-save-expense');
+
+    if (!amount || amount <= 0) {
+      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/finance/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'expense',
+          amount,
+          currency,
+          category,
+          date,
+          time,
+          payment_method: method,
+          reference_no: ref,
+          description: desc,
+          recorded_by: (localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល')
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានកត់ត្រាចំណាយជោគជ័យ!');
+        closeModal('expense-modal');
+        await loadExpense();
+        await loadFinanceStats();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការកត់ត្រាចំណាយ!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // --- EDIT & DELETE TRANSACTIONS ---
+
+  async function openEditTransactionModal(id) {
+    try {
+      const res = await fetch('/api/finance/transactions/' + id);
+      if (!res.ok) throw new Error('Transaction not found');
+      const tx = await res.json();
+
+      document.getElementById('edit-tx-id').value = tx._id;
+      document.getElementById('edit-tx-type').value = tx.type || 'income';
+      document.getElementById('edit-tx-amount').value = tx.amount;
+      document.getElementById('edit-tx-currency').value = tx.currency || 'KHR';
+      document.getElementById('edit-tx-date').value = tx.date || '';
+      document.getElementById('edit-tx-time').value = tx.time || '';
+      document.getElementById('edit-tx-method').value = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
+      document.getElementById('edit-tx-ref').value = tx.reference_no || '';
+      document.getElementById('edit-tx-desc').value = tx.description || '';
+
+      updateEditCategoriesDropdown(tx.category);
+      openModal('edit-tx-modal');
+    } catch (e) {
+      showToast('មិនអាចទាញយកទិន្នន័យប្រតិបត្តិការបានទេ!', true);
+    }
+  }
+
+  function updateEditCategoriesDropdown(selectedCat = null) {
+    const type = document.getElementById('edit-tx-type').value;
+    const catSelect = document.getElementById('edit-tx-category');
+    const cats = financeCatalogs.filter(c => c.type === type || c.type === 'both');
+
+    catSelect.innerHTML = cats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    if (selectedCat) catSelect.value = selectedCat;
+  }
+
+  async function submitEditTransaction(e) {
+    e.preventDefault();
+    const id = document.getElementById('edit-tx-id').value;
+    const type = document.getElementById('edit-tx-type').value;
+    const amount = parseFloat(document.getElementById('edit-tx-amount').value);
+    const currency = document.getElementById('edit-tx-currency').value;
+    const category = document.getElementById('edit-tx-category').value;
+    const date = document.getElementById('edit-tx-date').value;
+    const time = document.getElementById('edit-tx-time').value;
+    const method = document.getElementById('edit-tx-method').value;
+    const ref = document.getElementById('edit-tx-ref').value.trim();
+    const desc = document.getElementById('edit-tx-desc').value.trim();
+    const btn = document.getElementById('btn-save-edit-tx');
+
+    if (!amount || amount <= 0) {
+      showToast('ចំនួនទឹកប្រាក់ត្រូវតែធំជាង ០!', true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/finance/transactions/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          amount,
+          currency,
+          category,
+          date,
+          time,
+          payment_method: method,
+          reference_no: ref,
+          description: desc
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានកែប្រែប្រតិបត្តិការជោគជ័យ!');
+        closeModal('edit-tx-modal');
+        if (type === 'income') await loadIncome();
+        else await loadExpense();
+        await loadFinanceStats();
+      } else {
+        showToast(data.detail || 'បរាជ័យក្នុងការកែប្រែ!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function deleteTransaction(id) {
+    if (!confirm('តើលោកអ្នកពិតជាចង់លុបប្រតិបត្តិការនេះចេញពីប្រព័ន្ធមែនទេ?')) return;
+    try {
+      const res = await fetch('/api/finance/transactions/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'បានលុបប្រតិបត្តិការជោគជ័យ!');
+        await loadIncome();
+        await loadExpense();
+        await loadFinanceStats();
+      } else {
+        showToast(data.detail || 'មិនអាចលុបប្រតិបត្តិការបានទេ!', true);
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    }
+  }
+
+  // --- FINANCIAL REPORTS (ប្រចាំថ្ងៃ, ប្រចាំខែ, ប្រចាំឆ្នាំ) ---
+
+  function initFinanceReportFilters() {
+    const today = new Date();
+    const dateInput = document.getElementById('rep-finance-date');
+    if (dateInput && !dateInput.value) dateInput.value = getTodayString();
+
+    const monthSelect = document.getElementById('rep-finance-month');
+    if (monthSelect) monthSelect.value = String(today.getMonth() + 1);
+
+    const yearM = document.getElementById('rep-finance-year-m');
+    const yearY = document.getElementById('rep-finance-year-y');
+    const curYear = today.getFullYear();
+    const yearOpts = [curYear - 2, curYear - 1, curYear, curYear + 1]
+      .map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}</option>`).join('');
+
+    if (yearM) yearM.innerHTML = yearOpts;
+    if (yearY) yearY.innerHTML = yearOpts;
+  }
+
+  function switchFinanceReportPeriod(period) {
+    currentReportPeriod = period;
+    ['daily', 'monthly', 'yearly'].forEach(p => {
+      const btn = document.getElementById('rep-period-' + p);
+      const ctrl = document.getElementById('rep-ctrl-' + p);
+      if (btn) {
+        if (p === period) {
+          btn.className = 'flex-1 py-2 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-sm transition flex items-center justify-center gap-1.5';
+        } else {
+          btn.className = 'flex-1 py-2 rounded-xl text-xs sm:text-sm font-medium bg-transparent text-gray-600 hover:bg-slate-100 transition flex items-center justify-center gap-1.5';
+        }
+      }
+      if (ctrl) {
+        if (p === period) ctrl.classList.remove('hidden');
+        else ctrl.classList.add('hidden');
+      }
+    });
+
+    const label = document.getElementById('rep-finance-period-label');
+    if (label) {
+      if (period === 'daily') label.textContent = 'របាយការណ៍ហិរញ្ញវត្ថុប្រចាំថ្ងៃ';
+      else if (period === 'monthly') label.textContent = 'របាយការណ៍ហិរញ្ញវត្ថុប្រចាំខែ';
+      else label.textContent = 'របាយការណ៍ហិរញ្ញវត្ថុប្រចាំឆ្នាំ';
+    }
+
+    loadFinanceReports();
+  }
+
+  function changeDailyReportDate(offset) {
+    const input = document.getElementById('rep-finance-date');
+    if (!input) return;
+    if (offset === 0) {
+      input.value = getTodayString();
+    } else {
+      const cur = new Date(input.value || getTodayString());
+      cur.setDate(cur.getDate() + offset);
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      input.value = `${y}-${m}-${d}`;
+    }
+    loadFinanceReports();
+  }
+
+  async function loadFinanceReports() {
+    const contentArea = document.getElementById('rep-finance-content');
+    contentArea.innerHTML = '<div class="text-center py-12 text-gray-400 bg-white rounded-2xl border border-slate-100">កំពុងរៀបចំរបាយការណ៍...</div>';
+
+    try {
+      if (currentReportPeriod === 'daily') {
+        const d = document.getElementById('rep-finance-date').value || getTodayString();
+        const res = await fetch('/api/finance/reports/daily?date=' + d);
+        const data = await res.json();
+        activeFinanceReportData = { type: 'daily', data };
+        updateReportSummaryCards(data.summary);
+        renderFinanceReportDaily(data);
+      } else if (currentReportPeriod === 'monthly') {
+        const m = document.getElementById('rep-finance-month').value;
+        const y = document.getElementById('rep-finance-year-m').value;
+        const res = await fetch(`/api/finance/reports/monthly?year=${y}&month=${m}`);
+        const data = await res.json();
+        activeFinanceReportData = { type: 'monthly', data };
+        updateReportSummaryCards(data.summary);
+        renderFinanceReportMonthly(data);
+      } else if (currentReportPeriod === 'yearly') {
+        const y = document.getElementById('rep-finance-year-y').value;
+        const res = await fetch(`/api/finance/reports/yearly?year=${y}`);
+        const data = await res.json();
+        activeFinanceReportData = { type: 'yearly', data };
+        updateReportSummaryCards(data.summary);
+        renderFinanceReportYearly(data);
+      }
+    } catch (e) {
+      contentArea.innerHTML = '<div class="text-center py-12 text-rose-500 bg-white rounded-2xl border border-slate-100">កំហុសក្នុងការទាញយករបាយការណ៍</div>';
+    }
+  }
+
+  function updateReportSummaryCards(summary) {
+    if (!summary) return;
+    document.getElementById('rep-summary-income').textContent = formatDualMoney(summary.income_khr, summary.income_usd);
+    document.getElementById('rep-summary-expense').textContent = formatDualMoney(summary.expense_khr, summary.expense_usd);
+    
+    const netEl = document.getElementById('rep-summary-net');
+    netEl.textContent = formatDualMoney(summary.net_khr, summary.net_usd);
+    if (summary.net_khr >= 0 && summary.net_usd >= 0) {
+      netEl.className = 'text-base sm:text-xl font-bold text-emerald-600 mt-1.5';
+    } else {
+      netEl.className = 'text-base sm:text-xl font-bold text-rose-600 mt-1.5';
+    }
+
+    document.getElementById('rep-summary-count').textContent = summary.count || 0;
+  }
+
+  function renderFinanceReportDaily(data) {
+    const content = document.getElementById('rep-finance-content');
+    const { date, summary, transactions } = data;
+
+    const incCats = summary.income_by_category || [];
+    const expCats = summary.expense_by_category || [];
+
+    content.innerHTML = `
+      <!-- Category Breakdown Cards (2 columns) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Income Categories -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-5 py-3.5 bg-emerald-50/50 border-b border-slate-100 flex items-center justify-between">
+            <h4 class="font-bold text-emerald-800 text-sm flex items-center gap-2">
+              <span class="material-symbols-outlined text-emerald-600">trending_up</span> ចំណូលតាមកាតាឡុក (${date})
+            </h4>
+            <span class="text-xs font-semibold text-emerald-700 font-mono">${formatDualMoney(summary.income_khr, summary.income_usd)}</span>
+          </div>
+          <div class="p-4 space-y-3">
+            ${incCats.length ? incCats.map(c => `
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
+                <span class="font-bold text-emerald-600">${formatDualMoney(c.khr, c.usd)}</span>
+              </div>
+            `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណូលក្នុងថ្ងៃនេះទេ</p>'}
+          </div>
+        </div>
+
+        <!-- Expense Categories -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-5 py-3.5 bg-rose-50/50 border-b border-slate-100 flex items-center justify-between">
+            <h4 class="font-bold text-rose-800 text-sm flex items-center gap-2">
+              <span class="material-symbols-outlined text-rose-600">trending_down</span> ចំណាយតាមកាតាឡុក (${date})
+            </h4>
+            <span class="text-xs font-semibold text-rose-700 font-mono">${formatDualMoney(summary.expense_khr, summary.expense_usd)}</span>
+          </div>
+          <div class="p-4 space-y-3">
+            ${expCats.length ? expCats.map(c => `
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
+                <span class="font-bold text-rose-600">${formatDualMoney(c.khr, c.usd)}</span>
+              </div>
+            `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណាយក្នុងថ្ងៃនេះទេ</p>'}
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions List for the Day -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600">receipt_long</span> បញ្ជីប្រតិបត្តិការថ្ងៃទី ${date}
+          </h4>
+          <span class="text-xs text-gray-500 font-medium">សរុប ${transactions.length} ប្រតិបត្តិការ</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs sm:text-sm text-left">
+            <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
+              <tr>
+                <th class="px-5 py-3">ម៉ោង</th>
+                <th class="px-5 py-3">ប្រភេទ</th>
+                <th class="px-5 py-3">កាតាឡុក</th>
+                <th class="px-5 py-3">ពិពណ៌នា</th>
+                <th class="px-5 py-3">ការទូទាត់</th>
+                <th class="px-5 py-3 text-right">ចំនួនទឹកប្រាក់</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50 text-gray-700">
+              ${transactions.length ? transactions.map(t => `
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="px-5 py-3 font-mono text-gray-500 whitespace-nowrap">${escapeHtml(t.time || '')}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">
+                    ${t.type === 'income' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">ចំណូល</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">ចំណាយ</span>'}
+                  </td>
+                  <td class="px-5 py-3 font-medium whitespace-nowrap">${escapeHtml(t.category)}</td>
+                  <td class="px-5 py-3 text-gray-600">${escapeHtml(t.description || '—')}</td>
+                  <td class="px-5 py-3 text-gray-500 whitespace-nowrap">${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</td>
+                  <td class="px-5 py-3 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
+                    ${t.type === 'income' ? '+ ' : '- '}${formatMoney(t.amount, t.currency)}
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6" class="text-center py-8 text-gray-400">គ្មានប្រតិបត្តិការក្នុងថ្ងៃនេះទេ</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFinanceReportMonthly(data) {
+    const content = document.getElementById('rep-finance-content');
+    const { year, month, month_name, summary, daily_breakdown } = data;
+
+    const incCats = summary.income_by_category || [];
+    const expCats = summary.expense_by_category || [];
+
+    content.innerHTML = `
+      <!-- Category Breakdown Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <h4 class="font-bold text-emerald-800 text-sm flex items-center gap-2 mb-3">
+            <span class="material-symbols-outlined text-emerald-600">trending_up</span> ចំណូលខែ ${month_name} តាមកាតាឡុក
+          </h4>
+          <div class="space-y-2.5">
+            ${incCats.length ? incCats.map(c => `
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
+                <span class="font-bold text-emerald-600">${formatDualMoney(c.khr, c.usd)}</span>
+              </div>
+            `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណូលក្នុងខែនេះទេ</p>'}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <h4 class="font-bold text-rose-800 text-sm flex items-center gap-2 mb-3">
+            <span class="material-symbols-outlined text-rose-600">trending_down</span> ចំណាយខែ ${month_name} តាមកាតាឡុក
+          </h4>
+          <div class="space-y-2.5">
+            ${expCats.length ? expCats.map(c => `
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium text-gray-700">${escapeHtml(c.category)} (${c.count})</span>
+                <span class="font-bold text-rose-600">${formatDualMoney(c.khr, c.usd)}</span>
+              </div>
+            `).join('') : '<p class="text-xs text-gray-400 text-center py-4">គ្មានចំណាយក្នុងខែនេះទេ</p>'}
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily Breakdown Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600">calendar_view_day</span> តារាងលម្អិតតាមថ្ងៃនីមួយៗ (ខែ ${month_name} ឆ្នាំ ${year})
+          </h4>
+          <span class="text-xs text-gray-500 font-medium">ចំនួន ${daily_breakdown.length} ថ្ងៃ</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs sm:text-sm text-left">
+            <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
+              <tr>
+                <th class="px-5 py-3">កាលបរិច្ឆេទ</th>
+                <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
+                <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
+                <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
+                <th class="px-5 py-3 text-right">ចំណាយដុល្លារ ($)</th>
+                <th class="px-5 py-3 text-right">សមតុល្យសុទ្ធ</th>
+                <th class="px-5 py-3 text-center">ប្រតិបត្តិការ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50 text-gray-700 font-mono">
+              ${daily_breakdown.map(d => {
+                const hasData = d.income_khr || d.income_usd || d.expense_khr || d.expense_usd;
+                const netStr = formatDualMoney(d.net_khr, d.net_usd);
+                const isPos = d.net_khr >= 0 && d.net_usd >= 0;
+                return `
+                  <tr class="hover:bg-slate-50 transition ${hasData ? 'bg-white' : 'opacity-60'}">
+                    <td class="px-5 py-2.5 font-sans font-medium text-gray-800">${escapeHtml(d.date)}</td>
+                    <td class="px-5 py-2.5 text-right font-bold text-emerald-600">${Math.round(d.income_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-5 py-2.5 text-right font-bold text-emerald-600">$${d.income_usd.toFixed(2)}</td>
+                    <td class="px-5 py-2.5 text-right font-bold text-rose-600">${Math.round(d.expense_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-5 py-2.5 text-right font-bold text-rose-600">$${d.expense_usd.toFixed(2)}</td>
+                    <td class="px-5 py-2.5 text-right font-bold font-sans ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
+                    <td class="px-5 py-2.5 text-center font-sans text-xs text-gray-500">${d.count}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+            <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200">
+              <tr>
+                <td class="px-5 py-3 font-sans text-gray-900">សរុបប្រចាំខែ</td>
+                <td class="px-5 py-3 text-right text-emerald-700 font-mono">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-5 py-3 text-right text-emerald-700 font-mono">$${summary.income_usd.toFixed(2)}</td>
+                <td class="px-5 py-3 text-right text-rose-700 font-mono">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-5 py-3 text-right text-rose-700 font-mono">$${summary.expense_usd.toFixed(2)}</td>
+                <td class="px-5 py-3 text-right font-sans ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
+                <td class="px-5 py-3 text-center font-sans">${summary.count}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFinanceReportYearly(data) {
+    const content = document.getElementById('rep-finance-content');
+    const { year, summary, monthly_breakdown } = data;
+
+    content.innerHTML = `
+      <!-- Yearly 12-Month Summary Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600">table_chart</span> តារាងសង្ខេប ១២ ខែ ប្រចាំឆ្នាំ ${year}
+          </h4>
+          <span class="text-xs text-gray-500 font-medium">ក្រុមហ៊ុន AC Bomlu</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs sm:text-sm text-left">
+            <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
+              <tr>
+                <th class="px-5 py-3">ខែ</th>
+                <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
+                <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
+                <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
+                <th class="px-5 py-3 text-right">ចំណាយដុល្លារ ($)</th>
+                <th class="px-5 py-3 text-right">ចំណេញ/ខាតសុទ្ធ</th>
+                <th class="px-5 py-3 text-center">ប្រតិបត្តិការ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50 text-gray-700 font-mono">
+              ${monthly_breakdown.map(m => {
+                const netStr = formatDualMoney(m.net_khr, m.net_usd);
+                const isPos = m.net_khr >= 0 && m.net_usd >= 0;
+                return `
+                  <tr class="hover:bg-slate-50 transition">
+                    <td class="px-5 py-3 font-sans font-bold text-gray-800">ខែ${escapeHtml(m.month_name)} (${m.month})</td>
+                    <td class="px-5 py-3 text-right font-bold text-emerald-600">${Math.round(m.income_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-5 py-3 text-right font-bold text-emerald-600">$${m.income_usd.toFixed(2)}</td>
+                    <td class="px-5 py-3 text-right font-bold text-rose-600">${Math.round(m.expense_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-5 py-3 text-right font-bold text-rose-600">$${m.expense_usd.toFixed(2)}</td>
+                    <td class="px-5 py-3 text-right font-bold font-sans ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
+                    <td class="px-5 py-3 text-center font-sans text-xs text-gray-500">${m.count}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+            <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200">
+              <tr>
+                <td class="px-5 py-3 font-sans text-gray-900">សរុបឆ្នាំ ${year}</td>
+                <td class="px-5 py-3 text-right text-emerald-700 font-mono">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-5 py-3 text-right text-emerald-700 font-mono">$${summary.income_usd.toFixed(2)}</td>
+                <td class="px-5 py-3 text-right text-rose-700 font-mono">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-5 py-3 text-right text-rose-700 font-mono">$${summary.expense_usd.toFixed(2)}</td>
+                <td class="px-5 py-3 text-right font-sans ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
+                <td class="px-5 py-3 text-center font-sans">${summary.count}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- PRINT & EXPORT ---
+
+  function printFinanceReport() {
+    window.print();
+  }
+
+  function exportFinanceReportCSV() {
+    if (!activeFinanceReportData) {
+      showToast('សូមរង់ចាំរបាយការណ៍ដំណើរការរួចសិន!', true);
+      return;
+    }
+
+    let csv = '\uFEFF'; // UTF-8 BOM
+    const { type, data } = activeFinanceReportData;
+
+    if (type === 'daily') {
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំថ្ងៃ,${data.date}\n`;
+      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+
+      csv += `កាលបរិច្ឆេទ,ម៉ោង,ប្រភេទ,កាតាឡុក,ពិពណ៌នា,ការទូទាត់,លេខវិក្កយបត្រ,ចំនួនទឹកប្រាក់,រូបិយប័ណ្ណ,អ្នកកត់ត្រា\n`;
+      data.transactions.forEach(t => {
+        csv += `"${t.date}","${t.time||''}","${t.type==='income'?'ចំណូល':'ចំណាយ'}","${t.category}","${t.description||''}","${t.payment_method||''}","${t.reference_no||''}","${t.amount}","${t.currency}","${t.recorded_by||''}"\n`;
+      });
+    } else if (type === 'monthly') {
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំខែ,ខែ ${data.month_name} ឆ្នាំ ${data.year}\n`;
+      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+
+      csv += `កាលបរិច្ឆេទ,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      data.daily_breakdown.forEach(d => {
+        csv += `"${d.date}",${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
+      });
+    } else if (type === 'yearly') {
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុប្រចាំឆ្នាំ,ឆ្នាំ ${data.year}\n`;
+      csv += `សរុបចំណូល (KHR),${data.summary.income_khr},សរុបចំណូល (USD),${data.summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (KHR),${data.summary.expense_khr},សរុបចំណាយ (USD),${data.summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (KHR),${data.summary.net_khr},ចំណេញសុទ្ធ (USD),${data.summary.net_usd}\n\n`;
+
+      csv += `ខែ,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      data.monthly_breakdown.forEach(m => {
+        csv += `"ខែ${m.month_name}",${m.income_khr},${m.income_usd},${m.expense_khr},${m.expense_usd},${m.net_khr},${m.net_usd},${m.count}\n`;
+      });
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `AC_Bomlu_Finance_Report_${currentReportPeriod}_${getTodayString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('បានទាញយករបាយការណ៍ជា Excel/CSV រួចរាល់!');
+  }
+
 
   // ===== Init =====
   (async function init() {
