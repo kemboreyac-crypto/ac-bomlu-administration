@@ -6787,8 +6787,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
-          <input id="inc-form-amount" type="number" step="any" min="0.01" required placeholder="ឧទាហរណ៍: 50000" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
+          <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="ឧទាហរណ៍: 1,000,000 ឬ ១,០០០,០០០"
+            oninput="formatAmountInput(this)"
+            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
@@ -6799,18 +6801,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <div>
-        <div class="flex items-center justify-between mb-1">
-          <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណូល *</label>
-          <button type="button" onclick="openCatalogModal('income')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
-            <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
-          </button>
-        </div>
-        <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
-        </select>
-      </div>
-
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណូល *</label>
+            <button type="button" onclick="openCatalogModal('income')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+            </button>
+          </div>
+          <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+          </select>
+        </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
           <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
@@ -6820,15 +6821,72 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
           </select>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ / បង្កាន់ដៃ</label>
-          <input id="inc-form-ref" type="text" placeholder="ឧ. INV-001" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+      </div>
+
+      <!-- ទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Location Combobox & Trips Dropdown) -->
+      <div class="p-3.5 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 rounded-2xl border border-blue-100 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
+            <span>ជ្រើសរើសទីតាំងផ្ដល់សេវា & ចំនួនជើង</span>
+          </label>
+          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200">ចងចាំទីតាំងស្វ័យប្រវត្ត</span>
         </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+          <!-- Location Combobox with Autocomplete & Memory -->
+          <div class="sm:col-span-6 relative">
+            <input list="service-locations-list" id="inc-location-input" type="text"
+              placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+            <datalist id="service-locations-list">
+              <!-- Dynamically populated from stored locations -->
+            </datalist>
+          </div>
+
+          <!-- Trips Dropdown 1 to 20 -->
+          <div class="sm:col-span-4">
+            <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+              <option value="1">១ ជើង (1 trip)</option>
+              <option value="2">២ ជើង (2 trips)</option>
+              <option value="3">៣ ជើង (3 trips)</option>
+              <option value="4">៤ ជើង (4 trips)</option>
+              <option value="5">៥ ជើង (5 trips)</option>
+              <option value="6">៦ ជើង (6 trips)</option>
+              <option value="7">៧ ជើង (7 trips)</option>
+              <option value="8">៨ ជើង (8 trips)</option>
+              <option value="9">៩ ជើង (9 trips)</option>
+              <option value="10">១០ ជើង (10 trips)</option>
+              <option value="11">១១ ជើង (11 trips)</option>
+              <option value="12">១២ ជើង (12 trips)</option>
+              <option value="13">១៣ ជើង (13 trips)</option>
+              <option value="14">១៤ ជើង (14 trips)</option>
+              <option value="15">១៥ ជើង (15 trips)</option>
+              <option value="16">១៦ ជើង (16 trips)</option>
+              <option value="17">១៧ ជើង (17 trips)</option>
+              <option value="18">១៨ ជើង (18 trips)</option>
+              <option value="19">១៩ ជើង (19 trips)</option>
+              <option value="20">២០ ជើង (20 trips)</option>
+            </select>
+          </div>
+
+          <!-- Add Button -->
+          <div class="sm:col-span-2">
+            <button type="button" onclick="addServiceTripToNote()"
+              class="w-full h-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95">
+              <span class="material-symbols-outlined text-sm">add</span>
+              <span>បញ្ចូល</span>
+            </button>
+          </div>
+        </div>
+        <p class="text-[10px] text-gray-500">
+          💡 ជ្រើសរើសទីតាំង និងចំនួនជើង រួចចុច <b>«បញ្ចូល»</b> វានឹងលោតចូលប្រអប់ពិពណ៌នា/ចំណាំខាងក្រោមជាបន្តបន្ទាប់ (អាចបញ្ចូលបានច្រើនដង)។
+        </p>
       </div>
 
       <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
-        <textarea id="inc-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីចំណូលនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា / ចំណាំ</label>
+        <textarea id="inc-form-desc" rows="3" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
       </div>
 
       <div class="flex gap-3 pt-3">
@@ -6864,8 +6922,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
-          <input id="exp-form-amount" type="number" step="any" min="0.01" required placeholder="ឧទាហរណ៍: 25000" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
+          <input id="exp-form-amount" type="text" inputmode="numeric" required placeholder="ឧទាហរណ៍: 1,000,000 ឬ ១,០០០,០០០"
+            oninput="formatAmountInput(this)"
+            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono tracking-wide" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
@@ -7022,8 +7082,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ *</label>
-          <input id="edit-tx-amount" type="number" step="any" min="0.01" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
+          <input id="edit-tx-amount" type="text" inputmode="numeric" required
+            oninput="formatAmountInput(this)"
+            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono tracking-wide" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
@@ -7112,7 +7174,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!el) return;
     el.classList.remove('hidden');
     // Push modal state into browser history so pressing phone back button closes the modal!
-    window.history.pushState({ modal: id, tab: currentActiveTab }, '', '#' + currentActiveTab);
+    window.history.pushState({ modal: id, tab: currentActiveTab }, '', window.location.pathname);
   }
 
   function closeModal(id) {
@@ -7211,7 +7273,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     // SPA Browser History and Navigation Stack Integration
     if (pushHistory && currentActiveTab !== tab) {
-      window.history.pushState({ tab: tab }, '', '#' + tab);
+      window.history.pushState({ tab: tab }, '', window.location.pathname);
       uiHistory = uiHistory.slice(0, uiHistoryIndex + 1);
       uiHistory.push(tab);
       uiHistoryIndex = uiHistory.length - 1;
@@ -7245,7 +7307,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       uiHistoryIndex--;
       const prev = uiHistory[uiHistoryIndex];
       showTab(prev, false);
-      window.history.replaceState({ tab: prev }, '', '#' + prev);
+      window.history.replaceState({ tab: prev }, '', window.location.pathname);
       updateNavButtonsState();
     } else {
       if (currentActiveTab !== 'dashboard') {
@@ -9012,6 +9074,112 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   let currentCatalogFilterType = 'all';
   let activeFinanceReportData = null;
 
+  // Khmer & Latin Numeral Translation and Thousand Comma Formatting
+  function khmerToLatinDigits(str) {
+    if (!str) return '';
+    const khmerMap = {
+      '០': '0', '១': '1', '២': '2', '៣': '3', '៤': '4',
+      '៥': '5', '៦': '6', '៧': '7', '៨': '8', '៩': '9'
+    };
+    return String(str).replace(/[០-៩]/g, d => khmerMap[d] || d);
+  }
+
+  function formatAmountInput(inputEl) {
+    if (!inputEl) return;
+    let val = inputEl.value;
+    val = khmerToLatinDigits(val);
+    val = val.replace(/[^0-9.]/g, '');
+    const parts = val.split('.');
+    let integerPart = parts[0];
+    let decimalPart = parts.length > 1 ? '.' + parts.slice(1).join('') : '';
+
+    if (integerPart) {
+      integerPart = Number(integerPart).toLocaleString('en-US');
+    }
+    inputEl.value = integerPart + decimalPart;
+  }
+
+  function parseFormattedAmount(str) {
+    if (!str) return 0;
+    const latin = khmerToLatinDigits(String(str)).replace(/,/g, '').trim();
+    return parseFloat(latin) || 0;
+  }
+
+  // Service Locations Persistent Memory & Combobox Management
+  const DEFAULT_SERVICE_LOCATIONS = [
+    'ភ្នំពេញ', 'សៀមរាប', 'បាត់ដំបង', 'កំពង់ចាម', 'កំពង់សោម (ព្រះសីហនុ)',
+    'កំពង់ស្ពឺ', 'កណ្តាល', 'តាកែវ', 'ពោធិ៍សាត់', 'បន្ទាយមានជ័យ',
+    'ស្វាយរៀង', 'ព្រៃវែង', 'កំពត', 'កែប', 'កោះកុង', 'ក្រចេះ'
+  ];
+
+  function getSavedServiceLocations() {
+    try {
+      const raw = localStorage.getItem('acbomlu_saved_service_locations');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length > 0) return arr;
+      }
+    } catch(e) {}
+    return [...DEFAULT_SERVICE_LOCATIONS];
+  }
+
+  function saveServiceLocation(loc) {
+    loc = (loc || '').trim();
+    if (!loc) return;
+    const locs = getSavedServiceLocations();
+    if (!locs.includes(loc)) {
+      locs.unshift(loc);
+      localStorage.setItem('acbomlu_saved_service_locations', JSON.stringify(locs));
+      populateLocationDatalist();
+    }
+  }
+
+  function populateLocationDatalist() {
+    const datalist = document.getElementById('service-locations-list');
+    if (!datalist) return;
+    const locs = getSavedServiceLocations();
+    datalist.innerHTML = locs.map(l => `<option value="${escapeHtml(l)}">`).join('');
+  }
+
+  function addServiceTripToNote() {
+    const locInput = document.getElementById('inc-location-input');
+    const tripsSelect = document.getElementById('inc-trips-select');
+    const descEl = document.getElementById('inc-form-desc');
+
+    const loc = (locInput ? locInput.value : '').trim();
+    const trips = tripsSelect ? tripsSelect.value : '1';
+
+    if (!loc) {
+      showToast('សូមជ្រើសរើស ឬវាយបញ្ចូលទីតាំងផ្ដល់សេវាសិន!', true);
+      if (locInput) locInput.focus();
+      return;
+    }
+
+    saveServiceLocation(loc);
+
+    const khmerTripsMap = {
+      '1': '១', '2': '២', '3': '៣', '4': '៤', '5': '៥',
+      '6': '៦', '7': '៧', '8': '៨', '9': '៩', '10': '១០',
+      '11': '១១', '12': '១២', '13': '១៣', '14': '១៤', '15': '១៥',
+      '16': '១៦', '17': '១៧', '18': '១៨', '19': '១៩', '20': '២០'
+    };
+    const khmerTripNum = khmerTripsMap[trips] || trips;
+    const newEntry = `ទីតាំង៖ ${loc} (${khmerTripNum} ជើង)`;
+
+    let currentDesc = descEl.value.trim();
+    if (currentDesc) {
+      descEl.value = currentDesc + '\n' + newEntry;
+    } else {
+      descEl.value = newEntry;
+    }
+
+    showToast(`បានបញ្ចូល៖ ${loc} (${khmerTripNum} ជើង)`);
+    if (locInput) {
+      locInput.value = '';
+      locInput.focus();
+    }
+  }
+
   // Helpers
   function formatMoney(amount, currency = 'KHR') {
     const num = Number(amount) || 0;
@@ -9486,6 +9654,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('inc-form-time').value = getCurrentTimeString();
     document.getElementById('inc-form-currency').value = 'KHR';
     populateCatalogDropdowns();
+    populateLocationDatalist();
+    const locInp = document.getElementById('inc-location-input');
+    if (locInp) locInp.value = '';
+    const tripsSel = document.getElementById('inc-trips-select');
+    if (tripsSel) tripsSel.value = '1';
     openModal('income-modal');
   }
 
@@ -9493,11 +9666,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const date = document.getElementById('inc-form-date').value;
     const time = document.getElementById('inc-form-time').value;
-    const amount = parseFloat(document.getElementById('inc-form-amount').value);
+    const amount = parseFormattedAmount(document.getElementById('inc-form-amount').value);
     const currency = document.getElementById('inc-form-currency').value;
     const category = document.getElementById('inc-form-category').value;
     const method = document.getElementById('inc-form-method').value;
-    const ref = document.getElementById('inc-form-ref').value.trim();
+    const ref = document.getElementById('inc-form-ref') ? document.getElementById('inc-form-ref').value.trim() : '';
     const desc = document.getElementById('inc-form-desc').value.trim();
     const btn = document.getElementById('btn-save-income');
 
@@ -9716,7 +9889,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const date = document.getElementById('exp-form-date').value;
     const time = document.getElementById('exp-form-time').value;
-    const amount = parseFloat(document.getElementById('exp-form-amount').value);
+    const amount = parseFormattedAmount(document.getElementById('exp-form-amount').value);
     const currency = document.getElementById('exp-form-currency').value;
     const category = document.getElementById('exp-form-category').value;
     const method = document.getElementById('exp-form-method').value;
@@ -9773,7 +9946,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       document.getElementById('edit-tx-id').value = tx._id;
       document.getElementById('edit-tx-type').value = tx.type || 'income';
-      document.getElementById('edit-tx-amount').value = tx.amount;
+      const editAmtEl = document.getElementById('edit-tx-amount');
+      editAmtEl.value = tx.amount;
+      formatAmountInput(editAmtEl);
       document.getElementById('edit-tx-currency').value = tx.currency || 'KHR';
       document.getElementById('edit-tx-date').value = tx.date || '';
       document.getElementById('edit-tx-time').value = tx.time || '';
@@ -9801,7 +9976,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const id = document.getElementById('edit-tx-id').value;
     const type = document.getElementById('edit-tx-type').value;
-    const amount = parseFloat(document.getElementById('edit-tx-amount').value);
+    const amount = parseFormattedAmount(document.getElementById('edit-tx-amount').value);
     const currency = document.getElementById('edit-tx-currency').value;
     const category = document.getElementById('edit-tx-category').value;
     const date = document.getElementById('edit-tx-date').value;
@@ -10292,7 +10467,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const initialHash = window.location.hash ? window.location.hash.replace('#', '') : '';
     const startTab = tabs.includes(initialHash) ? initialHash : 'dashboard';
 
-    window.history.replaceState({ tab: startTab }, '', '#' + startTab);
+    window.history.replaceState({ tab: startTab }, '', window.location.pathname);
     uiHistory = [startTab];
     uiHistoryIndex = 0;
     currentActiveTab = startTab;
