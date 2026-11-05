@@ -1312,43 +1312,105 @@ def format_telegram_monthly_loan_report_detailed(data: dict, filter_employee: st
         f"📌 <i>សូមគណនេយ្យ និងរដ្ឋបាល ពិនិត្យទិន្នន័យប្រតិបត្តិការលម្អិតខាងលើដើម្បីកាត់ប្រាក់ខែឱ្យបានត្រឹមត្រូវ!</i>"
     )
 
-async def morning_briefing_scheduler():
-    """Background loop sending scheduled daily briefing, weekend leave compensation report, and monthly loan reports."""
-    cambodia_tz = timezone(timedelta(hours=7))
-    last_daily_date = ""
-    last_weekend_date = ""
-    last_month_loan_date = ""
-    
-    while True:
-        try:
-            now_cam = datetime.now(cambodia_tz)
-            today_str = now_cam.strftime("%Y-%m-%d")
-            
-            # 1. Daily morning briefing at 06:00 AM
-            if now_cam.hour == 6 and now_cam.minute >= 0 and last_daily_date != today_str:
-                briefing = generate_daily_morning_briefing()
-                send_telegram_notify(briefing)
-                last_daily_date = today_str
-                
-            # 2. Weekend Leave Compensation Report at 06:00 PM (18:00) on Friday (weekday 4)
-            # End of Friday workweek: notifies staff who must compensate work on Saturday & Sunday!
-            if now_cam.weekday() == 4 and now_cam.hour >= 18 and last_weekend_date != today_str:
+# ===== Persistent Scheduled Reports Engine (Morning Briefing, Weekend Leave, Monthly Loan) =====
+
+def check_and_send_scheduled_morning_briefing(force: bool = False) -> bool:
+    """
+    Checks if today's morning briefing was already sent.
+    If not and it's morning (06:00 to 11:59 AM) or force=True, sends to Telegram group
+    and records in MongoDB Atlas to prevent duplicate sending even after server restarts.
+    """
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        today_str = now_cam.strftime("%Y-%m-%d")
+
+        rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
+        last_sent = rec.get("last_daily_briefing_date", "")
+
+        # Trigger if forced OR if it's morning (between 06:00 AM and 11:59 AM) and not yet sent today
+        if force or (6 <= now_cam.hour < 12 and last_sent != today_str):
+            briefing = generate_daily_morning_briefing()
+            res = send_telegram_notify(briefing)
+            settings_collection.update_one(
+                {"_id": "scheduled_reports_state"},
+                {"$set": {
+                    "last_daily_briefing_date": today_str,
+                    "last_daily_briefing_time": now_cam.strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_status": "sent" if res else "failed"
+                }},
+                upsert=True
+            )
+            print(f"Scheduled morning briefing sent for {today_str} at {now_cam.strftime('%H:%M:%S')}")
+            return True
+    except Exception as e:
+        print(f"check_and_send_scheduled_morning_briefing error: {e}")
+    return False
+
+def check_and_send_scheduled_weekend_report() -> bool:
+    """Friday 18:00 (6:00 PM) to 23:59: notifies staff who must compensate work on Saturday & Sunday."""
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        today_str = now_cam.strftime("%Y-%m-%d")
+
+        if now_cam.weekday() == 4 and now_cam.hour >= 18:
+            rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
+            last_sent = rec.get("last_weekend_report_date", "")
+            if last_sent != today_str:
                 rep_data = generate_weekend_leave_report()
                 if rep_data.get("items"):
                     tg_msg = format_telegram_weekend_leave_report(rep_data)
                     send_telegram_notify(tg_msg)
-                last_weekend_date = today_str
-                
-            # 3. Monthly Loan Deduction Report on the LAST DAY of every month at 06:00 AM
-            import calendar
-            last_day = calendar.monthrange(now_cam.year, now_cam.month)[1]
-            if now_cam.day == last_day and now_cam.hour == 6 and now_cam.minute >= 0 and last_month_loan_date != today_str:
+                settings_collection.update_one(
+                    {"_id": "scheduled_reports_state"},
+                    {"$set": {
+                        "last_weekend_report_date": today_str,
+                        "last_weekend_report_time": now_cam.strftime("%Y-%m-%d %H:%M:%S")
+                    }},
+                    upsert=True
+                )
+                return True
+    except Exception as e:
+        print(f"check_and_send_scheduled_weekend_report error: {e}")
+    return False
+
+def check_and_send_scheduled_monthly_loan_report() -> bool:
+    """Last day of every month from 06:00 AM onwards: notifies payroll deduction report."""
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_cam = datetime.now(cambodia_tz)
+        today_str = now_cam.strftime("%Y-%m-%d")
+        last_day = calendar.monthrange(now_cam.year, now_cam.month)[1]
+
+        if now_cam.day == last_day and now_cam.hour >= 6:
+            rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
+            last_sent = rec.get("last_monthly_loan_report_date", "")
+            if last_sent != today_str:
                 loan_rep_data = generate_monthly_loan_report()
                 if loan_rep_data.get("items"):
                     loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
                     send_telegram_notify(loan_tg_msg)
-                last_month_loan_date = today_str
-                
+                settings_collection.update_one(
+                    {"_id": "scheduled_reports_state"},
+                    {"$set": {
+                        "last_monthly_loan_report_date": today_str,
+                        "last_monthly_loan_report_time": now_cam.strftime("%Y-%m-%d %H:%M:%S")
+                    }},
+                    upsert=True
+                )
+                return True
+    except Exception as e:
+        print(f"check_and_send_scheduled_monthly_loan_report error: {e}")
+    return False
+
+async def morning_briefing_scheduler():
+    """Continuous background loop with database-backed persistence."""
+    while True:
+        try:
+            check_and_send_scheduled_morning_briefing()
+            check_and_send_scheduled_weekend_report()
+            check_and_send_scheduled_monthly_loan_report()
         except Exception as e:
             print("Scheduler error:", e)
         await asyncio.sleep(60)
@@ -1356,6 +1418,24 @@ async def morning_briefing_scheduler():
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(morning_briefing_scheduler())
+    # Immediately check morning briefing on server startup / wakeup!
+    try:
+        check_and_send_scheduled_morning_briefing()
+    except Exception as e:
+        print("Startup morning briefing check error:", e)
+
+@app.get("/api/cron/check-reports")
+async def api_cron_check_reports():
+    sent_briefing = check_and_send_scheduled_morning_briefing()
+    sent_weekend = check_and_send_scheduled_weekend_report()
+    sent_loan = check_and_send_scheduled_monthly_loan_report()
+    return {
+        "status": "ok",
+        "sent_briefing": sent_briefing,
+        "sent_weekend": sent_weekend,
+        "sent_loan": sent_loan,
+        "time": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
+    }
 
 # ===== Health Check & Keep-Alive Ping Routes =====
 @app.get("/ping")
@@ -5124,9 +5204,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shadow-sm flex-shrink-0">
     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <!-- Hamburger (mobile) -->
-      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition flex-shrink-0">
+      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition flex-shrink-0" aria-label="Menu">
         <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
+
+      <!-- Backward & Forward Navigation (ថយក្រោយ & ទៅមុខ) -->
+      <div class="flex items-center gap-0.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 flex-shrink-0 shadow-inner">
+        <button onclick="navGoBack()" id="btn-nav-back" title="ថយក្រោយទៅ UI មុន (Back)" aria-label="Back"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-700 hover:text-blue-600 hover:bg-white transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none">
+          <span class="material-symbols-outlined text-xl">arrow_back</span>
+        </button>
+        <button onclick="navGoForward()" id="btn-nav-forward" title="ទៅមុខ (Forward)" aria-label="Forward"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-700 hover:text-blue-600 hover:bg-white transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none">
+          <span class="material-symbols-outlined text-xl">arrow_forward</span>
+        </button>
+      </div>
+
       <div class="truncate">
         <h1 id="page-title" class="text-base font-semibold text-gray-800 truncate">ទំព័រដើម</h1>
         <p class="text-xs text-gray-400 truncate" id="page-date"></p>
@@ -7013,9 +7106,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     setTimeout(() => t.classList.add('hidden'), 3000);
   }
 
-  // ===== Modal =====
-  function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+  // ===== Modal (with phone back button awareness) =====
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
+    // Push modal state into browser history so pressing phone back button closes the modal!
+    window.history.pushState({ modal: id, tab: currentActiveTab }, '', '#' + currentActiveTab);
+  }
+
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  }
   // Close on overlay click
   document.querySelectorAll('.modal-overlay').forEach(el => {
     el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
@@ -7074,8 +7177,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     showTab('dashboard');
   }
 
-  function showTab(tab) {
+  // ===== SPA History & Navigation Stack =====
+  let currentActiveTab = 'dashboard';
+  let uiHistory = ['dashboard'];
+  let uiHistoryIndex = 0;
+
+  function showTab(tab, pushHistory = true) {
     if (window.innerWidth < 1024) closeSidebar();
+    
+    // Auto-close any open modals when navigating tabs
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
+
     tabs.forEach(t => {
       const el = document.getElementById('tab-' + t);
       if (el) el.classList.add('hidden');
@@ -7085,14 +7197,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         nav.classList.add('text-blue-200');
       }
     });
+
     const targetTab = document.getElementById('tab-' + tab);
     if (targetTab) targetTab.classList.remove('hidden');
+
     const activeNav = document.getElementById('nav-' + tab);
     if (activeNav) {
       activeNav.classList.add('active');
       activeNav.classList.remove('text-blue-200');
     }
+
     document.getElementById('page-title').textContent = titles[tab] || 'ទំព័រដើម';
+
+    // SPA Browser History and Navigation Stack Integration
+    if (pushHistory && currentActiveTab !== tab) {
+      window.history.pushState({ tab: tab }, '', '#' + tab);
+      uiHistory = uiHistory.slice(0, uiHistoryIndex + 1);
+      uiHistory.push(tab);
+      uiHistoryIndex = uiHistory.length - 1;
+    }
+    currentActiveTab = tab;
+    updateNavButtonsState();
+
     if (tab === 'leaves') loadLeaves();
     if (tab === 'loans') loadLoans();
     if (tab === 'employees') loadEmployees();
@@ -7104,6 +7230,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (tab === 'catalog') { loadCatalogs(); }
     if (tab === 'reports-finance') { initFinanceReportFilters(); loadFinanceReports(); }
   }
+
+  // Backward navigation: go to last UI screen
+  function navGoBack() {
+    const openModalEl = document.querySelector('.modal-overlay:not(.hidden)');
+    if (openModalEl) {
+      openModalEl.classList.add('hidden');
+      return;
+    }
+
+    if (window.history.length > 1 && uiHistoryIndex > 0) {
+      window.history.back();
+    } else if (uiHistoryIndex > 0) {
+      uiHistoryIndex--;
+      const prev = uiHistory[uiHistoryIndex];
+      showTab(prev, false);
+      window.history.replaceState({ tab: prev }, '', '#' + prev);
+      updateNavButtonsState();
+    } else {
+      if (currentActiveTab !== 'dashboard') {
+        showTab('dashboard');
+      }
+    }
+  }
+
+  // Forward navigation: go forward in history
+  function navGoForward() {
+    if (uiHistoryIndex < uiHistory.length - 1) {
+      window.history.forward();
+    }
+  }
+
+  // Update enable/disable visual state of Back & Forward buttons
+  function updateNavButtonsState() {
+    const btnBack = document.getElementById('btn-nav-back');
+    const btnFwd = document.getElementById('btn-nav-forward');
+    const canBack = uiHistoryIndex > 0 || currentActiveTab !== 'dashboard';
+    const canFwd = uiHistoryIndex < uiHistory.length - 1;
+
+    if (btnBack) {
+      btnBack.disabled = !canBack;
+      btnBack.classList.toggle('opacity-30', !canBack);
+      btnBack.classList.toggle('pointer-events-none', !canBack);
+    }
+    if (btnFwd) {
+      btnFwd.disabled = !canFwd;
+      btnFwd.classList.toggle('opacity-30', !canFwd);
+      btnFwd.classList.toggle('pointer-events-none', !canFwd);
+    }
+  }
+
+  // Browser Popstate Event (Android Back Button, Swipe Back gesture, Chrome Back/Forward arrows)
+  window.addEventListener('popstate', function(event) {
+    // 1. If any modal is open on phone/desktop, close it first!
+    const openModalEl = document.querySelector('.modal-overlay:not(.hidden)');
+    if (openModalEl) {
+      openModalEl.classList.add('hidden');
+      return;
+    }
+
+    // 2. Navigate back to previous UI screen
+    let target = (event.state && event.state.tab) || (window.location.hash ? window.location.hash.replace('#', '') : 'dashboard');
+    if (!tabs.includes(target)) target = 'dashboard';
+
+    const foundIdx = uiHistory.lastIndexOf(target);
+    if (foundIdx !== -1) {
+      uiHistoryIndex = foundIdx;
+    } else {
+      uiHistory.push(target);
+      uiHistoryIndex = uiHistory.length - 1;
+    }
+
+    showTab(target, false);
+    updateNavButtonsState();
+  });
 
   // ===== Badge =====
   function statusBadge(s) {
@@ -10087,7 +10287,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // ===== Init =====
   (async function init() {
     initPWA();
+
+    // Check if URL has a hash for deep-linking (e.g. #reports-leave, #income)
+    const initialHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+    const startTab = tabs.includes(initialHash) ? initialHash : 'dashboard';
+
+    window.history.replaceState({ tab: startTab }, '', '#' + startTab);
+    uiHistory = [startTab];
+    uiHistoryIndex = 0;
+    currentActiveTab = startTab;
+
     await checkAuthAndInitialize();
+
+    if (startTab !== 'dashboard') {
+      showTab(startTab, false);
+    }
+    updateNavButtonsState();
   })();
 </script>
 </body>
