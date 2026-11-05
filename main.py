@@ -5583,8 +5583,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
 
-      <!-- Backward & Forward Navigation (ថយក្រោយ & ទៅមុខ) -->
-      <div class="flex items-center gap-0.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 flex-shrink-0 shadow-inner">
+      <!-- Backward & Forward Navigation (Hidden as requested) -->
+      <div style="display: none !important;" class="hidden items-center gap-0.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 flex-shrink-0 shadow-inner">
         <button onclick="navGoBack()" id="btn-nav-back" title="ថយក្រោយទៅ UI មុន (Back)" aria-label="Back"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-700 hover:text-blue-600 hover:bg-white transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none">
           <span class="material-symbols-outlined text-xl">arrow_back</span>
