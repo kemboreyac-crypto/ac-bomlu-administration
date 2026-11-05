@@ -7205,58 +7205,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <!-- =================== FINANCE MODALS =================== -->
 
 <!-- Income Modal -->
-<div id="income-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
-  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
-      <h3 class="font-bold text-gray-800 flex items-center gap-2">
+<div id="income-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm modal-overlay z-50 hidden flex items-center justify-center p-2.5 sm:p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
         <span class="material-symbols-outlined text-emerald-600 text-xl">add_circle</span> បញ្ចូលចំណូលថ្មី (Add Income)
       </h3>
-      <button onclick="closeModal('income-modal')" class="text-gray-400 hover:text-gray-600">
-        <span class="material-symbols-outlined">close</span>
+      <button onclick="closeModal('income-modal')" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition">
+        <span class="material-symbols-outlined text-xl">close</span>
       </button>
     </div>
-    <form onsubmit="submitIncome(event)" class="p-6 space-y-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <form onsubmit="submitIncome(event)" class="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+      <div class="grid grid-cols-2 gap-2.5 sm:gap-4">
         <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
-          <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+          <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
-          <input id="inc-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          <input id="inc-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
-          <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="ឧទាហរណ៍: 1,000,000 ឬ ១,០០០,០០០"
+      <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
+        <div class="col-span-2">
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (លេខខ្មែរ/ឡាតាំង)</label>
+          <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="ឧ. 1,000,000 ឬ ១,០០០,០០០"
             oninput="formatAmountInput(this)"
-            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
         </div>
-        <div>
+        <div class="col-span-1">
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-          <select id="inc-form-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400">
+          <select id="inc-form-currency" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400">
             <option value="KHR">៛ (រៀល)</option>
             <option value="USD">$ (ដុល្លារ)</option>
           </select>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
         <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណូល *</label>
-            <button type="button" onclick="openCatalogModal('income')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
+          <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
+            <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទ *</label>
+            <button type="button" onclick="openCatalogModal('income')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
               <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
             </button>
           </div>
-          <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+          <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
           </select>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
-          <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+          <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
             <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
             <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
             <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
@@ -7265,113 +7265,108 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- ទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Location Combobox & Trips Dropdown) -->
-      <div class="p-3.5 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 rounded-2xl border border-blue-100 space-y-2.5">
-        <div class="flex items-center justify-between">
-          <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+      <!-- ទីតាំងផ្ដល់សេវា & ចំនួនជើង (Flexible & Responsive to all screens) -->
+      <div class="p-3 sm:p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5 whitespace-nowrap">
             <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
             <span>ជ្រើសរើសទីតាំងផ្ដល់សេវា & ចំនួនជើង</span>
           </label>
-          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200">ចងចាំទីតាំងស្វ័យប្រវត្ត</span>
+          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត</span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+        <div class="flex flex-col sm:flex-row gap-2">
           <!-- Location Combobox with Autocomplete & Memory -->
-          <div class="sm:col-span-6 relative">
+          <div class="flex-1 min-w-0 relative">
             <input list="service-locations-list" id="inc-location-input" type="text"
               placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
-              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
             <datalist id="service-locations-list">
               <!-- Dynamically populated from stored locations -->
             </datalist>
           </div>
 
-          <!-- Trips Dropdown 1 to 20 -->
-          <div class="sm:col-span-4">
-            <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
-              <option value="1">១ ជើង (1 trip)</option>
-              <option value="2">២ ជើង (2 trips)</option>
-              <option value="3">៣ ជើង (3 trips)</option>
-              <option value="4">៤ ជើង (4 trips)</option>
-              <option value="5">៥ ជើង (5 trips)</option>
-              <option value="6">៦ ជើង (6 trips)</option>
-              <option value="7">៧ ជើង (7 trips)</option>
-              <option value="8">៨ ជើង (8 trips)</option>
-              <option value="9">៩ ជើង (9 trips)</option>
-              <option value="10">១០ ជើង (10 trips)</option>
-              <option value="11">១១ ជើង (11 trips)</option>
-              <option value="12">១២ ជើង (12 trips)</option>
-              <option value="13">១៣ ជើង (13 trips)</option>
-              <option value="14">១៤ ជើង (14 trips)</option>
-              <option value="15">១៥ ជើង (15 trips)</option>
-              <option value="16">១៦ ជើង (16 trips)</option>
-              <option value="17">១៧ ជើង (17 trips)</option>
-              <option value="18">១៨ ជើង (18 trips)</option>
-              <option value="19">១៩ ជើង (19 trips)</option>
-              <option value="20">២០ ជើង (20 trips)</option>
-            </select>
-          </div>
-
-          <!-- Add Button -->
-          <div class="sm:col-span-2">
+          <!-- Trips Dropdown & Add Button Group -->
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="flex-1 sm:flex-initial sm:w-36">
+              <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+                <option value="1">១ ជើង (1 trip)</option>
+                <option value="2">២ ជើង (2 trips)</option>
+                <option value="3">៣ ជើង (3 trips)</option>
+                <option value="4">៤ ជើង (4 trips)</option>
+                <option value="5">៥ ជើង (5 trips)</option>
+                <option value="6">៦ ជើង (6 trips)</option>
+                <option value="7">៧ ជើង (7 trips)</option>
+                <option value="8">៨ ជើង (8 trips)</option>
+                <option value="9">៩ ជើង (9 trips)</option>
+                <option value="10">១០ ជើង (10 trips)</option>
+                <option value="11">១១ ជើង (11 trips)</option>
+                <option value="12">១២ ជើង (12 trips)</option>
+                <option value="13">១៣ ជើង (13 trips)</option>
+                <option value="14">១៤ ជើង (14 trips)</option>
+                <option value="15">១៥ ជើង (15 trips)</option>
+                <option value="16">១៦ ជើង (16 trips)</option>
+                <option value="17">១៧ ជើង (17 trips)</option>
+                <option value="18">១៨ ជើង (18 trips)</option>
+                <option value="19">១៩ ជើង (19 trips)</option>
+                <option value="20">២០ ជើង (20 trips)</option>
+              </select>
+            </div>
             <button type="button" onclick="addServiceTripToNote()"
-              class="w-full h-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95">
-              <span class="material-symbols-outlined text-sm">add</span>
+              class="px-3.5 sm:px-4 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
+              <span class="material-symbols-outlined text-sm sm:text-base">add</span>
               <span>បញ្ចូល</span>
             </button>
           </div>
         </div>
-        <p class="text-[10px] text-gray-500">
-          💡 ជ្រើសរើសទីតាំង និងចំនួនជើង រួចចុច <b>«បញ្ចូល»</b> វានឹងលោតចូលប្រអប់ពិពណ៌នា/ចំណាំខាងក្រោមជាបន្តបន្ទាប់ (អាចបញ្ចូលបានច្រើនដង)។
-        </p>
       </div>
 
       <div>
         <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា / ចំណាំ</label>
-        <textarea id="inc-form-desc" rows="3" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
+        <textarea id="inc-form-desc" rows="3" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
       </div>
 
-      <div class="flex gap-3 pt-3">
-        <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
-        <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95">រក្សាទុកចំណូល</button>
+      <div class="flex gap-2.5 sm:gap-3 pt-2">
+        <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95">រក្សាទុកចំណូល</button>
       </div>
     </form>
   </div>
 </div>
 
 <!-- Expense Modal -->
-<div id="expense-modal" class="fixed inset-0 bg-black/40 modal-overlay z-50 hidden flex items-center justify-center p-4">
-  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
-      <h3 class="font-bold text-gray-800 flex items-center gap-2">
+<div id="expense-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm modal-overlay z-50 hidden flex items-center justify-center p-2.5 sm:p-4">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
         <span class="material-symbols-outlined text-rose-600 text-xl">remove_circle</span> បញ្ចូលចំណាយថ្មី (Add Expense)
       </h3>
-      <button onclick="closeModal('expense-modal')" class="text-gray-400 hover:text-gray-600">
-        <span class="material-symbols-outlined">close</span>
+      <button onclick="closeModal('expense-modal')" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition">
+        <span class="material-symbols-outlined text-xl">close</span>
       </button>
     </div>
-    <form onsubmit="submitExpense(event)" class="p-6 space-y-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <form onsubmit="submitExpense(event)" class="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+      <div class="grid grid-cols-2 gap-2.5 sm:gap-4">
         <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
-          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
-          <input id="exp-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <input id="exp-form-time" type="time" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
-          <input id="exp-form-amount" type="text" inputmode="numeric" required placeholder="ឧទាហរណ៍: 1,000,000 ឬ ១,០០០,០០០"
+      <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
+        <div class="col-span-2">
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (លេខខ្មែរ/ឡាតាំង)</label>
+          <input id="exp-form-amount" type="text" inputmode="numeric" required placeholder="ឧ. 1,000,000 ឬ ១,០០០,០០០"
             oninput="formatAmountInput(this)"
-            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono tracking-wide" />
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono tracking-wide" />
         </div>
-        <div>
+        <div class="col-span-1">
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-          <select id="exp-form-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400">
+          <select id="exp-form-currency" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400">
             <option value="KHR">៛ (រៀល)</option>
             <option value="USD">$ (ដុល្លារ)</option>
           </select>
@@ -7379,20 +7374,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <div>
-        <div class="flex items-center justify-between mb-1">
-          <label class="text-xs font-semibold text-gray-700">កាតាឡុក / ប្រភេទចំណាយ *</label>
-          <button type="button" onclick="openCatalogModal('expense')" class="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5">
+        <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
+          <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទចំណាយ *</label>
+          <button type="button" onclick="openCatalogModal('expense')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
             <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
           </button>
         </div>
-        <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+        <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
         </select>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
-          <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+          <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
             <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
             <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
             <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
@@ -7401,18 +7396,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">លេខវិក្កយបត្រ / បង្កាន់ដៃ</label>
-          <input id="exp-form-ref" type="text" placeholder="ឧ. EXP-001" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <input id="exp-form-ref" type="text" placeholder="ឧ. EXP-001" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
         </div>
       </div>
 
       <div>
         <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
-        <textarea id="exp-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីការចំណាយនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
+        <textarea id="exp-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីការចំណាយនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
       </div>
 
-      <div class="flex gap-3 pt-3">
-        <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm font-medium transition">បោះបង់</button>
-        <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95">រក្សាទុកចំណាយ</button>
+      <div class="flex gap-2.5 sm:gap-3 pt-2">
+        <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
+        <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95">រក្សាទុកចំណាយ</button>
       </div>
     </form>
   </div>
