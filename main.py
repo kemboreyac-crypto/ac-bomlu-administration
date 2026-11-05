@@ -1,3 +1,4 @@
+# AC BOMLU Administration - v2.0.1 (UI refinements & Group Telegram Bot silencing)
 import os
 import json
 import re
