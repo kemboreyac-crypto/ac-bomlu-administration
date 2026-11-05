@@ -55,6 +55,7 @@ loans_collection = db["loans"]
 employees_collection = db["employees"]
 settings_collection = db["settings"]
 user_flows_collection = db["user_flows"]
+voice_messages_collection = db["voice_messages"]
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -644,7 +645,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
             if not l:
                 return {"success": False, "message": "រកមិនឃើញទិន្នន័យច្បាប់នេះទេ"}
             if l.get("status") != "approved":
-                return {"success": False, "message": "អាចកត់ត្រាការសងបានតែលើច្បាប់ដែល Admin បានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                return {"success": False, "message": "អាចកត់ត្រាការសងបានតែលើច្បាប់ដែលរដ្ឋបាលបានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
                 
             target_emp_name = (l.get("employee_name") or "").strip()
             tot_days = float(l.get("days", 1.0))
@@ -746,7 +747,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
             f"⏱️ <b>បានសងលើកនេះ:</b> <b>{days_disp}</b>\n"
             f"📊 <b>ស្ថានភាព:</b> <b>{status_label}</b>\n"
             f"⏳ <b>នៅសល់ត្រូវសងបន្ត:</b> <b>{rem_disp}</b>\n"
-            f"👮‍♂️ <b>កត់ត្រាដោយ Admin:</b> {admin_name}"
+            f"👮‍♂️ <b>កត់ត្រាដោយរដ្ឋបាល:</b> {admin_name}"
             f"{note_line}\n"
             f"📅 <b>កាលបរិច្ឆេទ:</b> {now_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -989,7 +990,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
             if not ln:
                 return {"success": False, "message": "រកមិនឃើញទិន្នន័យខ្ចីប្រាក់នេះទេ"}
             if ln.get("status") != "approved":
-                return {"success": False, "message": "អាចកត់ត្រាការកាត់/សងបានតែលើសំណើដែល Admin បានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                return {"success": False, "message": "អាចកត់ត្រាការកាត់/សងបានតែលើសំណើដែលរដ្ឋបាលបានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
                 
             target_emp_name = (ln.get("employee_name") or "").strip()
             tot_amt = int(ln.get("amount_khr", 0))
@@ -1091,7 +1092,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
             f"💵 <b>បានកាត់/សងលើកនេះ:</b> <b>{amt_disp}</b>\n"
             f"📊 <b>ស្ថានភាព:</b> <b>{status_label}</b>\n"
             f"⏳ <b>នៅសល់ជំពាក់ត្រូវកាត់បន្ត:</b> <b>{rem_disp}</b>\n"
-            f"👮‍♂️ <b>កត់ត្រាដោយ Admin:</b> {admin_name}"
+            f"👮‍♂️ <b>កត់ត្រាដោយរដ្ឋបាល:</b> {admin_name}"
             f"{note_line}\n"
             f"📅 <b>កាលបរិច្ឆេទ:</b> {now_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -1234,7 +1235,7 @@ def format_telegram_monthly_loan_report(data: dict) -> str:
         f"👥 <b>ចំនួនបុគ្គលិកត្រូវកាត់ប្រាក់:</b> {total_borrowers} នាក់\n\n"
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យដើម្បីកាត់ប្រាក់ខែបុគ្គលិកខាងលើឱ្យបានត្រឹមត្រូវ!</i>"
+        f"📌 <i>សូមគណនេយ្យ និងរដ្ឋបាល ពិនិត្យទិន្នន័យដើម្បីកាត់ប្រាក់ខែបុគ្គលិកខាងលើឱ្យបានត្រឹមត្រូវ!</i>"
     )
 
 def format_telegram_monthly_loan_report_detailed(data: dict, filter_employee: str = None) -> str:
@@ -1279,7 +1280,7 @@ def format_telegram_monthly_loan_report_detailed(data: dict, filter_employee: st
         f"📋 <b>សរុបប្រតិបត្តិការត្រូវកាត់:</b> {len(active_items)} ករណី\n\n"
         f"{items_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <i>សូមគណនេយ្យ និង Admin ពិនិត្យទិន្នន័យប្រតិបត្តិការលម្អិតខាងលើដើម្បីកាត់ប្រាក់ខែឱ្យបានត្រឹមត្រូវ!</i>"
+        f"📌 <i>សូមគណនេយ្យ និងរដ្ឋបាល ពិនិត្យទិន្នន័យប្រតិបត្តិការលម្អិតខាងលើដើម្បីកាត់ប្រាក់ខែឱ្យបានត្រឹមត្រូវ!</i>"
     )
 
 async def morning_briefing_scheduler():
@@ -1513,7 +1514,7 @@ async def create_leave(request: LeaveRequest):
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ",
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
         reply_markup=adm_btn
     )
     return {"message": "Leave request saved!", "id": leave_id}
@@ -1567,7 +1568,7 @@ async def create_loan(request: LoanRequest):
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
         f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ",
+        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
         reply_markup=adm_btn
     )
     return {"message": "Loan request saved!", "id": loan_id}
@@ -2006,7 +2007,7 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-4xl">check_circle</span>
       </div>
       <h2 class="text-lg font-bold text-white mb-1">បានដាក់ស្នើជោគជ័យ!</h2>
-      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និង Admin រួចរាល់</p>
+      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និងរដ្ឋបាលរួចរាល់</p>
     </div>
   </div>
 
@@ -2179,7 +2180,7 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-4xl">check_circle</span>
       </div>
       <h2 class="text-lg font-bold text-white mb-1">បានដាក់ស្នើជោគជ័យ!</h2>
-      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និង Admin រួចរាល់</p>
+      <p class="text-xs text-slate-400">សំណើត្រូវបានបញ្ជូនទៅគ្រុប និងរដ្ឋបាលរួចរាល់</p>
     </div>
   </div>
 
@@ -2304,6 +2305,128 @@ def download_telegram_voice_bytes(file_id: str, token: str) -> Optional[bytes]:
     except Exception as ve:
         print(f"Error downloading voice message ({file_id}): {ve}")
     return None
+
+def get_base_url() -> str:
+    s = settings_collection.find_one({"_id": "app_settings"}) or {}
+    custom_url = (s.get("app_url", "") or "").strip().rstrip("/")
+    if custom_url:
+        return custom_url
+    return os.getenv("WEBHOOK_BASE_URL", "https://admin.acbomlu.com").rstrip("/")
+
+def save_voice_message(audio_bytes: Optional[bytes], file_id: Optional[str] = None, sender_name: str = "", mime_type: str = "audio/ogg") -> Optional[str]:
+    if not audio_bytes:
+        return None
+    try:
+        cambodia_tz = timezone(timedelta(hours=7))
+        now_str = datetime.now(cambodia_tz).strftime("%Y-%m-%d %H:%M:%S")
+        v_doc = {
+            "audio_bytes": audio_bytes,
+            "mime_type": mime_type,
+            "file_id": file_id or "",
+            "sender_name": sender_name,
+            "created_at": now_str,
+            "size_bytes": len(audio_bytes)
+        }
+        res = voice_messages_collection.insert_one(v_doc)
+        return str(res.inserted_id)
+    except Exception as e:
+        print(f"Error saving voice message: {e}")
+        return None
+
+@app.get("/api/voice/{voice_id}")
+async def get_voice_audio(voice_id: str):
+    try:
+        doc = voice_messages_collection.find_one({"_id": ObjectId(voice_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid voice ID")
+    if not doc or "audio_bytes" not in doc:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញឯកសារសំឡេងនេះទេ")
+    
+    mime_type = doc.get("mime_type", "audio/ogg")
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="voice_{voice_id}.ogg"',
+        "Cache-Control": "public, max-age=86400"
+    }
+    return Response(content=doc["audio_bytes"], media_type=mime_type, headers=headers)
+
+@app.get("/voice-player/{voice_id}", response_class=HTMLResponse)
+async def play_voice_page(voice_id: str):
+    try:
+        doc = voice_messages_collection.find_one({"_id": ObjectId(voice_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid voice ID")
+    if not doc:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញឯកសារសំឡេងនេះទេ")
+    
+    sender = doc.get("sender_name", "បុគ្គលិក")
+    created = doc.get("created_at", "")
+    html = f"""<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ស្ដាប់សារសំឡេងបុគ្គលិក - AC BOMLU</title>
+  <link rel="icon" type="image/png" href="/logo.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <style>
+    body {{ font-family: 'Kantumruy Pro', sans-serif; }}
+    .font-outfit {{ font-family: 'Outfit', sans-serif; }}
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 min-h-screen text-slate-100 flex items-center justify-center p-4">
+  <div class="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl text-center">
+    <!-- Header -->
+    <div class="flex items-center justify-center gap-3 mb-6">
+      <img src="/logo.png" onerror="this.src='/static/logo.png'; this.onerror=null;" alt="Logo" class="w-12 h-12 object-contain rounded-full shadow-lg bg-white/20 p-1">
+      <div class="text-left">
+        <h1 class="text-lg font-bold text-white tracking-wide">AC BOMLU</h1>
+        <p class="text-xs text-blue-300 font-medium">ប្រព័ន្ធគ្រប់គ្រងរដ្ឋបាល និងបុគ្គលិក</p>
+      </div>
+    </div>
+    
+    <!-- Audio Info Card -->
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6 text-left space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold text-blue-300 uppercase tracking-wider">🎙️ សារសំឡេងបុគ្គលិក</span>
+        <span class="text-[11px] text-slate-400">{created}</span>
+      </div>
+      <div class="text-base font-bold text-white flex items-center gap-2">
+        <span class="material-symbols-outlined text-blue-400">person</span>
+        <span>{sender}</span>
+      </div>
+    </div>
+    
+    <!-- Audio Player -->
+    <div class="bg-black/40 rounded-2xl p-5 border border-white/10 mb-6 shadow-inner">
+      <audio id="voice-audio" controls autoplay playsinline class="w-full h-12" src="/api/voice/{voice_id}">
+        កម្មវិធីរុករករបស់អ្នកមិនគាំទ្រការចាក់សំឡេងនេះទេ។
+      </audio>
+    </div>
+    
+    <!-- Actions -->
+    <div class="flex flex-col gap-2.5">
+      <a href="/api/voice/{voice_id}" download="voice_{voice_id}.ogg"
+         class="inline-flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl shadow-lg transition-all text-sm">
+        <span class="material-symbols-outlined text-lg">download</span>
+        <span>ទាញយកឯកសារសំឡេង (Download Voice)</span>
+      </a>
+      <a href="https://admin.acbomlu.com"
+         class="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white font-medium rounded-xl transition-all text-xs">
+        <span class="material-symbols-outlined text-base">dashboard</span>
+        <span>ចូលកាន់ផ្ទាំងគ្រប់គ្រងរដ្ឋបាល (Web Dashboard)</span>
+      </a>
+    </div>
+    
+    <p class="text-[11px] text-slate-400 mt-5">
+      🔒 សារសំឡេងនេះត្រូវបានរក្សាទុកដោយសុវត្ថិភាពក្នុងប្រព័ន្ធ AC BOMLU Administration
+    </p>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 def transcribe_voice_khmer(audio_bytes: bytes, audio_mime: str = "audio/ogg") -> Optional[str]:
     """
@@ -2448,7 +2571,7 @@ def call_gemini_ai(prompt: str, user_name: str = "", audio_bytes: bytes = None, 
         "3. If intent is 'loan', extract: amount_khr (integer in Riel, default 100000), purpose (concise Khmer purpose).\n"
         "4. In 'response_text': Always compose an exceptionally smart, warm, polite, and helpful response in natural Khmer (using 'បាទ/ចាស', 'ជម្រាបសួរ', 'សូមអរគុណ').\n"
         "   - For 'self_query': Answer their question directly with their exact live data numbers, followed by an encouraging note.\n"
-        "   - For 'leave' or 'loan': A warm acknowledgment stating that their request has been registered and forwarded to Admin for approval.\n"
+        "   - For 'leave' or 'loan': A warm acknowledgment stating that their request has been registered and forwarded to management/រដ្ឋបាល for approval.\n"
         "   - For 'hr_query' or 'general_chat': An insightful, polite, and supportive response.\n\n"
         "CRITICAL: Output strictly valid JSON matching this schema:\n"
         "{\n"
@@ -2721,7 +2844,7 @@ async def telegram_webhook(req: Request):
                     f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                     f"📝 <b>មូលហេតុ:</b> {rsn}\n"
                     f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_cq_private:
                     emp_conf = (
@@ -2729,7 +2852,7 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                         f"📝 <b>មូលហេតុ:</b> {rsn}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=cq_chat_id)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -2895,7 +3018,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {pur}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_cq_private:
                     emp_conf = (
@@ -2903,7 +3026,7 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {cq_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amt:,} រៀល\n"
                         f"🎯 <b>គោលបំណង:</b> {pur}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=cq_chat_id)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -2924,7 +3047,7 @@ async def telegram_webhook(req: Request):
                     ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                     ans_data = json.dumps({
                         "callback_query_id": cq_id,
-                        "text": "⚠️ សុំទោស! លោកអ្នកជាបុគ្គលិកធម្មតា មិនមានសិទ្ធិចុចអនុញ្ញាតិឡើយ។ មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចចុចបាន!",
+                        "text": "⚠️ សុំទោស! លោកអ្នកជាបុគ្គលិកធម្មតា មិនមានសិទ្ធិចុចអនុញ្ញាតិឡើយ។ មានតែរដ្ឋបាលក្នុងគ្រុបប៉ុណ្ណោះដែលអាចចុចបាន!",
                         "show_alert": True
                     }).encode('utf-8')
                     urllib.request.urlopen(urllib.request.Request(ans_url, data=ans_data, headers={"Content-Type": "application/json"}), timeout=5)
@@ -2970,7 +3093,7 @@ async def telegram_webhook(req: Request):
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                         ans_data = json.dumps({
                             "callback_query_id": cq_id,
-                            "text": "⚠️ សំណើនេះទើបតែត្រូវបានសម្រេចដោយ Admin ម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
+                            "text": "⚠️ សំណើនេះទើបតែត្រូវបានសម្រេចដោយរដ្ឋបាលម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
                             "show_alert": True
                         }).encode('utf-8')
                         try:
@@ -2979,18 +3102,23 @@ async def telegram_webhook(req: Request):
                             pass
                         return {"ok": True}
                     
+                    v_id = leave.get("voice_id")
+                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if v_id else ""
                     result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
                     edit_text = (
                         f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {reason}\n"
+                        f"📝 <b>មូលហេតុ:</b> {reason}"
+                        f"{voice_line}\n"
                         f"━━━━━━━━━━━━━━━━━━━\n"
                         f"{result_text}\n"
-                        f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}\n"
-                        f"🔒 <i>(ប៊ូតុងត្រូវបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        f"👮‍♂️ <b>ដោយរដ្ឋបាល:</b> {cq_name}"
                     )
-                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": []})
+                    decision_kb = []
+                    if v_id:
+                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{v_id}"}])
+                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": decision_kb})
                     
                 elif "loan" in action:
                     loan = loans_collection.find_one({"_id": ObjectId(doc_id)})
@@ -3027,7 +3155,7 @@ async def telegram_webhook(req: Request):
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                         ans_data = json.dumps({
                             "callback_query_id": cq_id,
-                            "text": "⚠️ សំណើខ្ចីប្រាក់នេះទើបតែត្រូវបានសម្រេចដោយ Admin ម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
+                            "text": "⚠️ សំណើខ្ចីប្រាក់នេះទើបតែត្រូវបានសម្រេចដោយរដ្ឋបាលម្នាក់ផ្សេងទៀតរួចរាល់ហើយ!",
                             "show_alert": True
                         }).encode('utf-8')
                         try:
@@ -3036,18 +3164,23 @@ async def telegram_webhook(req: Request):
                             pass
                         return {"ok": True}
                     
+                    v_id = loan.get("voice_id")
+                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if v_id else ""
                     result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
                     edit_text = (
                         f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {purpose}\n"
+                        f"🎯 <b>គោលបំណង:</b> {purpose}"
+                        f"{voice_line}\n"
                         f"━━━━━━━━━━━━━━━━━━━\n"
                         f"{result_text}\n"
-                        f"👮‍♂️ <b>ដោយ Admin:</b> {cq_name}\n"
-                        f"🔒 <i>(ប៊ូតុងត្រូវបានចាក់សោ មិនអាចចុចម្តងទៀតបានឡើយ)</i>"
+                        f"👮‍♂️ <b>ដោយរដ្ឋបាល:</b> {cq_name}"
                     )
-                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": []})
+                    decision_kb = []
+                    if v_id:
+                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{v_id}"}])
+                    edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": decision_kb})
 
                 ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                 ans_data = json.dumps({
@@ -3209,7 +3342,7 @@ async def telegram_webhook(req: Request):
             s = settings_collection.find_one({"_id": "app_settings"})
             token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
             if not is_telegram_admin(token, chat_id_str, sender_id):
-                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការសងច្បាប់បាន។", target_chat_id=chat_id_str)
+                send_telegram_notify("⚠️ សុំទោស! មានតែរដ្ឋបាលក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការសងច្បាប់បាន។", target_chat_id=chat_id_str)
                 return {"ok": True}
             parts = text.split()
             if len(parts) >= 3:
@@ -3231,7 +3364,7 @@ async def telegram_webhook(req: Request):
             s = settings_collection.find_one({"_id": "app_settings"})
             token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
             if not is_telegram_admin(token, chat_id_str, sender_id):
-                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការកាត់/សងប្រាក់បាន។", target_chat_id=chat_id_str)
+                send_telegram_notify("⚠️ សុំទោស! មានតែរដ្ឋបាលក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកត់ត្រាការកាត់/សងប្រាក់បាន។", target_chat_id=chat_id_str)
                 return {"ok": True}
             parts = text.split()
             if len(parts) >= 3:
@@ -3283,7 +3416,7 @@ async def telegram_webhook(req: Request):
                 send_telegram_notify(
                     f"📌 <b>ទម្រង់ប្រើប្រាស់:</b>\n"
                     f"• បុគ្គលិកកំណត់លេខផ្ទាល់ខ្លួន: <code>/setphone [លេខទូរស័ព្ទ]</code> (ឧ. <code>/setphone 016905354</code>)\n"
-                    f"• Admin កំណត់ឱ្យបុគ្គលិក: <code>/setphone [ឈ្មោះ] [លេខទូរស័ព្ទ]</code>",
+                    f"• រដ្ឋបាលកំណត់ឱ្យបុគ្គលិក: <code>/setphone [ឈ្មោះ] [លេខទូរស័ព្ទ]</code>",
                     target_chat_id=chat_id_str
                 )
                 return {"ok": True}
@@ -3294,7 +3427,7 @@ async def telegram_webhook(req: Request):
             s = settings_collection.find_one({"_id": "app_settings"})
             token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
             if not is_telegram_admin(token, chat_id_str, sender_id):
-                send_telegram_notify("⚠️ សុំទោស! មានតែ Admin ក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកំណត់មុខតំណែងបាន។", target_chat_id=chat_id_str)
+                send_telegram_notify("⚠️ សុំទោស! មានតែរដ្ឋបាលក្នុងគ្រុបប៉ុណ្ណោះដែលអាចកំណត់មុខតំណែងបាន។", target_chat_id=chat_id_str)
                 return {"ok": True}
             parts = text.split()
             if len(parts) >= 3:
@@ -3361,11 +3494,19 @@ async def telegram_webhook(req: Request):
         if active_flow and not is_system_cmd:
             is_voice_input = False
             content = ""
+            voice_id = None
+            flow_type = active_flow.get("type")
+            flow_is_private = active_flow.get("is_private", is_private_chat)
+            flow_chat_id = active_flow.get("chat_id", chat_id_str)
+            user_msg_id = message.get("message_id")
+            step1_msg_id = active_flow.get("step1_msg_id")
+
             if has_voice:
                 is_voice_input = True
                 voice_obj = message.get("voice") or message.get("audio")
                 file_id = voice_obj.get("file_id") if voice_obj else None
                 audio_bytes = download_telegram_voice_bytes(file_id, token) if file_id and token else None
+                voice_id = save_voice_message(audio_bytes, file_id=file_id, sender_name=sender_name) if audio_bytes else None
                 transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else None
                 caption = (message.get("caption") or "").strip()
                 if transcription:
@@ -3373,15 +3514,9 @@ async def telegram_webhook(req: Request):
                 elif caption:
                     content = caption
                 else:
-                    content = "សារសំឡេងសុំច្បាប់"
+                    content = "សារសំឡេងសុំច្បាប់" if flow_type == "leave" else "សារសំឡេងសុំខ្ចីប្រាក់"
             else:
                 content = text or "មិនបានបញ្ជាក់"
-
-            flow_type = active_flow.get("type")
-            flow_is_private = active_flow.get("is_private", is_private_chat)
-            flow_chat_id = active_flow.get("chat_id", chat_id_str)
-            user_msg_id = message.get("message_id")
-            step1_msg_id = active_flow.get("step1_msg_id")
             
             if flow_type == "leave":
                 days = active_flow.get("days", 1)
@@ -3398,13 +3533,16 @@ async def telegram_webhook(req: Request):
                     
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                l_res = leaves_collection.insert_one({
+                leave_doc = {
                     "employee_name": sender_name,
                     "reason": content,
                     "days": days_val,
                     "status": "pending",
                     "date": today_khr
-                })
+                }
+                if voice_id:
+                    leave_doc["voice_id"] = voice_id
+                l_res = leaves_collection.insert_one(leave_doc)
                 leave_id = str(l_res.inserted_id)
                 reason_msg_id = active_flow.get("reason_msg_id")
                 user_flows_collection.delete_one({"user_id": user_id_str})
@@ -3424,22 +3562,29 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
+                if voice_id:
+                    adm_btn["inline_keyboard"].append([
+                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
+                    ])
                 voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
+                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                    f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}\n"
+                    f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}"
+                    f"{voice_line}\n"
                     f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if flow_is_private or is_private_chat:
                     emp_conf = (
                         f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                        f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                        f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}"
+                        f"{voice_line}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3451,13 +3596,16 @@ async def telegram_webhook(req: Request):
                 amount = active_flow.get("amount", 100000)
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                ln_res = loans_collection.insert_one({
+                loan_doc = {
                     "employee_name": sender_name,
                     "amount_khr": amount,
                     "purpose": content,
                     "status": "pending",
                     "date": today_khr
-                })
+                }
+                if voice_id:
+                    loan_doc["voice_id"] = voice_id
+                ln_res = loans_collection.insert_one(loan_doc)
                 loan_id = str(ln_res.inserted_id)
                 purpose_msg_id = active_flow.get("purpose_msg_id")
                 user_flows_collection.delete_one({"user_id": user_id_str})
@@ -3476,21 +3624,28 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
+                if voice_id:
+                    adm_btn["inline_keyboard"].append([
+                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
+                    ])
                 voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
+                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
                 admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}"
+                    f"{voice_line}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if flow_is_private or is_private_chat:
                     emp_conf = (
                         f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់ Admin ពិនិត្យអនុញ្ញាត។</i>"
+                        f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}"
+                        f"{voice_line}\n\n"
+                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3518,7 +3673,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_private_chat:
                     emp_conf = (
@@ -3526,7 +3681,7 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {recent_leave.get('days', 1)} ថ្ងៃ\n"
                         f"📝 <b>មូលហេតុ:</b> {text}\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3552,7 +3707,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {text}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_private_chat:
                     emp_conf = (
@@ -3560,7 +3715,7 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {recent_loan.get('amount_khr', 100000):,} រៀល\n"
                         f"🎯 <b>គោលបំណង:</b> {text}\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3574,6 +3729,7 @@ async def telegram_webhook(req: Request):
             voice_obj = message.get("voice") or message.get("audio")
             file_id = voice_obj.get("file_id") if voice_obj else None
             audio_bytes = download_telegram_voice_bytes(file_id, token) if file_id and token else None
+            voice_id = save_voice_message(audio_bytes, file_id=file_id, sender_name=sender_name) if audio_bytes else None
             
             # 1. Transcribe spoken Khmer words into natural Khmer text
             transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else ""
@@ -3596,13 +3752,16 @@ async def telegram_webhook(req: Request):
                 reason = ai_data.get("reason") or transcription or "សារសំឡេងសុំច្បាប់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                l_res = leaves_collection.insert_one({
+                leave_doc = {
                     "employee_name": sender_name,
                     "reason": reason,
                     "days": days,
                     "status": "pending",
                     "date": today_khr
-                })
+                }
+                if voice_id:
+                    leave_doc["voice_id"] = voice_id
+                l_res = leaves_collection.insert_one(leave_doc)
                 leave_id = str(l_res.inserted_id)
                 conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
@@ -3611,21 +3770,28 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
+                if voice_id:
+                    adm_btn["inline_keyboard"].append([
+                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
+                    ])
+                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                    f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
+                    f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                    f"{voice_line}\n"
                     f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_private_chat:
                     emp_conf = (
                         f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        f"📝 <b>មូលហេតុ:</b> {reason} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                        f"{voice_line}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3638,13 +3804,16 @@ async def telegram_webhook(req: Request):
                 purpose = ai_data.get("purpose") or transcription or "សារសំឡេងសុំខ្ចីប្រាក់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                ln_res = loans_collection.insert_one({
+                loan_doc = {
                     "employee_name": sender_name,
                     "amount_khr": amount,
                     "purpose": purpose,
                     "status": "pending",
                     "date": today_khr
-                })
+                }
+                if voice_id:
+                    loan_doc["voice_id"] = voice_id
+                ln_res = loans_collection.insert_one(loan_doc)
                 loan_id = str(ln_res.inserted_id)
                 adm_btn = {
                     "inline_keyboard": [[
@@ -3652,20 +3821,27 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
                     ]]
                 }
+                if voice_id:
+                    adm_btn["inline_keyboard"].append([
+                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
+                    ])
+                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
                 admin_card = (
                     f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                    f"{voice_line}\n"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_private_chat:
                     emp_conf = (
                         f"✅ <b>សំណើខ្ចីប្រាក់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        f"🎯 <b>គោលបំណង:</b> {purpose} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                        f"{voice_line}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3682,13 +3858,16 @@ async def telegram_webhook(req: Request):
                 voice_label = transcription or caption or "សារសំឡេងសុំច្បាប់"
                 cambodia_tz = timezone(timedelta(hours=7))
                 today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                v_res = leaves_collection.insert_one({
+                leave_doc = {
                     "employee_name": sender_name,
                     "reason": voice_label,
                     "days": 1,
                     "status": "pending",
                     "date": today_khr
-                })
+                }
+                if voice_id:
+                    leave_doc["voice_id"] = voice_id
+                v_res = leaves_collection.insert_one(leave_doc)
                 leave_id = str(v_res.inserted_id)
                 conflict_alert = check_leave_conflicts(sender_name)
                 adm_btn = {
@@ -3697,21 +3876,28 @@ async def telegram_webhook(req: Request):
                         {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
                     ]]
                 }
+                if voice_id:
+                    adm_btn["inline_keyboard"].append([
+                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
+                    ])
+                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
                 admin_card = (
                     f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី (តាមសំឡេង)!</b>\n\n"
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                    f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n"
+                    f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                    f"{voice_line}\n"
                     f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                 )
                 if is_private_chat:
                     emp_conf = (
                         f"✅ <b>សំណើសុំច្បាប់តាមសំឡេងត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"⏱️ <b>ចំនួន:</b> 1 ថ្ងៃ\n"
-                        f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>\n\n"
-                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                        f"📝 <b>មូលហេតុ:</b> {voice_label} <i>(🎙️ បម្លែងពីសំឡេង)</i>"
+                        f"{voice_line}\n\n"
+                        f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                     send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3800,7 +3986,7 @@ async def telegram_webhook(req: Request):
                         f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                         f"📝 <b>មូលហេតុ:</b> {reason}\n"
                         f"{conflict_alert}"
-                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                     )
                     if is_private_chat:
                         emp_conf = (
@@ -3808,7 +3994,7 @@ async def telegram_webhook(req: Request):
                             f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                             f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                             f"📝 <b>មូលហេតុ:</b> {reason}\n\n"
-                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                         )
                         send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                         send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3841,7 +4027,7 @@ async def telegram_webhook(req: Request):
                         f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                         f"🎯 <b>គោលបំណង:</b> {purpose}\n"
-                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
                     )
                     if is_private_chat:
                         emp_conf = (
@@ -3849,7 +4035,7 @@ async def telegram_webhook(req: Request):
                             f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                             f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                             f"🎯 <b>គោលបំណង:</b> {purpose}\n\n"
-                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                            f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                         )
                         send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                         send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3900,7 +4086,7 @@ async def telegram_webhook(req: Request):
                 f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                 f"📝 <b>មូលហេតុ:</b> {text}\n"
                 f"{conflict_alert}"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
             )
             if is_private_chat:
                 emp_conf = (
@@ -3908,7 +4094,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"⏱️ <b>ចំនួន:</b> {days_display}\n"
                     f"📝 <b>មូលហេតុ:</b> {text}\n\n"
-                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                 )
                 send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                 send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -3979,7 +4165,7 @@ async def telegram_webhook(req: Request):
                 f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                 f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                 f"🎯 <b>គោលបំណង:</b> {text}\n"
-                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំ Admin អនុញ្ញាតិ"
+                f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
             )
             if is_private_chat:
                 emp_conf = (
@@ -3987,7 +4173,7 @@ async def telegram_webhook(req: Request):
                     f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
                     f"🎯 <b>គោលបំណង:</b> {text}\n\n"
-                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅ Admin រួចរាល់។</i>"
+                    f"🔒 <i>សំណើត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅរដ្ឋបាលរួចរាល់។</i>"
                 )
                 send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
                 send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
@@ -4003,7 +4189,7 @@ async def telegram_webhook(req: Request):
                 f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ\n"
                 f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់\n"
                 f"• ឬផ្ញើសារជា <b>Voice Message សំឡេង</b>\n\n"
-                f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់ Admin & បុគ្គលិក:</b>\n"
+                f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់រដ្ឋបាល & បុគ្គលិក:</b>\n"
                 f"• <code>/setphone [លេខ]</code> — កំណត់/អាប់ដេតលេខទូរស័ព្ទ (ឬផ្ញើ Contact ផ្ទាល់)\n"
                 f"• <code>/setposition [ឈ្មោះ] [មុខតំណែង]</code> — កំណត់មុខតំណែងបុគ្គលិក\n"
                 f"• <code>/sync_members</code> — Sync ទិន្នន័យបុគ្គលិកពី Telegram Group ចូលប្រព័ន្ធ\n"
@@ -5744,7 +5930,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       tbody.innerHTML = filtered.map(l => `
         <tr class="hover:bg-slate-50 transition">
           <td class="px-5 py-3.5 font-medium whitespace-nowrap">${escapeHtml(l.employee_name)}</td>
-          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">${escapeHtml(l.reason)}</td>
+          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+            <div>${escapeHtml(l.reason)}</div>
+            ${l.voice_id ? `
+              <div class="mt-1 flex items-center gap-1.5">
+                <a href="/voice-player/${l.voice_id}" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 text-[11px] font-semibold border border-blue-200 transition">
+                  <span class="material-symbols-outlined text-xs">play_circle</span> ស្ដាប់សំឡេង
+                </a>
+                <audio controls preload="none" src="/api/voice/${l.voice_id}" class="h-6 w-36"></audio>
+              </div>` : ''}
+          </td>
           <td class="px-5 py-3.5 whitespace-nowrap"><span class="font-bold text-blue-600">${l.days || 1}</span> ថ្ងៃ</td>
           <td class="px-5 py-3.5 whitespace-nowrap">${statusBadge(l.status)}</td>
           <td class="px-5 py-3.5 text-right whitespace-nowrap">
@@ -5781,11 +5976,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="flex-shrink-0">${statusBadge(l.status)}</div>
           </div>
-          <div class="bg-slate-50 rounded-lg p-2.5 flex items-center justify-between text-xs sm:text-sm">
-            <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.reason)}</span>
-            <span class="font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
-              ${l.days || 1} ថ្ងៃ
-            </span>
+          <div class="bg-slate-50 rounded-lg p-2.5 flex flex-col gap-1.5 text-xs sm:text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.reason)}</span>
+              <span class="font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
+                ${l.days || 1} ថ្ងៃ
+              </span>
+            </div>
+            ${l.voice_id ? `
+              <div class="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                <a href="/voice-player/${l.voice_id}" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 text-white text-[11px] font-medium shadow-sm">
+                  <span class="material-symbols-outlined text-xs">play_circle</span> ស្ដាប់
+                </a>
+                <audio controls preload="none" src="/api/voice/${l.voice_id}" class="h-6 w-full max-w-[200px]"></audio>
+              </div>` : ''}
           </div>
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-50">
             ${l.status === 'pending' ? `
@@ -5890,7 +6094,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <tr class="hover:bg-slate-50 transition">
           <td class="px-5 py-3.5 font-medium whitespace-nowrap">${escapeHtml(l.employee_name)}</td>
           <td class="px-5 py-3.5 font-bold text-blue-700 whitespace-nowrap">${Number(l.amount_khr).toLocaleString('km-KH')} ៛</td>
-          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">${escapeHtml(l.purpose || '—')}</td>
+          <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+            <div>${escapeHtml(l.purpose || '—')}</div>
+            ${l.voice_id ? `
+              <div class="mt-1 flex items-center gap-1.5">
+                <a href="/voice-player/${l.voice_id}" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] font-semibold border border-emerald-200 transition">
+                  <span class="material-symbols-outlined text-xs">play_circle</span> ស្ដាប់សំឡេង
+                </a>
+                <audio controls preload="none" src="/api/voice/${l.voice_id}" class="h-6 w-36"></audio>
+              </div>` : ''}
+          </td>
           <td class="px-5 py-3.5 whitespace-nowrap">${statusBadge(l.status)}</td>
           <td class="px-5 py-3.5 text-right whitespace-nowrap">
             <div class="flex items-center justify-end gap-1">
@@ -5926,11 +6139,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="flex-shrink-0">${statusBadge(l.status)}</div>
           </div>
-          <div class="bg-slate-50 rounded-lg p-2.5 flex items-center justify-between text-xs sm:text-sm">
-            <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.purpose || 'ខ្ចីប្រាក់ / បុរេប្រទាន')}</span>
-            <span class="font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
-              ${Number(l.amount_khr).toLocaleString('km-KH')} ៛
-            </span>
+          <div class="bg-slate-50 rounded-lg p-2.5 flex flex-col gap-1.5 text-xs sm:text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-700 font-medium truncate mr-2">${escapeHtml(l.purpose || 'ខ្ចីប្រាក់ / បុរេប្រទាន')}</span>
+              <span class="font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded text-xs whitespace-nowrap">
+                ${Number(l.amount_khr).toLocaleString('km-KH')} ៛
+              </span>
+            </div>
+            ${l.voice_id ? `
+              <div class="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                <a href="/voice-player/${l.voice_id}" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-medium shadow-sm">
+                  <span class="material-symbols-outlined text-xs">play_circle</span> ស្ដាប់
+                </a>
+                <audio controls preload="none" src="/api/voice/${l.voice_id}" class="h-6 w-full max-w-[200px]"></audio>
+              </div>` : ''}
           </div>
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-50">
             ${l.status === 'pending' ? `
