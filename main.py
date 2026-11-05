@@ -2759,7 +2759,8 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ទម្រង់សុំច្បាប់ - AC BOMLU</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2948,7 +2949,8 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ទម្រង់ខ្ចីប្រាក់ - AC BOMLU</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3221,7 +3223,7 @@ async def play_voice_page(voice_id: str):
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ស្ដាប់សារសំឡេងបុគ្គលិក - AC BOMLU</title>
   <link rel="icon" type="image/png" href="/logo.png">
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
   <style>
@@ -5126,7 +5128,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <link rel="apple-touch-icon" href="/static/ac_logo.jpg" />
 
   <!-- Tailwind CSS v3 CDN -->
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Material Symbols (Outlined) -->
   <link rel="stylesheet"
@@ -5426,13 +5428,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <!-- Mobile Sidebar Backdrop Overlay -->
 <div id="sidebar-backdrop" onclick="closeSidebar()"
-  class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity duration-300"></div>
+  class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity duration-300"
+  style="background-color: rgba(0, 0, 0, 0.6) !important;"></div>
 
 <!-- ======================================================
      SIDEBAR
 ====================================================== -->
 <aside id="sidebar"
-  class="fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-900 to-blue-950 text-white flex flex-col shadow-2xl transition-transform duration-300 ease-in-out -translate-x-full lg:translate-x-0 lg:static flex-shrink-0">
+  class="fixed inset-y-0 left-0 z-50 w-64 text-white flex flex-col shadow-2xl transition-transform duration-300 ease-in-out -translate-x-full lg:translate-x-0 lg:static flex-shrink-0"
+  style="background-color: #0f172a !important; background-image: linear-gradient(180deg, #1e3a8a 0%, #0f172a 100%) !important;">
 
   <!-- Logo -->
   <div class="h-16 flex items-center justify-between px-5 border-b border-blue-800">
@@ -11106,12 +11110,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       window.print();
       return;
     }
+    const twTag = '<' + 'script src="https://cdn.tailwindcss.com"><' + '/script>';
     printWin.document.write(`<!DOCTYPE html>
 <html lang="km">
 <head>
   <meta charset="UTF-8">
   <title>របាយការណ៍ផ្លូវការ AC BOMLU</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  ${twTag}
   <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Kantumruy Pro', sans-serif; background: #fff; color: #111827; padding: 20px; }
