@@ -310,16 +310,27 @@ def is_telegram_admin(token: str, chat_id: str, user_id: int) -> bool:
     return False
 
 def get_all_branches() -> list:
+    default_branches = [
+        {"id": "kampong_cham", "name": "ក្រុមហ៊ុនបូមលូ កំពង់ចាម", "telegram_chat_id": "-1003956005362", "chat_id": "-1003956005362"},
+        {"id": "tboung_khmum", "name": "ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ", "telegram_chat_id": "", "chat_id": ""}
+    ]
     try:
         s = settings_collection.find_one({"_id": "app_settings"})
-        if s and s.get("branches"):
-            return s.get("branches")
+        raw = s.get("branches") if s else None
+        if raw and isinstance(raw, list):
+            res = []
+            for b in raw:
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                res.append({
+                    "id": b.get("id"),
+                    "name": b.get("name"),
+                    "telegram_chat_id": c_id,
+                    "chat_id": c_id
+                })
+            return res
     except Exception:
         pass
-    return [
-        {"id": "kampong_cham", "name": "ក្រុមហ៊ុនបូមលូ កំពង់ចាម", "telegram_chat_id": "-1003956005362"},
-        {"id": "tboung_khmum", "name": "ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ", "telegram_chat_id": ""}
-    ]
+    return default_branches
 
 def get_branch_by_chat_id(chat_id: str) -> str:
     if not chat_id:
@@ -328,14 +339,17 @@ def get_branch_by_chat_id(chat_id: str) -> str:
     try:
         branches = get_all_branches()
         for b in branches:
-            if b.get("telegram_chat_id") and str(b.get("telegram_chat_id")).strip() == chat_id_str:
+            c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+            if c_id and c_id == chat_id_str:
                 return b.get("name", "ក្រុមហ៊ុនបូមលូ កំពង់ចាម")
         
         # If chat_id is a group/supergroup (starts with -) and not default branch, auto-link to tboung_khmum if empty
         if chat_id_str.startswith("-") and chat_id_str != "-1003956005362":
             for b in branches:
-                if b.get("id") == "tboung_khmum" and not b.get("telegram_chat_id"):
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                if b.get("id") == "tboung_khmum" and not c_id:
                     b["telegram_chat_id"] = chat_id_str
+                    b["chat_id"] = chat_id_str
                     settings_collection.update_one({"_id": "app_settings"}, {"$set": {"branches": branches}}, upsert=True)
                     print(f"Auto-linked Telegram chat_id {chat_id_str} to Tboung Khmum branch!")
                     return b.get("name", "ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ")
@@ -346,21 +360,37 @@ def get_branch_by_chat_id(chat_id: str) -> str:
 def get_chat_id_by_branch(branch_name: str) -> Optional[str]:
     if not branch_name:
         return None
+    b_key = str(branch_name).strip()
     try:
         branches = get_all_branches()
+        # 1. Exact match on name or id
         for b in branches:
-            if b.get("name") == branch_name and b.get("telegram_chat_id"):
-                return b.get("telegram_chat_id")
-    except Exception:
-        pass
+            if b.get("name") == b_key or b.get("id") == b_key:
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                if c_id:
+                    return c_id
+        # 2. Substring match
+        for b in branches:
+            b_name = b.get("name", "")
+            b_id = b.get("id", "")
+            if (b_id and b_id.lower() == b_key.lower()) or \
+               ("កំពង់ចាម" in b_key and "កំពង់ចាម" in b_name) or \
+               ("ត្បូងឃ្មុំ" in b_key and "ត្បូងឃ្មុំ" in b_name):
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                if c_id:
+                    return c_id
+    except Exception as e:
+        print(f"get_chat_id_by_branch error: {e}")
     return None
 
-def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: str = None):
+def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: str = None, fallback_to_default: bool = True):
     try:
         s = settings_collection.find_one({"_id": "app_settings"})
         token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
         group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
-        dest_chat_id = target_chat_id or group_chat_id
+        dest_chat_id = target_chat_id
+        if not dest_chat_id and fallback_to_default:
+            dest_chat_id = group_chat_id
         if not token or not dest_chat_id:
             return
             
@@ -410,6 +440,21 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
     except Exception as e:
         print(f"Telegram notify error: {e}")
         return None
+
+def send_telegram_to_all_branches(text: str, reply_markup: dict = None):
+    """Send a message to ALL configured branches with valid chat_ids."""
+    branches = get_all_branches()
+    chat_ids_sent = set()
+    any_sent = False
+    for b in branches:
+        chat_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+        if chat_id and chat_id not in chat_ids_sent:
+            send_telegram_notify(text, reply_markup=reply_markup, target_chat_id=chat_id, fallback_to_default=False)
+            chat_ids_sent.add(chat_id)
+            any_sent = True
+    if not any_sent:
+        # Fallback to default group if no branch chat_ids configured
+        send_telegram_notify(text, reply_markup=reply_markup, fallback_to_default=True)
 
 def remove_telegram_inline_keyboard(chat_id: str, message_id: int):
     try:
@@ -1765,7 +1810,8 @@ async def create_leave(request: LeaveRequest):
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
         reply_markup=adm_btn,
-        target_chat_id=target_chat
+        target_chat_id=target_chat,
+        fallback_to_default=False
     )
     return {"message": "Leave request saved!", "id": leave_id}
 
@@ -1833,7 +1879,8 @@ async def create_loan(request: LoanRequest):
         f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
         reply_markup=adm_btn,
-        target_chat_id=target_chat
+        target_chat_id=target_chat,
+        fallback_to_default=False
     )
     return {"message": "Loan request saved!", "id": loan_id}
 
@@ -1945,10 +1992,9 @@ async def batch_update_phones(req: BatchPhoneUpdateRequest):
     return {"message": f"បានរក្សាទុកលេខទូរស័ព្ទបុគ្គលិកចំនួន {updated} នាក់ជោគជ័យ!", "updated_count": updated}
 
 @app.post("/api/employees/request-phone-telegram")
-async def api_request_phone_telegram():
+async def api_request_phone_telegram(branch: Optional[str] = None):
     s = settings_collection.find_one({"_id": "app_settings"})
     token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
-    group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
     bot_username = "ac_bomlu_administration_bot"
     
     inline_btn = {
@@ -1961,8 +2007,15 @@ async def api_request_phone_telegram():
         "ដើម្បីឱ្យប្រព័ន្ធគ្រប់គ្រងមានលេខទូរស័ព្ទទំនាក់ទំនងរបស់អ្នក និងបង្ហាញលើ Dashboard ក្រុមហ៊ុន សូមបុគ្គលិកម្នាក់ៗចុចប៊ូតុងខាងក្រោម៖\n\n"
         "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ (Share Phone) ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
     )
-    send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=group_chat_id)
-    return {"message": "បានផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់គ្រុប Telegram រួចរាល់!"}
+    if branch:
+        target_chat = get_chat_id_by_branch(branch)
+        if not target_chat:
+            raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
+        send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=target_chat, fallback_to_default=False)
+        return {"message": f"បានផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់គ្រុប [{branch}] រួចរាល់!"}
+    
+    send_telegram_to_all_branches(msg, reply_markup=inline_btn)
+    return {"message": "បានផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់គ្រុប Telegram គ្រប់សាខាទាំងអស់រួចរាល់!"}
 
 @app.get("/api/backup/export")
 async def export_database_backup():
@@ -2029,7 +2082,7 @@ async def get_settings():
         "gemini_model": gemini_model,
         "notify_on_leave": notify_leave,
         "notify_on_loan": notify_loan,
-        "branches": s.get("branches") if (s and s.get("branches")) else get_all_branches()
+        "branches": get_all_branches()
     }
 
 @app.post("/api/settings")
@@ -2072,8 +2125,17 @@ async def api_save_branches(payload: dict):
     branches = payload.get("branches")
     if not isinstance(branches, list):
         raise HTTPException(status_code=400, detail="ទិន្នន័យសាខាមិនត្រឹមត្រូវ!")
-    settings_collection.update_one({"_id": "app_settings"}, {"$set": {"branches": branches}}, upsert=True)
-    return {"message": "បានរក្សាទុកព័ត៌មានសាខាជោគជ័យ!", "branches": branches}
+    normalized = []
+    for b in branches:
+        c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+        normalized.append({
+            "id": b.get("id"),
+            "name": b.get("name"),
+            "telegram_chat_id": c_id,
+            "chat_id": c_id
+        })
+    settings_collection.update_one({"_id": "app_settings"}, {"$set": {"branches": normalized}}, upsert=True)
+    return {"message": "បានរក្សាទុកព័ត៌មានសាខាជោគជ័យ!", "branches": normalized}
 
 @app.post("/api/test-gemini")
 async def test_gemini(payload: GeminiTestRequest):
@@ -2171,11 +2233,18 @@ async def test_telegram(payload: TelegramTestRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"មិនអាចផ្ញើសារបាន: {str(e)}")
 
+
 @app.post("/api/send-briefing")
-async def send_briefing_api():
+async def send_briefing_api(branch: Optional[str] = None):
     briefing = generate_daily_morning_briefing()
-    send_telegram_notify(briefing)
-    return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!"}
+    if branch:
+        target_chat = get_chat_id_by_branch(branch)
+        if not target_chat:
+            raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
+        send_telegram_notify(briefing, target_chat_id=target_chat, fallback_to_default=False)
+        return {"message": f"បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅគ្រុប [{branch}] រួចរាល់!"}
+    send_telegram_to_all_branches(briefing)
+    return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram គ្រប់សាខាទាំងអស់រួចរាល់!"}
 
 @app.get("/api/reports/weekend-leave")
 async def api_get_weekend_leave_report(branch: Optional[str] = None):
@@ -2191,13 +2260,22 @@ async def api_send_weekend_leave_report(req: Optional[SendReportRequest] = None)
         msg = format_telegram_weekend_leave_report_detailed(data, filter_employee=emp_filter)
     else:
         msg = format_telegram_weekend_leave_report(data)
-    target_chat = get_chat_id_by_branch(branch) if branch else None
-    send_telegram_notify(msg, target_chat_id=target_chat)
+    
+    if branch:
+        target_chat = get_chat_id_by_branch(branch)
+        if not target_chat:
+            raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
+        send_telegram_notify(msg, target_chat_id=target_chat, fallback_to_default=False)
+    else:
+        send_telegram_to_all_branches(msg)
+        
     title = "របាយការណ៍ច្បាប់លម្អិត" if mode == "detailed" else "របាយការណ៍ច្បាប់សង្ខេប"
     if emp_filter:
         title += f" ({emp_filter})"
     if branch:
         title += f" [{branch}]"
+    else:
+        title += " [គ្រប់សាខា]"
     return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.get("/api/reports/monthly-loan")
@@ -2214,13 +2292,22 @@ async def api_send_monthly_loan_report(req: Optional[SendReportRequest] = None):
         msg = format_telegram_monthly_loan_report_detailed(data, filter_employee=emp_filter)
     else:
         msg = format_telegram_monthly_loan_report(data)
-    target_chat = get_chat_id_by_branch(branch) if branch else None
-    send_telegram_notify(msg, target_chat_id=target_chat)
+        
+    if branch:
+        target_chat = get_chat_id_by_branch(branch)
+        if not target_chat:
+            raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
+        send_telegram_notify(msg, target_chat_id=target_chat, fallback_to_default=False)
+    else:
+        send_telegram_to_all_branches(msg)
+        
     title = "របាយការណ៍ខ្ចីប្រាក់លម្អិត" if mode == "detailed" else "របាយការណ៍ខ្ចីប្រាក់សង្ខេប"
     if emp_filter:
         title += f" ({emp_filter})"
     if branch:
         title += f" [{branch}]"
+    else:
+        title += " [គ្រប់សាខា]"
     return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.post("/api/reports/compensate-leave")
@@ -3659,6 +3746,16 @@ async def telegram_webhook(req: Request):
         s = settings_collection.find_one({"_id": "app_settings"})
         token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
         admin_group_chat_id = (s.get("telegram_chat_id", "").strip() if s else "") or os.getenv("TELEGRAM_CHAT_ID", "")
+
+        # Auto-link branch if incoming update is from a group chat
+        incoming_chat = (
+            update.get("message", {}).get("chat", {}) or
+            update.get("callback_query", {}).get("message", {}).get("chat", {}) or
+            update.get("my_chat_member", {}).get("chat", {})
+        )
+        in_chat_id = str(incoming_chat.get("id") or "").strip()
+        if in_chat_id.startswith("-"):
+            get_branch_by_chat_id(in_chat_id)
 
         # A. Handle Callback Query (When clicking Inline Buttons: Days or Loan Amount)
         callback_query = update.get("callback_query")
@@ -6555,6 +6652,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
       </div>
       <div>
+        <label class="block text-sm text-gray-600 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="leave-branch" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+      <div>
         <label class="block text-sm text-gray-600 mb-1">មូលហេតុ</label>
         <input id="leave-reason" type="text" required placeholder="មូលហេតុ..."
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
@@ -6590,6 +6695,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <label class="block text-sm text-gray-600 mb-1">ឈ្មោះបុគ្គលិក</label>
         <input id="loan-name" type="text" required placeholder="ឈ្មោះ..."
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+      </div>
+      <div>
+        <label class="block text-sm text-gray-600 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="loan-branch" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
       </div>
       <div>
         <label class="block text-sm text-gray-600 mb-1">ចំនួនទឹកប្រាក់ (រៀល)</label>
@@ -7255,6 +7368,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="edit-tx-branch" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+
+      <div>
         <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
         <textarea id="edit-tx-desc" rows="2" class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
       </div>
@@ -7304,6 +7425,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('hidden');
+
+    // Pre-select active branch if user has chosen a specific branch
+    if (currentActiveBranch) {
+      if (id === 'leave-modal') {
+        const b = document.getElementById('leave-branch');
+        if (b) b.value = currentActiveBranch;
+      } else if (id === 'loan-modal') {
+        const b = document.getElementById('loan-branch');
+        if (b) b.value = currentActiveBranch;
+      } else if (id === 'emp-modal') {
+        const b = document.getElementById('emp-branch');
+        if (b) b.value = currentActiveBranch;
+      } else if (id === 'bulk-emp-modal') {
+        const b = document.getElementById('bulk-emp-branch');
+        if (b) b.value = currentActiveBranch;
+      } else if (id === 'income-modal') {
+        const b = document.getElementById('inc-form-branch');
+        if (b) b.value = currentActiveBranch;
+      } else if (id === 'expense-modal') {
+        const b = document.getElementById('exp-form-branch');
+        if (b) b.value = currentActiveBranch;
+      }
+    }
     // Push modal state into browser history so pressing phone back button closes the modal!
     window.history.pushState({ modal: id, tab: currentActiveTab }, '', window.location.pathname);
   }
@@ -7364,6 +7508,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     currentActiveBranch = val || '';
     localStorage.setItem('ac_active_branch', currentActiveBranch);
     showToast(currentActiveBranch ? `ប្តូរមើល៖ ${currentActiveBranch}` : 'ប្តូរមើល៖ គ្រប់សាខាទាំងអស់');
+    
+    // Sync all modal selects
+    ['inc-form-branch', 'exp-form-branch', 'emp-branch', 'bulk-emp-branch', 'leave-branch', 'loan-branch'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && currentActiveBranch) el.value = currentActiveBranch;
+    });
+
     refreshAll();
   }
 
@@ -7698,6 +7849,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const payload = {
       employee_name: document.getElementById('leave-name').value,
+      branch: document.getElementById('leave-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
       reason: document.getElementById('leave-reason').value,
       days: parseInt(document.getElementById('leave-days').value)
     };
@@ -7865,6 +8017,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     e.preventDefault();
     const payload = {
       employee_name: document.getElementById('loan-name').value,
+      branch: document.getElementById('loan-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
       amount_khr: parseInt(document.getElementById('loan-amount').value),
       purpose: document.getElementById('loan-purpose').value
     };
@@ -8146,7 +8299,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     btn.disabled = true;
     btn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">refresh</span> កំពុងផ្ញើ...';
     try {
-      const res = await fetch('/api/employees/request-phone-telegram', { method: 'POST' });
+      const url = currentActiveBranch ? `/api/employees/request-phone-telegram?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/employees/request-phone-telegram';
+      const res = await fetch(url, { method: 'POST' });
       const data = await res.json();
       showToast(data.message || 'បានផ្ញើសារទៅ Telegram រួចរាល់!');
     } catch (err) {
@@ -8387,7 +8541,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (icon) icon.classList.add('animate-spin');
     if (btn) btn.disabled = true;
     try {
-      const r = await fetch('/api/send-briefing', { method: 'POST' });
+      const url = currentActiveBranch ? `/api/send-briefing?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/send-briefing';
+      const r = await fetch(url, { method: 'POST' });
       const res = await r.json();
       if (r.ok) {
         showToast(res.message || 'បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!');
@@ -9247,10 +9402,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   // ===== Refresh =====
   async function refreshAll() {
-    const btn = document.getElementById('refresh-btn').querySelector('span');
-    btn.classList.add('animate-spin');
-    await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
-    setTimeout(() => btn.classList.remove('animate-spin'), 500);
+    const btn = document.getElementById('refresh-btn')?.querySelector('span');
+    if (btn) btn.classList.add('animate-spin');
+
+    const tasks = [loadStats(), loadFinanceStats()];
+    if (currentActiveTab === 'leaves') tasks.push(loadLeaves());
+    else if (currentActiveTab === 'loans') tasks.push(loadLoans());
+    else if (currentActiveTab === 'employees') tasks.push(loadEmployees());
+    else if (currentActiveTab === 'income') tasks.push(loadIncome());
+    else if (currentActiveTab === 'expense') tasks.push(loadExpense());
+    else if (currentActiveTab === 'catalog') tasks.push(loadCatalogs());
+    else if (currentActiveTab === 'reports-leave') tasks.push(loadWeekendLeaveReport());
+    else if (currentActiveTab === 'reports-loan') tasks.push(loadMonthlyLoanReport());
+    else if (currentActiveTab === 'reports-finance') tasks.push(loadFinanceReports());
+    else if (currentActiveTab === 'settings') tasks.push(loadSettings());
+
+    try {
+      await Promise.all(tasks);
+    } catch (e) {
+      console.warn('refreshAll error:', e);
+    }
+
+    if (btn) setTimeout(() => btn.classList.remove('animate-spin'), 500);
     showToast('ទិន្នន័យស្រស់ហើយ!');
   }
 
@@ -9721,7 +9894,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function loadIncome() {
     try {
       // 1. Load Stats for Income cards
-      const statsRes = await fetch('/api/finance/stats');
+      const statsRes = await fetch(currentActiveBranch ? '/api/finance/stats?branch=' + encodeURIComponent(currentActiveBranch) : '/api/finance/stats');
       const statsData = await statsRes.json();
       if (statsData) {
         document.getElementById('inc-stat-today').textContent = formatDualMoney(statsData.today.income_khr, statsData.today.income_usd);
@@ -9843,6 +10016,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function openIncomeModal() {
     const form = document.querySelector('#income-modal form');
     if (form) form.reset();
+    if (document.getElementById('inc-form-branch')) {
+      document.getElementById('inc-form-branch').value = currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+    }
     document.getElementById('inc-form-date').value = getTodayString();
     document.getElementById('inc-form-time').value = getCurrentTimeString();
     document.getElementById('inc-form-currency').value = 'KHR';
@@ -9953,7 +10129,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function loadExpense() {
     try {
       // 1. Load Stats
-      const statsRes = await fetch('/api/finance/stats');
+      const statsRes = await fetch(currentActiveBranch ? '/api/finance/stats?branch=' + encodeURIComponent(currentActiveBranch) : '/api/finance/stats');
       const statsData = await statsRes.json();
       if (statsData) {
         document.getElementById('exp-stat-today').textContent = formatDualMoney(statsData.today.expense_khr, statsData.today.expense_usd);
@@ -10075,6 +10251,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function openExpenseModal() {
     const form = document.querySelector('#expense-modal form');
     if (form) form.reset();
+    if (document.getElementById('exp-form-branch')) {
+      document.getElementById('exp-form-branch').value = currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+    }
     document.getElementById('exp-form-date').value = getTodayString();
     document.getElementById('exp-form-time').value = getCurrentTimeString();
     document.getElementById('exp-form-currency').value = 'KHR';
@@ -10153,6 +10332,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('edit-tx-method').value = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
       document.getElementById('edit-tx-ref').value = tx.reference_no || '';
       document.getElementById('edit-tx-desc').value = tx.description || '';
+      if (document.getElementById('edit-tx-branch')) {
+        document.getElementById('edit-tx-branch').value = tx.branch || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+      }
 
       updateEditCategoriesDropdown(tx.category);
       openModal('edit-tx-modal');
@@ -10190,6 +10372,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     btn.disabled = true;
+    const branch = document.getElementById('edit-tx-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
     try {
       const res = await fetch('/api/finance/transactions/' + id, {
         method: 'PUT',
@@ -10203,7 +10386,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           time,
           payment_method: method,
           reference_no: ref,
-          description: desc
+          description: desc,
+          branch
         })
       });
       const data = await res.json();
@@ -10310,9 +10494,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     contentArea.innerHTML = '<div class="text-center py-12 text-gray-400 bg-white rounded-2xl border border-slate-100">កំពុងរៀបចំរបាយការណ៍...</div>';
 
     try {
+      const branchParam = currentActiveBranch ? '&branch=' + encodeURIComponent(currentActiveBranch) : '';
       if (currentReportPeriod === 'daily') {
         const d = document.getElementById('rep-finance-date').value || getTodayString();
-        const res = await fetch('/api/finance/reports/daily?date=' + d);
+        const res = await fetch('/api/finance/reports/daily?date=' + d + branchParam);
         const data = await res.json();
         activeFinanceReportData = { type: 'daily', data };
         updateReportSummaryCards(data.summary);
@@ -10323,7 +10508,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const yEl = document.getElementById('rep-finance-year-m');
         const m = (mEl && mEl.value) ? mEl.value : (today.getMonth() + 1);
         const y = (yEl && yEl.value) ? yEl.value : today.getFullYear();
-        const res = await fetch(`/api/finance/reports/monthly?year=${y}&month=${m}`);
+        const res = await fetch(`/api/finance/reports/monthly?year=${y}&month=${m}` + branchParam);
         const data = await res.json();
         activeFinanceReportData = { type: 'monthly', data };
         updateReportSummaryCards(data.summary);
@@ -10332,7 +10517,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const today = new Date();
         const yEl = document.getElementById('rep-finance-year-y');
         const y = (yEl && yEl.value) ? yEl.value : today.getFullYear();
-        const res = await fetch(`/api/finance/reports/yearly?year=${y}`);
+        const res = await fetch(`/api/finance/reports/yearly?year=${y}` + branchParam);
         const data = await res.json();
         activeFinanceReportData = { type: 'yearly', data };
         updateReportSummaryCards(data.summary);
