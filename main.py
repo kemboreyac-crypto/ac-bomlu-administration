@@ -3636,7 +3636,7 @@ async def telegram_webhook(req: Request):
                 ask_reason_msg = (
                     f"⏱️ <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days_display}\n\n"
-                    f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (ឬផ្ញើសំឡេង Voice)៖</b>"
+                    f"👉 <b>សូមចុចជ្រើសរើស «មូលហេតុ» ខាងក្រោម៖</b>"
                 )
                 sent_res = send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
                 reason_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
@@ -3821,7 +3821,7 @@ async def telegram_webhook(req: Request):
                 ask_purpose_msg = (
                     f"💵 <b>បុគ្គលិក:</b> {cq_name}\n"
                     f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n\n"
-                    f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម ឬវាយបញ្ចូលផ្ទាល់ក្នុងប្រអប់សារ (ឬផ្ញើសំឡេង Voice)៖</b>"
+                    f"👉 <b>សូមចុចជ្រើសរើស «គោលបំណង» ខាងក្រោម៖</b>"
                 )
                 sent_res = send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
                 purpose_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
@@ -4401,170 +4401,11 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(full_reply, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        # Feature 2: Strict Group Policy (In Group Chats, Bot ONLY acts on the 2 Keyboard Buttons, Active Flow, or Slash Commands)
-        if not is_private_chat:
-            is_slash_cmd = text.startswith("/") and is_system_cmd
-            if not is_leave_btn and not is_loan_btn and not active_flow and not is_slash_cmd:
-                return {"ok": True}
-
-        # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
-        if active_flow and not is_system_cmd:
-            is_voice_input = False
-            content = ""
-            voice_id = None
-            flow_type = active_flow.get("type")
-            flow_is_private = active_flow.get("is_private", is_private_chat)
-            flow_chat_id = active_flow.get("chat_id", chat_id_str)
-            user_msg_id = message.get("message_id")
-            step1_msg_id = active_flow.get("step1_msg_id")
-
-            if has_voice:
-                is_voice_input = True
-                voice_obj = message.get("voice") or message.get("audio")
-                file_id = voice_obj.get("file_id") if voice_obj else None
-                audio_bytes = download_telegram_voice_bytes(file_id, token) if file_id and token else None
-                voice_id = save_voice_message(audio_bytes, file_id=file_id, sender_name=sender_name) if audio_bytes else None
-                transcription = transcribe_voice_khmer(audio_bytes) if audio_bytes else None
-                caption = (message.get("caption") or "").strip()
-                if transcription:
-                    content = transcription
-                elif caption:
-                    content = caption
-                else:
-                    content = "សារសំឡេងសុំច្បាប់" if flow_type == "leave" else "សារសំឡេងសុំខ្ចីប្រាក់"
-            else:
-                content = text or "មិនបានបញ្ជាក់"
-            
-            if flow_type == "leave":
-                days = active_flow.get("days", 1)
-                try:
-                    days_val = float(days)
-                except (ValueError, TypeError):
-                    days_val = 1.0
-                if days_val == 0.5:
-                    days_display = "កន្លះថ្ងៃ"
-                elif days_val.is_integer():
-                    days_display = f"{int(days_val)} ថ្ងៃ"
-                else:
-                    days_display = f"{days_val} ថ្ងៃ"
-                    
-                cambodia_tz = timezone(timedelta(hours=7))
-                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                leave_doc = {
-                    "employee_name": sender_name,
-                    "reason": content,
-                    "days": days_val,
-                    "status": "pending",
-                    "date": today_khr
-                }
-                if voice_id:
-                    leave_doc["voice_id"] = voice_id
-                l_res = leaves_collection.insert_one(leave_doc)
-                leave_id = str(l_res.inserted_id)
-                reason_msg_id = active_flow.get("reason_msg_id")
-                user_flows_collection.delete_one({"user_id": user_id_str})
-                
-                # Clean up intermediate prompt messages so ONLY the official card remains (keep user message untouched)
-                if reason_msg_id:
-                    delete_telegram_message(flow_chat_id, reason_msg_id)
-                if step1_msg_id and step1_msg_id != reason_msg_id:
-                    delete_telegram_message(flow_chat_id, step1_msg_id)
-                
-                conflict_alert = check_leave_conflicts(sender_name)
-                adm_btn = {
-                    "inline_keyboard": [[
-                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_leave:{leave_id}"},
-                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_leave:{leave_id}"}
-                    ]]
-                }
-                if voice_id:
-                    adm_btn["inline_keyboard"].append([
-                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
-                    ])
-                voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
-                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
-                admin_card = (
-                    f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
-                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                    f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}"
-                    f"{voice_line}\n"
-                    f"{conflict_alert}"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
-                )
-                if flow_is_private or is_private_chat:
-                    emp_conf = (
-                        f"✅ <b>សំណើសុំច្បាប់ឈប់សម្រាកត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
-                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                        f"⏱️ <b>ចំនួន:</b> {days_display}\n"
-                        f"📝 <b>មូលហេតុ:</b> {content}{voice_badge}"
-                        f"{voice_line}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
-                    )
-                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
-                else:
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
-                return {"ok": True}
-                
-            elif flow_type == "loan":
-                amount = active_flow.get("amount", 100000)
-                cambodia_tz = timezone(timedelta(hours=7))
-                today_khr = datetime.now(cambodia_tz).strftime("%Y-%m-%d")
-                loan_doc = {
-                    "employee_name": sender_name,
-                    "amount_khr": amount,
-                    "purpose": content,
-                    "status": "pending",
-                    "date": today_khr
-                }
-                if voice_id:
-                    loan_doc["voice_id"] = voice_id
-                ln_res = loans_collection.insert_one(loan_doc)
-                loan_id = str(ln_res.inserted_id)
-                purpose_msg_id = active_flow.get("purpose_msg_id")
-                user_flows_collection.delete_one({"user_id": user_id_str})
-                
-                # Clean up intermediate prompt messages so ONLY the official card remains (keep user message untouched)
-                if purpose_msg_id:
-                    delete_telegram_message(flow_chat_id, purpose_msg_id)
-                if step1_msg_id and step1_msg_id != purpose_msg_id:
-                    delete_telegram_message(flow_chat_id, step1_msg_id)
-                
-                adm_btn = {
-                    "inline_keyboard": [[
-                        {"text": "✅ អនុញ្ញាតិ", "callback_data": f"app_loan:{loan_id}"},
-                        {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
-                    ]]
-                }
-                if voice_id:
-                    adm_btn["inline_keyboard"].append([
-                        {"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{voice_id}"}
-                    ])
-                voice_badge = " <i>(🎙️ បម្លែងពីសំឡេង)</i>" if is_voice_input else ""
-                voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{voice_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if voice_id else ""
-                admin_card = (
-                    f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
-                    f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                    f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                    f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}"
-                    f"{voice_line}\n"
-                    f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ"
-                )
-                if flow_is_private or is_private_chat:
-                    emp_conf = (
-                        f"✅ <b>សំណើខ្ចីប្រាក់ត្រូវបានបញ្ជូនរួចរាល់!</b>\n\n"
-                        f"👤 <b>បុគ្គលិក:</b> {sender_name}\n"
-                        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {amount:,} រៀល\n"
-                        f"🎯 <b>គោលបំណង:</b> {content}{voice_badge}"
-                        f"{voice_line}\n\n"
-                        f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
-                    )
-                    send_telegram_notify(emp_conf, target_chat_id=chat_id_str)
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
-                else:
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=chat_id_str)
-                return {"ok": True}
+        # Strict Button-Only Policy: Bot ONLY acts on the 2 Official Buttons or Slash Commands
+        is_slash_cmd = text.startswith("/") and is_system_cmd
+        if not is_leave_btn and not is_loan_btn and not is_slash_cmd:
+            # Completely ignore all external text input, voice messages, chatter, or casual conversation!
+            return {"ok": True}
 
         # 3. Handle Leave Button -> Step 1: Show Days Selection Buttons
         if is_leave_btn:
