@@ -145,6 +145,7 @@ class LoanRepaymentRequest(BaseModel):
 class SendReportRequest(BaseModel):
     mode: Optional[str] = "summary"
     employee_name: Optional[str] = ""
+    branch: Optional[str] = None
 
 class BulkEmployeeRequest(BaseModel):
     names: List[str] = []
@@ -885,7 +886,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
         print("record_leave_compensation error:", e)
         return {"success": False, "message": f"កំហុសក្នុងការកត់ត្រាការសងច្បាប់: {e}"}
 
-def generate_weekend_leave_report() -> dict:
+def generate_weekend_leave_report(branch: Optional[str] = None) -> dict:
     """
     Weekly Leave Report for staff to compensate (ធ្វើការសង) on Saturday & Sunday.
     STRICT: ONLY APPROVED LEAVES! Pending and rejected leaves are STRICTLY EXCLUDED.
@@ -896,8 +897,10 @@ def generate_weekend_leave_report() -> dict:
         now_cam = datetime.now(cambodia_tz)
         start_date = (now_cam - timedelta(days=7)).date()
         
-        # Only approved leaves must compensate on weekends! Pending and rejected are completely excluded!
-        leaves = list(leaves_collection.find({"status": "approved"}).sort("_id", -1))
+        leave_q = {"status": "approved"}
+        if branch:
+            leave_q["branch"] = branch
+        leaves = list(leaves_collection.find(leave_q).sort("_id", -1))
         
         emp_comp = {}  # ename -> {"total_days": float, "compensated_days": float, "remaining_days": float, "reasons": list, "dates": list, "count": int}
         raw_records = []
@@ -1230,7 +1233,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
         print("record_loan_repayment error:", e)
         return {"success": False, "message": f"កំហុសក្នុងការកត់ត្រាការកាត់/សងប្រាក់: {e}"}
 
-def generate_monthly_loan_report() -> dict:
+def generate_monthly_loan_report(branch: Optional[str] = None) -> dict:
     """
     Monthly Loan Report for month-end payroll deduction.
     STRICT: ONLY APPROVED LOANS. Pending and rejected loans are STRICTLY EXCLUDED.
@@ -1242,8 +1245,10 @@ def generate_monthly_loan_report() -> dict:
         cur_year = now_cam.year
         cur_month = now_cam.month
         
-        # STRICT: Only approved loans! Pending and rejected are completely excluded!
-        loans = list(loans_collection.find({"status": "approved"}).sort("_id", -1))
+        loan_q = {"status": "approved"}
+        if branch:
+            loan_q["branch"] = branch
+        loans = list(loans_collection.find(loan_q).sort("_id", -1))
         
         emp_loans = {}  # ename -> {"total_amount": int, "paid_amount": int, "remaining_amount": int, "count": int, "purposes": list, "dates": list}
         month_items = []
@@ -2173,41 +2178,49 @@ async def send_briefing_api():
     return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram រួចរាល់!"}
 
 @app.get("/api/reports/weekend-leave")
-async def api_get_weekend_leave_report():
-    return generate_weekend_leave_report()
+async def api_get_weekend_leave_report(branch: Optional[str] = None):
+    return generate_weekend_leave_report(branch=branch)
 
 @app.post("/api/reports/send-weekend-leave")
 async def api_send_weekend_leave_report(req: Optional[SendReportRequest] = None):
     mode = req.mode if req else "summary"
     emp_filter = (req.employee_name or "").strip() if req else ""
-    data = generate_weekend_leave_report()
+    branch = (req.branch or "").strip() if req else ""
+    data = generate_weekend_leave_report(branch=branch or None)
     if mode == "detailed":
         msg = format_telegram_weekend_leave_report_detailed(data, filter_employee=emp_filter)
     else:
         msg = format_telegram_weekend_leave_report(data)
-    send_telegram_notify(msg)
+    target_chat = get_chat_id_by_branch(branch) if branch else None
+    send_telegram_notify(msg, target_chat_id=target_chat)
     title = "របាយការណ៍ច្បាប់លម្អិត" if mode == "detailed" else "របាយការណ៍ច្បាប់សង្ខេប"
     if emp_filter:
         title += f" ({emp_filter})"
+    if branch:
+        title += f" [{branch}]"
     return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.get("/api/reports/monthly-loan")
-async def api_get_monthly_loan_report():
-    return generate_monthly_loan_report()
+async def api_get_monthly_loan_report(branch: Optional[str] = None):
+    return generate_monthly_loan_report(branch=branch)
 
 @app.post("/api/reports/send-monthly-loan")
 async def api_send_monthly_loan_report(req: Optional[SendReportRequest] = None):
     mode = req.mode if req else "summary"
     emp_filter = (req.employee_name or "").strip() if req else ""
-    data = generate_monthly_loan_report()
+    branch = (req.branch or "").strip() if req else ""
+    data = generate_monthly_loan_report(branch=branch or None)
     if mode == "detailed":
         msg = format_telegram_monthly_loan_report_detailed(data, filter_employee=emp_filter)
     else:
         msg = format_telegram_monthly_loan_report(data)
-    send_telegram_notify(msg)
+    target_chat = get_chat_id_by_branch(branch) if branch else None
+    send_telegram_notify(msg, target_chat_id=target_chat)
     title = "របាយការណ៍ខ្ចីប្រាក់លម្អិត" if mode == "detailed" else "របាយការណ៍ខ្ចីប្រាក់សង្ខេប"
     if emp_filter:
         title += f" ({emp_filter})"
+    if branch:
+        title += f" [{branch}]"
     return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
 
 @app.post("/api/reports/compensate-leave")
@@ -5138,6 +5151,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- Global Branch Switcher -->
+    <div class="flex items-center">
+      <div class="flex items-center gap-1.5 bg-blue-50/90 hover:bg-blue-100/80 border border-blue-200/90 rounded-xl px-2 sm:px-3 py-1 shadow-xs transition">
+        <span class="material-symbols-outlined text-blue-700 text-lg">store</span>
+        <select id="global-branch-select" onchange="onGlobalBranchChange(this.value)" class="bg-transparent text-xs font-bold text-blue-900 focus:outline-none cursor-pointer pr-1">
+          <option value="">🏢 គ្រប់សាខាទាំងអស់</option>
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">📍 ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">📍 ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+    </div>
+
     <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
       <!-- Install PWA Button (Hidden if already installed on this device) -->
       <button id="pwa-install-btn-top" onclick="handlePWAInstallClick()"
@@ -5719,6 +5744,85 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <p class="font-semibold text-gray-700">Python 3.11 / FastAPI</p>
             </div>
           </div>
+        </div>
+
+        <!-- Multi-Branch Management Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-6 py-4 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur border border-white/20 text-white flex items-center justify-center shadow">
+                <span class="material-symbols-outlined text-2xl">domain</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-white">គ្រប់គ្រងសាខា & Telegram Groups (Multi-Branch)</h3>
+                <p class="text-xs text-blue-200">បែងចែកគ្រុប Telegram និងទិន្នន័យដោយឡែកពីគ្នា ១០០% រវាងសាខា</p>
+              </div>
+            </div>
+            <span class="text-xs px-3 py-1 bg-emerald-500/20 text-emerald-300 font-semibold rounded-full border border-emerald-500/30 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span> ២ សាខាសកម្ម
+            </span>
+          </div>
+
+          <form onsubmit="saveBranchSettings(event)" class="p-6 space-y-5">
+            <div class="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200/60 text-xs text-blue-800 flex items-start gap-2.5 leading-relaxed">
+              <span class="material-symbols-outlined text-blue-600 text-base flex-shrink-0 mt-0.5">verified_user</span>
+              <div>
+                <b>គោលការណ៍រក្សាការសម្ងាត់សាខា (Strict Group Isolation)៖</b><br/>
+                • បុគ្គលិកសាខា <b>កំពង់ចាម</b> ឃើញ និងស្នើសុំតែក្នុង Telegram Group កំពង់ចាម ប៉ុណ្ណោះ។<br/>
+                • បុគ្គលិកសាខា <b>ត្បូងឃ្មុំ</b> ឃើញ និងស្នើសុំតែក្នុង Telegram Group ត្បូងឃ្មុំ ប៉ុណ្ណោះ មិនអាចលេចធ្លាយទៅវិញទៅមកឡើយ!<br/>
+                • លោកអ្នកគ្រាន់តែ Add Bot ចូលក្នុងគ្រុបត្បូងឃ្មុំ Bot នឹង Auto-Link ឬបញ្ចូល Chat ID ខាងក្រោម។
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Branch 1: Kampong Cham -->
+              <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span> សាខាទី ១ (កំពង់ចាម)
+                  </span>
+                  <span class="text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">ភ្ជាប់រួច</span>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1">ឈ្មោះសាខា</label>
+                  <input id="branch-name-kc" type="text" value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម" required
+                    class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-400 bg-white" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1">Telegram Group Chat ID</label>
+                  <input id="branch-chat-kc" type="text" value="-1003956005362" required
+                    class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-400 bg-white" />
+                </div>
+              </div>
+
+              <!-- Branch 2: Tboung Khmum -->
+              <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span> សាខាទី ២ (ត្បូងឃ្មុំ)
+                  </span>
+                  <span id="branch-tk-status-badge" class="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-semibold border border-indigo-200">សាខាថ្មី</span>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1">ឈ្មោះសាខា</label>
+                  <input id="branch-name-tk" type="text" value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ" required
+                    class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-400 bg-white" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1">Telegram Group Chat ID</label>
+                  <input id="branch-chat-tk" type="text" placeholder="ឧ. -100xxxxxxxxxx (ឬ Auto-Link ពេល Add Bot)"
+                    class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-400 bg-white" />
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+              <button type="submit" id="btn-save-branches"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold shadow transition">
+                <span class="material-symbols-outlined text-base">save</span> រក្សាទុកការកំណត់សាខា
+              </button>
+            </div>
+          </form>
         </div>
 
         <!-- Database Backup Card -->
@@ -6520,6 +6624,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </select>
       </div>
       <div>
+        <label class="block text-sm text-gray-600 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="emp-branch" required
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white appearance-none">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+      <div>
         <label class="block text-sm text-gray-600 mb-1">លេខទូរស័ព្ទ ១</label>
         <input id="emp-phone" type="tel" placeholder="ទូរស័ព្ទទី ១..."
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
@@ -6804,6 +6916,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="inc-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+        <input id="inc-form-ref" type="hidden" value="" />
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
         <div>
           <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
@@ -6937,6 +7058,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </button>
         </div>
         <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="exp-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
         </select>
       </div>
 
@@ -7733,20 +7862,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== LOAD EMPLOYEES =====
+  let cachedEmployees = [];
   async function loadEmployees() {
     try {
-      const r = await fetch('/api/employees');
+      const url = currentActiveBranch ? `/api/employees?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/employees';
+      const r = await fetch(url);
       const data = await r.json();
+      cachedEmployees = Array.isArray(data) ? data : [];
       const grid = document.getElementById('employees-grid');
-      if (!data.length) {
+      if (!cachedEmployees.length) {
         grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400">គ្មានបុគ្គលិក — ចុច "Sync ពី Telegram" ឬ "បន្ថែម" ដើម្បីចាប់ផ្តើម</div>'; return;
       }
-      grid.innerHTML = data.map((emp, i) => {
+      grid.innerHTML = cachedEmployees.map((emp, i) => {
         const color = avatarColors[i % avatarColors.length];
         const tgBadge = emp.telegram_username ? 
           `<a href="https://t.me/${emp.telegram_username}" target="_blank" class="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full mt-1 transition">
              <span>✈️ @${emp.telegram_username}</span>
            </a>` : '';
+        const branchBadge = emp.branch ? 
+          `<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full mt-1">
+             🏢 ${emp.branch}
+           </span>` : '';
         const phoneHtml = emp.phone ? 
           `<p class="text-xs text-gray-600 mt-1 flex items-center justify-center gap-1 font-mono font-medium">
              <span class="material-symbols-outlined text-sm text-green-600">call</span> ${emp.phone}
@@ -7762,13 +7898,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="w-full">
             <p class="font-semibold text-gray-800 text-sm truncate" title="${emp.name}">${emp.name}</p>
             <p class="text-xs text-blue-600 font-medium">${emp.position || 'បុគ្គលិក'}</p>
-            ${tgBadge}
+            <div class="flex flex-wrap items-center justify-center gap-1 mt-1">
+              ${tgBadge}
+              ${branchBadge}
+            </div>
             ${phoneHtml}
             ${emp.phone2 ? `<p class="text-xs text-gray-400 flex items-center justify-center gap-1 mt-0.5"><span class="material-symbols-outlined text-sm">call</span>${emp.phone2}</p>` : ''}
           </div>
           <div class="flex items-center gap-3 mt-2 pt-2 border-t border-slate-100 w-full justify-center">
-            <button onclick="editEmployee('${emp._id}', '${(emp.name || '').replace(/'/g, \"\\'\")}', '${emp.phone || ''}')"
-              class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition" title="កែប្រែឈ្មោះ / លេខទូរស័ព្ទ">
+            <button onclick="editEmployee('${emp._id}')"
+              class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition" title="កែប្រែឈ្មោះ / លេខទូរស័ព្ទ / សាខា">
               <span class="material-symbols-outlined text-sm">edit</span> កែប្រែ
             </button>
             <span class="text-gray-200">|</span>
@@ -7811,15 +7950,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function editEmployee(id, name, currentPhone, currentBranch) {
-    const newName = prompt(`កែប្រែឈ្មោះបុគ្គលិកផ្លូវការ៖`, name || '');
+  async function editEmployee(id) {
+    const emp = (cachedEmployees || []).find(e => e._id === id) || {};
+    const name = emp.name || '';
+    const currentPhone = emp.phone || '';
+    const currentBranch = emp.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+
+    const newName = prompt(`កែប្រែឈ្មោះបុគ្គលិកផ្លូវការ៖`, name);
     if (newName === null) return;
     const cleanName = newName.trim();
     if (!cleanName) {
       showToast('ឈ្មោះបុគ្គលិកមិនអាចទទេបានទេ!', 'error');
       return;
     }
-    const newPhone = prompt(`កែប្រែលេខទូរស័ព្ទសម្រាប់ «${cleanName}»៖`, currentPhone || '');
+    const newPhone = prompt(`កែប្រែលេខទូរស័ព្ទសម្រាប់ «${cleanName}»៖`, currentPhone);
     if (newPhone === null) return;
 
     const branchChoice = prompt(`ជ្រើសរើសសាខាសម្រាប់ «${cleanName}»៖\n1 = ក្រុមហ៊ុនបូមលូ កំពង់ចាម\n2 = ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ\n(បញ្ចូលលេខ 1 ឬ 2):`, currentBranch === 'ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ' ? '2' : '1');
@@ -7843,8 +7987,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function editEmployeePhone(id, name, currentPhone) {
-    return editEmployee(id, name, currentPhone);
+  async function editEmployeePhone(id) {
+    return editEmployee(id);
   }
 
   async function deleteEmployee(id) {
@@ -8482,7 +8626,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
     try {
-      const res = await fetch('/api/reports/weekend-leave');
+      const url = currentActiveBranch ? `/api/reports/weekend-leave?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/reports/weekend-leave';
+      const res = await fetch(url);
       const data = await res.json();
       leaveReportData = data;
       document.getElementById('rep-leave-staff-count').textContent = (data.total_staff_count || 0) + ' នាក់';
@@ -8525,7 +8670,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const res = await fetch('/api/reports/send-weekend-leave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: mode, employee_name: selectedEmp })
+        body: JSON.stringify({ mode: mode, employee_name: selectedEmp, branch: currentActiveBranch })
       });
       const d = await res.json();
       if (res.ok) {
@@ -8755,7 +8900,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
     try {
-      const res = await fetch('/api/reports/monthly-loan');
+      const url = currentActiveBranch ? `/api/reports/monthly-loan?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/reports/monthly-loan';
+      const res = await fetch(url);
       const data = await res.json();
       loanReportData = data;
       document.getElementById('rep-loan-total-amt').textContent = (data.total_amount_khr || 0).toLocaleString() + ' ៛';
@@ -8798,7 +8944,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const res = await fetch('/api/reports/send-monthly-loan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: mode, employee_name: selectedEmp })
+        body: JSON.stringify({ mode: mode, employee_name: selectedEmp, branch: currentActiveBranch })
       });
       const d = await res.json();
       if (res.ok) {
