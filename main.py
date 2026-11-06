@@ -2135,7 +2135,53 @@ async def api_save_branches(payload: dict):
             "chat_id": c_id
         })
     settings_collection.update_one({"_id": "app_settings"}, {"$set": {"branches": normalized}}, upsert=True)
-    return {"message": "បានរក្សាទុកព័ត៌មានសាខាជោគជ័យ!", "branches": normalized}
+    
+    # Auto-send activation message with persistent keyboard buttons to each connected branch
+    for b in normalized:
+        c_id = b.get("chat_id")
+        b_name = b.get("name", "សាខា")
+        if c_id:
+            try:
+                send_telegram_notify(
+                    f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_name} ទាំងអស់!</b>\n\n"
+                    f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+                    f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+                    f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+                    f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន",
+                    target_chat_id=c_id,
+                    fallback_to_default=False
+                )
+            except Exception as ex:
+                print(f"Failed to push buttons to {c_id}: {ex}")
+
+    return {"message": "បានរក្សាទុកព័ត៌មានសាខា និងបានផ្ញើប៊ូតុងទៅ Telegram ជោគជ័យ!", "branches": normalized}
+
+@app.post("/api/branches/{branch_id}/send-buttons")
+async def api_send_buttons_to_branch(branch_id: str):
+    branches = get_all_branches()
+    target_branch = None
+    for b in branches:
+        if b.get("id") == branch_id or b.get("name") == branch_id:
+            target_branch = b
+            break
+    if not target_branch:
+        raise HTTPException(status_code=404, detail="រកមិនឃើញសាខានេះទេ!")
+    c_id = str(target_branch.get("telegram_chat_id") or target_branch.get("chat_id") or "").strip()
+    if not c_id:
+        raise HTTPException(status_code=400, detail=f"សាខា «{target_branch.get('name')}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ!")
+    b_name = target_branch.get("name", "សាខា")
+    res = send_telegram_notify(
+        f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_name} ទាំងអស់!</b>\n\n"
+        f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+        f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+        f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន",
+        target_chat_id=c_id,
+        fallback_to_default=False
+    )
+    if not res:
+        raise HTTPException(status_code=500, detail="មិនអាចផ្ញើសារទៅកាន់ Telegram បានទេ! សូមពិនិត្យមើល Bot Token និង Chat ID។")
+    return {"message": f"បានផ្ញើប៊ូតុងសុំច្បាប់ និងខ្ចីប្រាក់ទៅកាន់គ្រុប [{b_name}] ជោគជ័យ!"}
 
 @app.post("/api/test-gemini")
 async def test_gemini(payload: GeminiTestRequest):
@@ -4340,7 +4386,20 @@ async def telegram_webhook(req: Request):
             c_update = update.get("chat_member") or update.get("my_chat_member")
             if c_update:
                 m_user = c_update.get("new_chat_member", {}).get("user", {}) or c_update.get("from", {})
-                if m_user and not m_user.get("is_bot"):
+                new_status = c_update.get("new_chat_member", {}).get("status", "")
+                c_chat = c_update.get("chat", {})
+                c_chat_id = str(c_chat.get("id") or "").strip()
+                if c_chat_id.startswith("-") and (m_user.get("is_bot") or new_status in ["member", "administrator"]):
+                    b_name = get_branch_by_chat_id(c_chat_id)
+                    welcome_bot = (
+                        f"👋 <b>សូមស្វាគមន៍មកកាន់គ្រុប {b_name}!</b>\n\n"
+                        f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+                        f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+                        f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+                        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+                    )
+                    send_telegram_notify(welcome_bot, target_chat_id=c_chat_id)
+                elif m_user and not m_user.get("is_bot"):
                     sync_or_update_employee_from_telegram(m_user)
             return {"ok": True}
 
@@ -4366,11 +4425,21 @@ async def telegram_webhook(req: Request):
         if new_members:
             for m in new_members:
                 if m.get("is_bot"):
+                    b_name = get_branch_by_chat_id(chat_id_str)
+                    welcome_bot = (
+                        f"👋 <b>សូមស្វាគមន៍មកកាន់គ្រុប {b_name}!</b>\n\n"
+                        f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+                        f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+                        f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+                        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+                    )
+                    send_telegram_notify(welcome_bot, target_chat_id=chat_id_str)
                     continue
                 sync_or_update_employee_from_telegram(m)
                 m_name = (m.get("first_name", "") + " " + m.get("last_name", "")).strip() or m.get("username", "បុគ្គលិក")
+                b_name = get_branch_by_chat_id(chat_id_str)
                 welcome_msg = (
-                    f"👋 <b>សូមស្វាគមន៍ {m_name} មកកាន់គ្រុប សុំច្បាប់ AC BOMLU!</b>\n\n"
+                    f"👋 <b>សូមស្វាគមន៍ {m_name} មកកាន់គ្រុប {b_name}!</b>\n\n"
                     f"👇 <b>ក្ដារចុចប៊ូតុងត្រូវបានភ្ជាប់ជូនអ្នកស្វ័យប្រវត្តិ៖</b>\n"
                     f"សូមមើលប៊ូតុងខាងក្រោម៖ ចុចលើ <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
                 )
@@ -4419,7 +4488,20 @@ async def telegram_webhook(req: Request):
         clean_btn_text = text.replace(" ", "").replace("📝", "").replace("💰", "").strip()
         is_leave_btn = clean_btn_text in ["ស្នើសុំច្បាប់", "សុំច្បាប់", "ស្នើសុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
         is_loan_btn = clean_btn_text in ["ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
-        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+        is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone", "/buttons", "/menu", "/keyboard", "/btn"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
+
+        # Re-attach Keyboard in Group Chats or DM when typing /buttons, /menu, /help, /start, etc.
+        if clean_cmd in ["/buttons", "/menu", "/keyboard", "/btn", "/options"] or (clean_cmd in ["/start", "/help"] and not is_private_chat) or text.lower() in ["ប៊ូតុង", "menu", "buttons"]:
+            b_name = get_branch_by_chat_id(chat_id_str)
+            welcome_group = (
+                f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_name} ទាំងអស់!</b>\n\n"
+                f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+                f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+                f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+                f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+            )
+            send_telegram_notify(welcome_group, target_chat_id=chat_id_str)
+            return {"ok": True}
 
         # Private Chat /start or /share_phone prompt with Contact Request Keyboard Button
         if is_private_chat and (text.startswith("/start") or clean_cmd in ["/share_phone"]):
@@ -5904,6 +5986,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                   <input id="branch-chat-kc" type="text" value="-1003956005362" required
                     class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-400 bg-white" />
                 </div>
+                <div class="pt-1">
+                  <button type="button" onclick="sendBranchButtons('kampong_cham')"
+                    class="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    <span class="material-symbols-outlined text-base">send_to_mobile</span> ផ្ញើប៊ូតុងទៅ Telegram កំពង់ចាម
+                  </button>
+                </div>
               </div>
 
               <!-- Branch 2: Tboung Khmum -->
@@ -5923,6 +6011,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Telegram Group Chat ID</label>
                   <input id="branch-chat-tk" type="text" placeholder="ឧ. -100xxxxxxxxxx (ឬ Auto-Link ពេល Add Bot)"
                     class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-400 bg-white" />
+                </div>
+                <div class="pt-1">
+                  <button type="button" onclick="sendBranchButtons('tboung_khmum')"
+                    class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    <span class="material-symbols-outlined text-base">send_to_mobile</span> ផ្ញើប៊ូតុងទៅ Telegram ត្បូងឃ្មុំ
+                  </button>
                 </div>
               </div>
             </div>
@@ -8403,6 +8497,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       showToast('Error: ' + err, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.classList.remove('opacity-70'); }
+    }
+  }
+
+  async function sendBranchButtons(branchId) {
+    try {
+      showToast('កំពុងផ្ញើប៊ូតុងទៅ Telegram...', 'info');
+      const r = await fetch(`/api/branches/${branchId}/send-buttons`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) {
+        showToast(data.detail || 'មានបញ្ហាក្នុងការផ្ញើប៊ូតុង', 'error');
+        return;
+      }
+      showToast(data.message || 'បានផ្ញើប៊ូតុងជោគជ័យ!');
+    } catch(err) {
+      showToast('Error: ' + err, 'error');
     }
   }
 
