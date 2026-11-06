@@ -4126,8 +4126,9 @@ async def telegram_webhook(req: Request):
         is_mentioned = ("@" in text and bot_username.lower() in text.lower()) or is_reply_to_bot
         is_hr_topic = any(w in text for w in ["សុំច្បាប់", "សុំឈប់", "ឈប់សម្រាក", "leave", "ខ្ចីប្រាក់", "បុរេប្រទាន", "loan", "វត្តមាន"])
 
-        is_leave_btn = text in ["📝 ស្នើសុំច្បាប់", "ស្នើសុំច្បាប់", "📝 សុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
-        is_loan_btn = text in ["💰 ស្នើខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "💰 សុំខ្ចីប្រាក់", "សុំខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
+        clean_btn_text = text.replace(" ", "").replace("📝", "").replace("💰", "").strip()
+        is_leave_btn = clean_btn_text in ["ស្នើសុំច្បាប់", "សុំច្បាប់", "ស្នើសុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
+        is_loan_btn = clean_btn_text in ["ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
         is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Private Chat /start or /share_phone prompt with Contact Request Keyboard Button
@@ -4341,9 +4342,10 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(full_reply, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        # Feature 2: Smart Group Filtering (Quiet Bot in Groups for normal casual chatter)
+        # Feature 2: Strict Group Policy (In Group Chats, Bot ONLY acts on the 2 Keyboard Buttons, Active Flow, or Slash Commands)
         if not is_private_chat:
-            if not is_system_cmd and not active_flow and not is_mentioned and not is_hr_topic and not has_voice:
+            is_slash_cmd = text.startswith("/") and is_system_cmd
+            if not is_leave_btn and not is_loan_btn and not active_flow and not is_slash_cmd:
                 return {"ok": True}
 
         # 2. Check if user is in an active flow (waiting for Reason or Purpose)!
