@@ -461,15 +461,8 @@ def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, posi
         
         if emp:
             update_fields = {}
-            old_name = emp.get("name")
-            # Update name if changed on Telegram, and cascade to leave/loan records
-            if old_name and old_name != full_name:
-                update_fields["name"] = full_name
-                try:
-                    leaves_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": full_name}})
-                    loans_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": full_name}})
-                except Exception as ex:
-                    print("Error cascading name update:", ex)
+            # NOTE: Never overwrite official company name (emp['name']) with personal Telegram nickname!
+            # Official employee name is locked and managed only by admin.
             if username and emp.get("telegram_username") != username:
                 update_fields["telegram_username"] = username
             if not emp.get("telegram_user_id"):
@@ -1791,9 +1784,15 @@ async def delete_employee(emp_id: str):
 
 @app.put("/api/employee/{emp_id}")
 async def update_employee(emp_id: str, payload: dict):
-    update_data = {k: v for k, v in payload.items() if k in ["name", "position", "phone", "phone2"]}
+    update_data = {k: v for k, v in payload.items() if k in ["name", "position", "phone", "phone2", "telegram_user_id", "telegram_username"]}
     if update_data:
+        old_emp = employees_collection.find_one({"_id": ObjectId(emp_id)})
+        old_name = old_emp.get("name") if old_emp else None
         employees_collection.update_one({"_id": ObjectId(emp_id)}, {"$set": update_data})
+        new_name = update_data.get("name")
+        if old_name and new_name and old_name != new_name:
+            leaves_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": new_name}})
+            loans_collection.update_many({"employee_name": old_name}, {"$set": {"employee_name": new_name}})
     return {"message": "Updated"}
 
 @app.post("/api/employees/sync-telegram")
@@ -3502,15 +3501,21 @@ async def telegram_webhook(req: Request):
             cq_id = callback_query.get("id")
             cq_data = callback_query.get("data", "")
             cq_user = callback_query.get("from", {})
+            cq_user_id = str(cq_user.get("id") or "")
             if cq_user and not cq_user.get("is_bot"):
                 sync_or_update_employee_from_telegram(cq_user)
-            cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
+            
+            # Resolve official company name from database!
+            emp_rec = employees_collection.find_one({"telegram_user_id": cq_user_id}) if cq_user_id else None
+            if emp_rec and emp_rec.get("name"):
+                cq_name = emp_rec.get("name")
+            else:
+                cq_name = (cq_user.get("first_name", "") + " " + cq_user.get("last_name", "")).strip() or cq_user.get("username", "បុគ្គលិក")
             cq_msg = callback_query.get("message", {})
             cq_chat = cq_msg.get("chat", {})
             cq_chat_id = str(cq_chat.get("id") or "")
             cq_chat_type = cq_chat.get("type", "group")
             is_cq_private = (cq_chat_type == "private")
-            cq_user_id = str(cq_user.get("id") or "")
             
             # Callback for Connecting/Registering staff account
             if cq_data.startswith("connect_me"):
@@ -4066,10 +4071,16 @@ async def telegram_webhook(req: Request):
             return {"ok": True}
 
         from_user = message.get("from", {})
+        user_id_str = str(from_user.get("id"))
         if from_user and not from_user.get("is_bot"):
             sync_or_update_employee_from_telegram(from_user)
-        sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
-        user_id_str = str(from_user.get("id"))
+        
+        # Resolve official company name from database!
+        emp_match = employees_collection.find_one({"telegram_user_id": user_id_str}) if user_id_str else None
+        if emp_match and emp_match.get("name"):
+            sender_name = emp_match.get("name")
+        else:
+            sender_name = (from_user.get("first_name", "") + " " + from_user.get("last_name", "")).strip() or from_user.get("username", "បុគ្គលិក")
         
         chat = message.get("chat", {})
         chat_id_str = str(chat.get("id"))
@@ -8138,9 +8149,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${emp.phone2 ? `<p class="text-xs text-gray-400 flex items-center justify-center gap-1 mt-0.5"><span class="material-symbols-outlined text-sm">call</span>${emp.phone2}</p>` : ''}
           </div>
           <div class="flex items-center gap-3 mt-2 pt-2 border-t border-slate-100 w-full justify-center">
-            <button onclick="editEmployeePhone('${emp._id}', '${emp.name}', '${emp.phone || ''}')"
-              class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition" title="កែប្រែលេខទូរស័ព្ទ">
-              <span class="material-symbols-outlined text-sm">edit</span> លេខ
+            <button onclick="editEmployee('${emp._id}', '${(emp.name || '').replace(/'/g, \"\\'\")}', '${emp.phone || ''}')"
+              class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition" title="កែប្រែឈ្មោះ / លេខទូរស័ព្ទ">
+              <span class="material-symbols-outlined text-sm">edit</span> កែប្រែ
             </button>
             <span class="text-gray-200">|</span>
             <button onclick="deleteEmployee('${emp._id}')"
@@ -8182,17 +8193,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  async function editEmployeePhone(id, name, currentPhone) {
-    const newPhone = prompt(`បញ្ចូលលេខទូរស័ព្ទថ្មីសម្រាប់ «${name}»៖`, currentPhone || '');
+  async function editEmployee(id, name, currentPhone) {
+    const newName = prompt(`កែប្រែឈ្មោះបុគ្គលិកផ្លូវការ៖`, name || '');
+    if (newName === null) return;
+    const cleanName = newName.trim();
+    if (!cleanName) {
+      showToast('ឈ្មោះបុគ្គលិកមិនអាចទទេបានទេ!', 'error');
+      return;
+    }
+    const newPhone = prompt(`កែប្រែលេខទូរស័ព្ទសម្រាប់ «${cleanName}»៖`, currentPhone || '');
     if (newPhone === null) return;
     try {
       const r = await fetch(`/api/employee/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: newPhone.trim() })
+        body: JSON.stringify({ name: cleanName, phone: newPhone.trim() })
       });
       if (r.ok) {
-        showToast('បានអាប់ដេតលេខទូរស័ព្ទជោគជ័យ!');
+        showToast('បានកែប្រែព័ត៌មានបុគ្គលិកជោគជ័យ!');
         await loadEmployees();
       } else {
         showToast('កំហុសក្នុងការកែប្រែ!', 'error');
@@ -8200,6 +8218,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     } catch(e) {
       showToast('Error: ' + e, 'error');
     }
+  }
+
+  async function editEmployeePhone(id, name, currentPhone) {
+    return editEmployee(id, name, currentPhone);
   }
 
   async function deleteEmployee(id) {
