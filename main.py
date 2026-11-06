@@ -4650,6 +4650,20 @@ async def startup_event():
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=5) as r:
                 print("Webhook Auto-Registered:", r.read().decode())
+            
+            # Ensure all Telegram bot commands are completely hidden across all scopes (Button-Only Policy)
+            for sc in [None, {"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
+                try:
+                    payload = json.dumps({"scope": sc}).encode("utf-8") if sc else b"{}"
+                    del_req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{token}/deleteMyCommands",
+                        data=payload,
+                        headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+                    )
+                    with urllib.request.urlopen(del_req, timeout=5) as dr:
+                        pass
+                except Exception:
+                    pass
     except Exception as e:
         print("Startup webhook error:", e)
 
