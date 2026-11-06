@@ -1453,6 +1453,22 @@ async def morning_briefing_scheduler():
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(morning_briefing_scheduler())
+    # Ensure database indexes for optimal performance
+    try:
+        employees_collection.create_index([("telegram_user_id", 1)], background=True)
+        employees_collection.create_index([("name", 1)], background=True)
+        loans_collection.create_index([("employee_name", 1)], background=True)
+        loans_collection.create_index([("status", 1)], background=True)
+        loans_collection.create_index([("date", -1)], background=True)
+        leaves_collection.create_index([("employee_name", 1)], background=True)
+        leaves_collection.create_index([("status", 1)], background=True)
+        leaves_collection.create_index([("date", -1)], background=True)
+        finance_transactions_collection.create_index([("date", -1)], background=True)
+        finance_transactions_collection.create_index([("type", 1)], background=True)
+        finance_transactions_collection.create_index([("catalog_id", 1)], background=True)
+        user_flows_collection.create_index([("user_id", 1)], background=True)
+    except Exception as ie:
+        print("Startup index check error:", ie)
     # Immediately check morning briefing on server startup / wakeup!
     try:
         check_and_send_scheduled_morning_briefing()
@@ -1857,6 +1873,31 @@ async def api_request_phone_telegram():
     )
     send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=group_chat_id)
     return {"message": "បានផ្ញើសារស្នើសុំលេខទូរស័ព្ទទៅកាន់គ្រុប Telegram រួចរាល់!"}
+
+@app.get("/api/backup/export")
+async def export_database_backup():
+    """Returns a full JSON backup of all company collections."""
+    cambodia_tz = timezone(timedelta(hours=7))
+    timestamp = datetime.now(cambodia_tz).strftime("%Y%m%d_%H%M%S")
+    
+    backup_data = {
+        "version": "2.0",
+        "system": "AC BOMLU Staff Control & Finance",
+        "exported_at": datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M:%S"),
+        "employees": [fix_id(d) for d in employees_collection.find()],
+        "loans": [fix_id(d) for d in loans_collection.find()],
+        "leaves": [fix_id(d) for d in leaves_collection.find()],
+        "finance_transactions": [fix_id(d) for d in finance_transactions_collection.find()],
+        "finance_catalogs": [fix_id(d) for d in finance_catalogs_collection.find()],
+        "settings": [fix_id(d) for d in settings_collection.find({"_id": "app_settings"})]
+    }
+    
+    filename = f"acbomlu_backup_{timestamp}.json"
+    return Response(
+        content=json.dumps(backup_data, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 # ===== Settings & Telegram Routes =====
 def mask_token(token: str) -> str:
@@ -5713,6 +5754,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <p class="text-gray-400 mb-1">Python Runtime</p>
               <p class="font-semibold text-gray-700">Python 3.11 / FastAPI</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Database Backup Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="px-6 py-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur border border-white/20 text-white flex items-center justify-center shadow">
+                <span class="material-symbols-outlined text-2xl">cloud_download</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-white">ទាញយកទិន្នន័យបម្រុងទុក (Full Database Backup)</h3>
+                <p class="text-xs text-emerald-100">រក្សាទុកទិន្នន័យបុគ្គលិក កម្ចី ច្បាប់ និងប្រតិបត្តិការហិរញ្ញវត្ថុទាំងអស់ចូលកុំព្យូទ័រ</p>
+              </div>
+            </div>
+          </div>
+          <div class="p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+            <div>
+              <p class="text-xs text-gray-600 font-medium">ចុចប៊ូតុងខាងស្តាំដើម្បីទាញយកឯកសារ JSON បម្រុងទុកភ្លាមៗ ធានាសុវត្ថិភាពទិន្នន័យ ១០០%</p>
+              <p class="text-[11px] text-gray-400 mt-0.5">រួមបញ្ចូល៖ បុគ្គលិកទាំងអស់, ប្រវត្តិកម្ចី, ច្បាប់ឈប់សម្រាក, ចំណូល-ចំណាយ និងការកំណត់</p>
+            </div>
+            <a href="/api/backup/export" target="_blank"
+              class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-2 whitespace-nowrap">
+              <span class="material-symbols-outlined text-base">download</span> ទាញយក Backup (JSON)
+            </a>
           </div>
         </div>
 
