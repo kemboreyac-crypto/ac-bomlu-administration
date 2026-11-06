@@ -401,7 +401,9 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
                     [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
                 ],
                 "resize_keyboard": True,
-                "is_persistent": True
+                "is_persistent": True,
+                "one_time_keyboard": False,
+                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើខ្ចីប្រាក់]..."
             }
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -492,6 +494,21 @@ def edit_telegram_message(chat_id: str, message_id: int, new_text: str, reply_ma
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
         print(f"Error editing telegram message: {e}")
+
+def pin_telegram_message(chat_id: str, message_id: int):
+    try:
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token or not chat_id or not message_id:
+            return False
+        url = f"https://api.telegram.org/bot{token}/pinChatMessage"
+        payload = {"chat_id": chat_id, "message_id": message_id, "disable_notification": True}
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return True
+    except Exception as e:
+        print(f"Error pinning telegram message: {e}")
+        return False
 
 def delete_telegram_message(chat_id: str, message_id: int):
     """
@@ -2142,7 +2159,7 @@ async def api_save_branches(payload: dict):
         b_name = b.get("name", "សាខា")
         if c_id:
             try:
-                send_telegram_notify(
+                res_notify = send_telegram_notify(
                     f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_name} ទាំងអស់!</b>\n\n"
                     f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
                     f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
@@ -2151,6 +2168,10 @@ async def api_save_branches(payload: dict):
                     target_chat_id=c_id,
                     fallback_to_default=False
                 )
+                if res_notify and isinstance(res_notify, dict) and "result" in res_notify:
+                    m_id = res_notify["result"].get("message_id")
+                    if m_id:
+                        pin_telegram_message(c_id, m_id)
             except Exception as ex:
                 print(f"Failed to push buttons to {c_id}: {ex}")
 
@@ -2181,7 +2202,14 @@ async def api_send_buttons_to_branch(branch_id: str):
     )
     if not res:
         raise HTTPException(status_code=500, detail="មិនអាចផ្ញើសារទៅកាន់ Telegram បានទេ! សូមពិនិត្យមើល Bot Token និង Chat ID។")
-    return {"message": f"បានផ្ញើប៊ូតុងសុំច្បាប់ និងខ្ចីប្រាក់ទៅកាន់គ្រុប [{b_name}] ជោគជ័យ!"}
+    
+    # Pin message at top of group for permanent visibility
+    if isinstance(res, dict) and "result" in res:
+        m_id = res["result"].get("message_id")
+        if m_id:
+            pin_telegram_message(c_id, m_id)
+
+    return {"message": f"បានផ្ញើប៊ូតុងសុំច្បាប់ និងខ្ចីប្រាក់ (រួមទាំង Pin លើគ្រុប) ទៅកាន់ [{b_name}] ជោគជ័យ!"}
 
 @app.post("/api/test-gemini")
 async def test_gemini(payload: GeminiTestRequest):
@@ -4468,7 +4496,10 @@ async def telegram_webhook(req: Request):
                 "keyboard": [
                     [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
                 ],
-                "resize_keyboard": True
+                "resize_keyboard": True,
+                "is_persistent": True,
+                "one_time_keyboard": False,
+                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើខ្ចីប្រាក់]..."
             }
             send_telegram_notify(conf_msg, reply_markup=done_kb, target_chat_id=chat_id_str)
             return {"ok": True}
@@ -4500,7 +4531,11 @@ async def telegram_webhook(req: Request):
                 f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
                 f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
             )
-            send_telegram_notify(welcome_group, target_chat_id=chat_id_str)
+            sent_wg = send_telegram_notify(welcome_group, target_chat_id=chat_id_str)
+            if isinstance(sent_wg, dict) and "result" in sent_wg and chat_id_str.startswith("-"):
+                m_id = sent_wg["result"].get("message_id")
+                if m_id:
+                    pin_telegram_message(chat_id_str, m_id)
             return {"ok": True}
 
         # Private Chat /start or /share_phone prompt with Contact Request Keyboard Button
@@ -4510,7 +4545,9 @@ async def telegram_webhook(req: Request):
                     [{"text": "📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone)", "request_contact": True}],
                     [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
                 ],
-                "resize_keyboard": True
+                "resize_keyboard": True,
+                "is_persistent": True,
+                "one_time_keyboard": False
             }
             welcome_private = (
                 f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
