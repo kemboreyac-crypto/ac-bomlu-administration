@@ -2842,7 +2842,7 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
           <button type="button" onclick="setReason('🤒 ឈឺ / មិនស្រួលខ្លួន')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🤒 ឈឺ</button>
           <button type="button" onclick="setReason('🏠 រវល់ធុរៈគ្រួសារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏠 រវល់ផ្ទះ</button>
           <button type="button" onclick="setReason('🚗 ទៅស្រុកកំណើត')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🚗 ទៅស្រុក</button>
-          <button type="button" onclick="setReason('💍 ចូលរួមពិធីមង្គលការ/បុណ្យ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">💍 ទៅការ/បុណ្យ</button>
+          <button type="button" onclick="setReason('🎉 ជាប់កម្មវិធីផ្សេងៗ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🎉 ជាប់កម្មវិធី</button>
         </div>
         <textarea id="leave-reason" rows="3" required placeholder="វាយបញ្ជាក់មូលហេតុនៅទីនេះ..."
           class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500"></textarea>
@@ -3013,10 +3013,10 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
       <div>
         <label class="block text-xs font-medium text-slate-300 mb-1.5">គោលបំណង ឬមូលហេតុនៃការខ្ចី</label>
         <div class="flex flex-wrap gap-1.5 mb-2">
-          <button type="button" onclick="setPurpose('🏠 បង់ថ្លៃផ្ទះ / បន្ទប់')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏠 បង់ថ្លៃផ្ទះ</button>
-          <button type="button" onclick="setPurpose('💊 ទិញថ្នាំពេទ្យ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">💊 ថ្នាំពេទ្យ</button>
-          <button type="button" onclick="setPurpose('⚡ ថ្លៃទឹកភ្លើង / ម្ហូបអាហារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">⚡ ទឹកភ្លើង</button>
-          <button type="button" onclick="setPurpose('👨‍👩‍👧 ផ្ញើជូនគ្រួសារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">👨‍👩‍👧 ផ្ញើគ្រួសារ</button>
+          <button type="button" onclick="setPurpose('🏥 ព្យាបាលជំងឺ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏥 ព្យាបាលជំងឺ</button>
+          <button type="button" onclick="setPurpose('🏦 បង់ធនាគារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🏦 បង់ធនាគារ</button>
+          <button type="button" onclick="setPurpose('🍲 ទិញម្ហូបអាហារ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">🍲 ម្ហូបអាហារ</button>
+          <button type="button" onclick="setPurpose('✨ តម្រូវការផ្សេងៗ')" class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">✨ ផ្សេងៗ</button>
         </div>
         <textarea id="loan-purpose" rows="3" required placeholder="វាយបញ្ជាក់គោលបំណងនៅទីនេះ..."
           class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-emerald-500"></textarea>
@@ -3132,14 +3132,19 @@ REASON_MAP = {
     "sick": "🤒 ឈឺ / មិនស្រួលខ្លួន",
     "family": "🏠 រវល់ធុរៈគ្រួសារ",
     "hometown": "🚗 ទៅស្រុកកំណើត",
-    "ceremony": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ",
+    "event": "🎉 ជាប់កម្មវិធីផ្សេងៗ",
+    "ceremony": "🎉 ជាប់កម្មវិធីផ្សេងៗ",
 }
 
 PURPOSE_MAP = {
-    "rent": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់",
-    "med": "💊 ទិញថ្នាំពេទ្យ",
-    "util": "⚡ ថ្លៃទឹកភ្លើង",
-    "family": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ",
+    "treatment": "🏥 ព្យាបាលជំងឺ",
+    "bank": "🏦 បង់ធនាគារ",
+    "food": "🍲 ទិញម្ហូបអាហារ",
+    "other": "✨ តម្រូវការផ្សេងៗ",
+    "med": "🏥 ព្យាបាលជំងឺ",
+    "rent": "🏦 បង់ធនាគារ",
+    "family": "🍲 ទិញម្ហូបអាហារ",
+    "util": "✨ តម្រូវការផ្សេងៗ",
 }
 
 def download_telegram_voice_bytes(file_id: str, token: str) -> Optional[bytes]:
@@ -3578,7 +3583,7 @@ async def telegram_webhook(req: Request):
                         ],
                         [
                             {"text": "🚗 ទៅស្រុកកំណើត", "callback_data": f"leave_rsn:hometown:{days}:{cq_user_id}"},
-                            {"text": "💍 ចូលរួមពិធីមង្គលការ/បុណ្យ", "callback_data": f"leave_rsn:ceremony:{days}:{cq_user_id}"}
+                            {"text": "🎉 ជាប់កម្មវិធីផ្សេងៗ", "callback_data": f"leave_rsn:event:{days}:{cq_user_id}"}
                         ]
                     ]
                 }
@@ -3758,12 +3763,12 @@ async def telegram_webhook(req: Request):
                 purpose_buttons = {
                     "inline_keyboard": [
                         [
-                            {"text": "🏠 បង់ថ្លៃផ្ទះ / បន្ទប់", "callback_data": f"loan_pur:rent:{amount}:{cq_user_id}"},
-                            {"text": "💊 ទិញថ្នាំពេទ្យ", "callback_data": f"loan_pur:med:{amount}:{cq_user_id}"}
+                            {"text": "🏥 ព្យាបាលជំងឺ", "callback_data": f"loan_pur:treatment:{amount}:{cq_user_id}"},
+                            {"text": "🏦 បង់ធនាគារ", "callback_data": f"loan_pur:bank:{amount}:{cq_user_id}"}
                         ],
                         [
-                            {"text": "⚡ ថ្លៃទឹកភ្លើង", "callback_data": f"loan_pur:util:{amount}:{cq_user_id}"},
-                            {"text": "👨‍👩‍👧 ផ្ញើជូនគ្រួសារ", "callback_data": f"loan_pur:family:{amount}:{cq_user_id}"}
+                            {"text": "🍲 ទិញម្ហូបអាហារ", "callback_data": f"loan_pur:food:{amount}:{cq_user_id}"},
+                            {"text": "✨ តម្រូវការផ្សេងៗ", "callback_data": f"loan_pur:other:{amount}:{cq_user_id}"}
                         ]
                     ]
                 }
@@ -4332,6 +4337,8 @@ async def telegram_webhook(req: Request):
             "ខ្ចីខ្ញុំ", "ប្រវត្តិខ្ញុំ", "មើលច្បាប់", "មើលខ្ចី", "ទិន្នន័យខ្ញុំ", "សល់លុយ"
         ])
         if is_self_query:
+            if not is_private_chat and not text.startswith("/"):
+                return {"ok": True}
             ai_data = call_gemini_ai(prompt=f"Staff member '{sender_name}' asked self-service inquiry: {text}", user_name=sender_name)
             ai_msg = (ai_data.get("response_text") if ai_data else "").strip()
             report = get_employee_self_service_report(sender_name)
