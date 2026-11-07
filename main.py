@@ -2949,14 +2949,14 @@ def calculate_finance_metrics(transactions):
 
     payment_breakdown = {
         "income": {
-            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ (Cash)"},
-            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ធនាគារ / KHQR (Bank)"},
-            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ (Other)"}
+            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ"},
+            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "បាញ់តាមធនាគារ"},
+            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ"}
         },
         "expense": {
-            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ (Cash)"},
-            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ធនាគារ / KHQR (Bank)"},
-            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ (Other)"}
+            "cash": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "សាច់ប្រាក់សុទ្ធ"},
+            "bank": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "បាញ់តាមធនាគារ"},
+            "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សេងៗ"}
         }
     }
 
@@ -2980,7 +2980,7 @@ def calculate_finance_metrics(transactions):
 
         if any(w in pay_method for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]):
             pay_key = "cash"
-        elif any(w in pay_method for w in ["aba", "ធនាគារ", "bank", "khqr", "acleda", "wing", "ផ្ទេរ"]):
+        elif any(w in pay_method for w in ["aba", "ធនាគារ", "bank", "khqr", "acleda", "wing", "ផ្ទេរ", "បាញ់"]):
             pay_key = "bank"
         else:
             pay_key = "other"
@@ -5854,7 +5854,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-blue-600">account_balance</span> គណនីធនាគារ (ABA / Bank Transfer)
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ (Bank Transfer)
               </span>
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
             </div>
@@ -7534,10 +7534,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
             <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
-              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
-              <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
-              <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
-              <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ</option>
+              <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
             </select>
           </div>
         </div>
@@ -7718,10 +7716,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
             <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
-              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
-              <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
-              <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
-              <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ</option>
+              <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
             </select>
           </div>
         </div>
@@ -7881,10 +7877,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
           <select id="edit-tx-method" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
-            <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
-            <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
-            <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ</option>
+            <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
           </select>
         </div>
         <div>
@@ -7936,14 +7930,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('page-date').textContent = d.toLocaleDateString('km-KH', opt);
   })();
 
-  // ===== Toast =====
+  // ===== Toast & Validation Alert =====
   function showToast(msg, isError = false) {
     const t = document.getElementById('toast');
+    if (!t) return;
     document.getElementById('toast-msg').textContent = msg;
-    document.getElementById('toast-icon').textContent = isError ? 'error' : 'check_circle';
-    document.getElementById('toast-icon').className = `material-symbols-outlined text-lg ${isError ? 'text-red-400' : 'text-green-400'}`;
+    const icon = document.getElementById('toast-icon');
+    if (icon) {
+      icon.textContent = isError ? 'error' : 'check_circle';
+      icon.className = `material-symbols-outlined text-lg ${isError ? 'text-rose-400' : 'text-emerald-400'}`;
+    }
+    if (isError) {
+      t.className = 'fixed bottom-6 right-6 z-50 max-w-sm bg-rose-950 text-white text-sm px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-rose-500 animate-bounce';
+    } else {
+      t.className = 'fixed bottom-6 right-6 z-50 max-w-sm bg-gray-900 text-white text-sm px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-fadeIn';
+    }
     t.classList.remove('hidden');
-    setTimeout(() => t.classList.add('hidden'), 3000);
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => t.classList.add('hidden'), 3500);
+  }
+
+  function flashRedSaveButton(btnId, errorText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    if (btn._isFlashing) return;
+    btn._isFlashing = true;
+    const originalHtml = btn.innerHTML;
+    const originalClass = btn.className;
+    btn.className = 'flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-200 transition active:scale-95 flex items-center justify-center gap-1.5 animate-pulse';
+    btn.innerHTML = `<span class="material-symbols-outlined text-base">error</span><span>${escapeHtml(errorText)}</span>`;
+    setTimeout(() => {
+      btn.className = originalClass;
+      btn.innerHTML = originalHtml;
+      btn._isFlashing = false;
+    }, 2500);
   }
 
   // ===== Modal (with phone back button awareness) =====
@@ -10846,7 +10866,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     if (!amount || amount <= 0) {
       showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
+      flashRedSaveButton('btn-save-income', 'សូមបញ្ចូលចំនួនទឹកប្រាក់!');
       setIncomeStep(1);
+      return;
+    }
+
+    const isSewageCategory = (category || '').includes('បូមលូ') || (category || '').includes('សេវា');
+    if (isSewageCategory && currentIncomeServiceItems.length === 0) {
+      const locInp = document.getElementById('inc-location-input');
+      const pendingLoc = (locInp?.value || '').trim();
+      if (pendingLoc) {
+        showToast('លោកអ្នកបានវាយទីតាំងហើយ សូមចុចប៊ូតុង «+ បញ្ចូល» សិនមុននឹងរក្សាទុក!', true);
+      } else {
+        showToast('ករណីចំណូលសេវាបូមលូ៖ ភ្លេចបញ្ចូលទីតាំង! សូមជ្រើសរើសទីតាំងរួចចុច «+ បញ្ចូល» សិន!', true);
+      }
+      flashRedSaveButton('btn-save-income', 'ភ្លេចបញ្ចូលទីតាំង!');
+      if (locInp) {
+        locInp.classList.add('border-rose-500', 'ring-2', 'ring-rose-400');
+        locInp.focus();
+        setTimeout(() => locInp.classList.remove('border-rose-500', 'ring-2', 'ring-rose-400'), 3500);
+      }
       return;
     }
 
@@ -11205,7 +11244,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('edit-tx-currency').value = tx.currency || 'KHR';
       document.getElementById('edit-tx-date').value = tx.date || '';
       document.getElementById('edit-tx-time').value = tx.time || '';
-      document.getElementById('edit-tx-method').value = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
+      const rawMethod = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
+      document.getElementById('edit-tx-method').value = rawMethod.includes('សាច់ប្រាក់') ? 'សាច់ប្រាក់សុទ្ធ' : 'បាញ់តាមធនាគារ';
       document.getElementById('edit-tx-ref').value = tx.reference_no || '';
       document.getElementById('edit-tx-desc').value = tx.description || '';
       if (document.getElementById('edit-tx-branch')) {
@@ -11513,7 +11553,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-blue-600">account_balance</span> គណនីធនាគារ (ABA / Bank Transfer)
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ (Bank Transfer)
               </span>
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
             </div>
