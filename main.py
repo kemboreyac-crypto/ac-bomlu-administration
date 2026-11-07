@@ -688,7 +688,7 @@ def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, posi
             emp = employees_collection.find_one({"telegram_username": username})
             
         cambodia_tz = timezone(timedelta(hours=7))
-        now_str = datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M")
+        now_str = datetime.now(cambodia_tz).strftime("%d-%m-%Y %H:%M")
         
         if emp:
             update_fields = {}
@@ -766,7 +766,7 @@ def sync_group_members_from_telegram() -> dict:
                     "phone": "",
                     "phone2": "",
                     "telegram_user_id": l.get("telegram_user_id", ""),
-                    "created_at": datetime.now(timezone(timedelta(hours=7))).strftime("%d/%m/%Y %H:%M"),
+                    "created_at": datetime.now(timezone(timedelta(hours=7))).strftime("%d-%m-%Y %H:%M"),
                     "source": "leave_activity"
                 })
                 synced_count += 1
@@ -875,7 +875,7 @@ def generate_daily_morning_briefing(branch: Optional[str] = None) -> str:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         today_date = now_cam.date()
-        today_str = now_cam.strftime("%d/%m/%Y")
+        today_str = now_cam.strftime("%d-%m-%Y")
         
         emp_query = {"branch": branch} if branch else {}
         total_emp = employees_collection.count_documents(emp_query)
@@ -935,7 +935,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
-        now_str = now_cam.strftime("%d/%m/%Y %H:%M")
+        now_str = now_cam.strftime("%d-%m-%Y %H:%M")
         days_to_compensate = float(days_to_compensate)
         if days_to_compensate <= 0:
             return {"success": False, "message": "ចំនួនថ្ងៃត្រូវសងត្រូវតែធំជាង 0"}
@@ -1099,7 +1099,7 @@ def generate_weekend_leave_report(branch: Optional[str] = None) -> dict:
                 except (ValueError, TypeError):
                     days = 1.0
                 rsn = l.get("reason", "មិនបានបញ្ជាក់")
-                date_str = doc_date.strftime("%d/%m/%Y")
+                date_str = doc_date.strftime("%d-%m-%Y")
                 
                 comp_days = float(l.get("compensated_days", 0.0))
                 rem_days = max(0.0, days - comp_days)
@@ -1188,7 +1188,7 @@ def generate_weekend_leave_report(branch: Optional[str] = None) -> dict:
         tot_days_display = int(total_days_to_compensate) if total_days_to_compensate.is_integer() else total_days_to_compensate
         return {
             "report_type": "weekend_leave",
-            "generated_at": now_cam.strftime("%d/%m/%Y %H:%M"),
+            "generated_at": now_cam.strftime("%d-%m-%Y %H:%M"),
             "total_staff_count": active_staff_count,
             "total_days_to_compensate": tot_days_display,
             "per_employee": compensate_list,
@@ -1282,7 +1282,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
-        now_str = now_cam.strftime("%d/%m/%Y %H:%M")
+        now_str = now_cam.strftime("%d-%m-%Y %H:%M")
         amount_to_repay = int(amount_to_repay)
         if amount_to_repay <= 0:
             return {"success": False, "message": "ចំនួនទឹកប្រាក់ត្រូវកាត់/សង ត្រូវតែធំជាង 0"}
@@ -1457,7 +1457,7 @@ def generate_monthly_loan_report(branch: Optional[str] = None) -> dict:
                 
                 ename = (ln.get("employee_name") or "").strip() or "បុគ្គលិក"
                 pur = ln.get("purpose", "មិនបានបញ្ជាក់")
-                date_str = doc_dt.strftime("%d/%m/%Y")
+                date_str = doc_dt.strftime("%d-%m-%Y")
                 
                 month_items.append({
                     "id": str(ln["_id"]),
@@ -1952,7 +1952,7 @@ async def create_leave(request: LeaveRequest):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
     date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
-    data["date"] = date_str
+    data["date"] = normalize_date_input_py(date_str)
     if "created_at" not in data:
         data["created_at"] = now.isoformat()
     result = leaves_collection.insert_one(data)
@@ -2027,7 +2027,7 @@ async def create_loan(request: LoanRequest):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
     date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
-    data["date"] = date_str
+    data["date"] = normalize_date_input_py(date_str)
     if "created_at" not in data:
         data["created_at"] = now.isoformat()
     result = loans_collection.insert_one(data)
@@ -2134,7 +2134,7 @@ async def api_sync_telegram_employees():
 @app.post("/api/employees/bulk")
 async def bulk_create_employees(req: BulkEmployeeRequest):
     cambodia_tz = timezone(timedelta(hours=7))
-    now_str = datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M")
+    now_str = datetime.now(cambodia_tz).strftime("%d-%m-%Y %H:%M")
     created = 0
     for n in req.names:
         clean_n = n.strip()
@@ -2203,7 +2203,7 @@ async def export_database_backup():
     backup_data = {
         "version": "2.0",
         "system": "AC BOMLU Staff Control & Finance",
-        "exported_at": datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M:%S"),
+        "exported_at": datetime.now(cambodia_tz).strftime("%d-%m-%Y %H:%M:%S"),
         "employees": [fix_id(d) for d in employees_collection.find()],
         "loans": [fix_id(d) for d in loans_collection.find()],
         "leaves": [fix_id(d) for d in leaves_collection.find()],
@@ -2773,10 +2773,25 @@ def parse_khmer_or_arabic_number(s):
 def format_date_display_py(d_str: str) -> str:
     if not d_str:
         return ""
-    s = str(d_str).strip()
+    s = str(d_str).strip().replace("/", "-")
     parts = s.split("-")
-    if len(parts) == 3 and len(parts[0]) == 4:
-        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    if len(parts) == 3:
+        if len(parts[0]) == 4:
+            return f"{parts[2]}-{parts[1]}-{parts[0]}"
+        elif len(parts[2]) == 4:
+            return f"{parts[0]}-{parts[1]}-{parts[2]}"
+    return s
+
+def normalize_date_input_py(d_str: str) -> str:
+    if not d_str:
+        return ""
+    s = str(d_str).strip().replace("/", "-")
+    parts = s.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 2 and len(parts[2]) == 4:
+            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        elif len(parts[0]) == 4:
+            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
     return s
 
 def extract_trips_and_locations(desc, is_sewage_income=True):
@@ -2857,6 +2872,7 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
         currency = "KHR"
 
     date_str = (payload.date or "").strip() or now.strftime("%Y-%m-%d")
+    date_str = normalize_date_input_py(date_str)
     time_str = (payload.time or "").strip() or now.strftime("%H:%M")
     default_cat = "បង្វិលចូលគណនីវិនិយោគទុន" if t_type == "transfer" else ("ចំណូលផ្សេងៗ" if t_type == "income" else "ចំណាយផ្សេងៗ")
     category = (payload.category or "").strip() or default_cat
@@ -2915,7 +2931,7 @@ async def api_update_transaction(tx_id: str, payload: FinanceTransactionUpdate):
     if payload.catalog_id is not None:
         update_data["catalog_id"] = payload.catalog_id
     if payload.date is not None:
-        update_data["date"] = payload.date.strip()
+        update_data["date"] = normalize_date_input_py(payload.date.strip())
     if payload.time is not None:
         update_data["time"] = payload.time.strip()
     if payload.payment_method is not None:
@@ -5279,6 +5295,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:ital,wght@0,100..700;1,100..700&display=swap"
     rel="stylesheet" />
 
+  <!-- Flatpickr (Strict dd-mm-yyyy Date Picker) -->
+  <link rel="stylesheet" href="/static/flatpickr.min.css" />
+  <script src="/static/flatpickr.min.js"></script>
+
   <script>
     tailwind.config = {
       theme: {
@@ -5302,6 +5322,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <style>
     * { font-family: 'Kantumruy Pro', sans-serif; }
+    /* Flatpickr Modern Khmer Styling */
+    .flatpickr-calendar {
+      font-family: 'Kantumruy Pro', sans-serif !important;
+      border-radius: 1rem !important;
+      border: 1px solid #E2E8F0 !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+      z-index: 99999 !important;
+    }
+    .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange {
+      background: #1565C0 !important;
+      border-color: #1565C0 !important;
+      color: #fff !important;
+    }
+    .flatpickr-day:hover {
+      background: #E3F2FD !important;
+    }
+    .flatpickr-current-month {
+      font-weight: 700 !important;
+    }
     .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: -5px; }
     .icon-fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -6913,7 +6952,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <button onclick="setIncomeDateFilter('all')" id="inc-filter-all" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ទាំងអស់</button>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          <input type="date" id="inc-filter-date" onchange="handleIncomeCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          <input type="text" id="inc-filter-date" placeholder="dd-mm-yyyy" onchange="handleIncomeCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
           <select id="inc-filter-category" onchange="loadIncome()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400">
             <option value="all">គ្រប់កាតាឡុក</option>
           </select>
@@ -7002,7 +7041,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <button onclick="setExpenseDateFilter('all')" id="exp-filter-all" class="px-3 py-1.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition">ទាំងអស់</button>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          <input type="date" id="exp-filter-date" onchange="handleExpenseCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <input type="text" id="exp-filter-date" placeholder="dd-mm-yyyy" onchange="handleExpenseCustomDate(this.value)" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400" />
           <select id="exp-filter-category" onchange="loadExpense()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-400">
             <option value="all">គ្រប់កាតាឡុក</option>
           </select>
@@ -7104,7 +7143,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <button onclick="changeDailyReportDate(-1)" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-gray-600 transition" title="ថ្ងៃមុន">
             <span class="material-symbols-outlined text-base">chevron_left</span>
           </button>
-          <input type="date" id="rep-finance-date" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <input type="text" id="rep-finance-date" placeholder="dd-mm-yyyy" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400" />
           <button onclick="changeDailyReportDate(1)" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-gray-600 transition" title="ថ្ងៃបន្ទាប់">
             <span class="material-symbols-outlined text-base">chevron_right</span>
           </button>
@@ -7257,7 +7296,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <form onsubmit="submitLeave(event)" class="p-6 space-y-4">
       <div>
         <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-        <input id="leave-date" type="date" required
+        <input id="leave-date" type="text" placeholder="dd-mm-yyyy" required
           class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm" />
       </div>
       <div>
@@ -7312,7 +7351,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <form onsubmit="submitLoan(event)" class="p-6 space-y-4">
       <div>
         <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-        <input id="loan-date" type="date" required
+        <input id="loan-date" type="text" placeholder="dd-mm-yyyy" required
           class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm" />
       </div>
       <div>
@@ -7658,7 +7697,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-            <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
+            <input id="inc-form-date" type="text" placeholder="dd-mm-yyyy" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
             <input id="inc-form-time" type="hidden" value="" />
           </div>
           <div>
@@ -7854,7 +7893,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div id="exp-step-1" class="space-y-4">
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <input id="exp-form-date" type="text" placeholder="dd-mm-yyyy" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
           <input id="exp-form-time" type="hidden" value="" />
         </div>
 
@@ -8057,7 +8096,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
-          <input id="edit-tx-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <input id="edit-tx-date" type="text" placeholder="dd-mm-yyyy" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">ម៉ោង</label>
@@ -8158,7 +8197,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1">កាលបរិច្ឆេទបង្វិល *</label>
-          <input id="tf-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white font-medium" />
+          <input id="tf-date" type="text" placeholder="dd-mm-yyyy" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white font-medium" />
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
@@ -8202,20 +8241,124 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // Universal Date Display Formatter: YYYY-MM-DD -> DD-MM-YYYY (e.g. 07-11-2026)
   function formatDateDisplay(d) {
     if (!d) return '';
-    const s = String(d).trim();
+    let s = String(d).trim();
+    if (s.indexOf('T') !== -1) s = s.split('T')[0];
+    let timePart = '';
     if (s.indexOf(' ') !== -1) {
-      const sp = s.split(' ');
-      return formatDateDisplay(sp[0]) + (sp[1] ? ' ' + sp[1] : '');
+      const sp = s.split(new RegExp('\\\\s+'));
+      s = sp[0];
+      if (sp[1]) timePart = ' ' + sp[1];
     }
-    if (s.indexOf('T') !== -1) {
-      const sp = s.split('T');
-      return formatDateDisplay(sp[0]);
+    const parts = s.replace(new RegExp('/', 'g'), '-').split('-');
+    let datePart = s;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        datePart = parts[2].padStart(2, '0') + '-' + parts[1].padStart(2, '0') + '-' + parts[0];
+      } else if (parts[2].length === 4) {
+        datePart = parts[0].padStart(2, '0') + '-' + parts[1].padStart(2, '0') + '-' + parts[2];
+      }
     }
-    const parts = s.split('-');
-    if (parts.length === 3 && parts[0].length === 4) {
-      return parts[2] + '-' + parts[1] + '-' + parts[0];
+    return datePart + timePart;
+  }
+
+  // ===== Universal Flatpickr Datepicker Management (Strict dd-mm-yyyy) =====
+  const khmerLocale = {
+    weekdays: {
+      shorthand: ['អា', 'ច', 'អ', 'ព', 'ព្រ', 'សុ', 'ស'],
+      longhand: ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍']
+    },
+    months: {
+      shorthand: ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'],
+      longhand: ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+    },
+    firstDayOfWeek: 1,
+    rangeSeparator: ' ដល់ '
+  };
+
+  function parseCustomDate(datestr) {
+    if (!datestr) return undefined;
+    const s = String(datestr).trim();
+    const parts = s.replace(new RegExp('/', 'g'), '-').split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 2 && parts[2].length === 4) {
+        return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      } else if (parts[0].length === 4 && parts[2].length === 2) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      }
+    }
+    return flatpickr.parseDate ? (flatpickr.parseDate(datestr, "d-m-Y") || new Date(datestr)) : new Date(datestr);
+  }
+
+  function parseDateToISO(dStr) {
+    if (!dStr) return '';
+    const s = String(dStr).trim();
+    const parts = s.replace(new RegExp('/', 'g'), '-').split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 2 && parts[2].length === 4) {
+        return parts[2] + '-' + parts[1].padStart(2, '0') + '-' + parts[0].padStart(2, '0');
+      } else if (parts[0].length === 4) {
+        return parts[0] + '-' + parts[1].padStart(2, '0') + '-' + parts[2].padStart(2, '0');
+      }
     }
     return s;
+  }
+
+  function initDatePicker(el) {
+    if (!el || el._flatpickr) return;
+    const wasRequired = el.hasAttribute('required');
+    if (wasRequired) el.removeAttribute('required');
+
+    const fp = flatpickr(el, {
+      locale: khmerLocale,
+      dateFormat: 'Y-m-d',
+      altInput: true,
+      altFormat: 'd-m-Y',
+      altInputClass: el.className,
+      allowInput: true,
+      parseDate: parseCustomDate,
+      onChange: function(selectedDates, dateStr, instance) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    if (wasRequired && fp.altInput) {
+      fp.altInput.required = true;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    let isUpdating = false;
+    Object.defineProperty(el, 'value', {
+      get() { return descriptor.get.call(this); },
+      set(val) {
+        const isoVal = parseDateToISO(val);
+        descriptor.set.call(this, isoVal);
+        if (this._flatpickr && !isUpdating) {
+          isUpdating = true;
+          try {
+            this._flatpickr.setDate(isoVal, false);
+          } finally {
+            isUpdating = false;
+          }
+        }
+      },
+      configurable: true
+    });
+  }
+
+  function initAllDatePickers() {
+    if (typeof flatpickr === 'undefined') {
+      setTimeout(initAllDatePickers, 50);
+      return;
+    }
+    const ids = [
+      'inc-form-date', 'exp-form-date', 'tf-date',
+      'leave-date', 'loan-date', 'edit-tx-date',
+      'inc-filter-date', 'exp-filter-date', 'rep-finance-date'
+    ];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) initDatePicker(el);
+    });
   }
 
   // Universal Location & Trips Formatter: Ex: មេមុត: 01 , ដា: 03 , សួង: 01
@@ -8267,7 +8410,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== State =====
-  let leavesData = [], loansData = [], currentLeaveFilter = 'all', currentLoanFilter = 'all';
+  let currentActiveBranch = localStorage.getItem('ac_active_branch') || '';
+  let leavesData = [], loansData = [], currentLeaveFilter = 'all', currentLoanFilter = 'all', currentIncomeStep = 1, currentExpenseStep = 1;
   const avatarColors = ['bg-blue-500','bg-purple-500','bg-green-500','bg-orange-500','bg-pink-500','bg-teal-500'];
 
   // ===== Date =====
@@ -8402,6 +8546,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function openModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
+    initAllDatePickers();
     el.classList.remove('hidden');
 
     // Populate employee dropdown and set default date for leave and loan
@@ -8499,7 +8644,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== GLOBAL MULTI-BRANCH STATE & SWITCHER =====
-  let currentActiveBranch = localStorage.getItem('ac_active_branch') || '';
+  // currentActiveBranch hoisted to script top
 
   function initGlobalBranchSelect() {
     const sel = document.getElementById('global-branch-select');
@@ -8769,7 +8914,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <div class="min-w-0">
                 <p class="font-bold text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
-                <p class="text-[11px] text-gray-400">${l.date || 'ច្បាប់ឈប់សម្រាក'}</p>
+                <p class="text-[11px] text-gray-400 font-mono">${l.date ? escapeHtml(formatDateDisplay(l.date)) : 'ច្បាប់ឈប់សម្រាក'}</p>
               </div>
             </div>
             <div class="flex-shrink-0">${statusBadge(l.status)}</div>
@@ -8968,7 +9113,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <div class="min-w-0">
                 <p class="font-bold text-gray-800 text-sm truncate">${escapeHtml(l.employee_name)}</p>
-                <p class="text-[11px] text-gray-400">${l.date || 'ស្នើសុំខ្ចីប្រាក់'}</p>
+                <p class="text-[11px] text-gray-400 font-mono">${l.date ? escapeHtml(formatDateDisplay(l.date)) : 'ស្នើសុំខ្ចីប្រាក់'}</p>
               </div>
             </div>
             <div class="flex-shrink-0">${statusBadge(l.status)}</div>
@@ -11410,7 +11555,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).join('');
   }
 
-  let currentIncomeStep = 1;
+  currentIncomeStep = 1;
 
   function setIncomeStep(step) {
     currentIncomeStep = step;
@@ -11884,7 +12029,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).join('');
   }
 
-  let currentExpenseStep = 1;
+  currentExpenseStep = 1;
 
   function setExpenseStep(step) {
     currentExpenseStep = step;
@@ -13015,7 +13160,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const summary = data.summary || {};
 
     if (type === 'daily') {
-      csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំថ្ងៃ,${data.date}\n`;
+      csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំថ្ងៃ,${formatDateDisplay(data.date)}\n`;
       csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
       csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
       csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
@@ -13052,7 +13197,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       csv += `--- តារាងលម្អិតតាមថ្ងៃ ---\n`;
       csv += `កាលបរិច្ឆេទ,ចំនួនជើង,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
       data.daily_breakdown.forEach(d => {
-        csv += `"${d.date}",${d.trips||0},${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
+        csv += `"${formatDateDisplay(d.date)}",${d.trips||0},${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
       });
     } else if (type === 'yearly') {
       csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំឆ្នាំ,ឆ្នាំ ${data.year}\n`;
@@ -13294,6 +13439,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // ===== Init =====
   (async function init() {
     initPWA();
+    initAllDatePickers();
     initGlobalBranchSelect();
     initFinanceReportFilters();
     loadCatalogs();
