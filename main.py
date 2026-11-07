@@ -5334,14 +5334,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </button>
   </div>
 
-  <!-- Sidebar Logout Button -->
-  <div class="px-3 pb-2">
-    <button onclick="handleAdminLogout()"
-      class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-red-300 hover:text-white hover:bg-red-500/20 transition">
-      <span class="material-symbols-outlined text-lg text-red-400">logout</span>
-      <span>ចាកចេញពីប្រព័ន្ធ (Log Out)</span>
-    </button>
-  </div>
+
 
   <!-- Footer -->
   <div class="p-4 border-t border-blue-800 text-xs text-blue-400 flex items-center gap-2">
