@@ -752,18 +752,28 @@ def get_employee_self_service_report(emp_name: str) -> str:
     except Exception as e:
         return f"⚠️ មិនអាចទាញយកទិន្នន័យបានទេ: {e}"
 
-def generate_daily_morning_briefing() -> str:
-    """Feature 3: Daily morning summary of attendance and leaves for Admins (06:00 AM)."""
+def generate_daily_morning_briefing(branch: Optional[str] = None) -> str:
+    """Feature 3: Daily morning summary of attendance and leaves for Admins (06:00 AM).
+    Supports multi-branch data isolation: filters employees, leaves, and loans by branch.
+    """
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         today_date = now_cam.date()
         today_str = now_cam.strftime("%d/%m/%Y")
         
-        total_emp = employees_collection.count_documents({})
+        emp_query = {"branch": branch} if branch else {}
+        total_emp = employees_collection.count_documents(emp_query)
         
         # Only include APPROVED leaves! Unapproved, pending, or rejected leaves are excluded.
-        approved_leaves = list(leaves_collection.find({"status": "approved"}))
+        branch_emp_names = set(e.get("name") for e in employees_collection.find({"branch": branch}) if e.get("name")) if branch else set()
+        leave_query = {"status": "approved"}
+        if branch:
+            leave_query["$or"] = [
+                {"branch": branch},
+                {"employee_name": {"$in": list(branch_emp_names)}}
+            ]
+        approved_leaves = list(leaves_collection.find(leave_query))
         emp_leaves = {}  # ename -> total_days
         for l in approved_leaves:
             doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
@@ -790,15 +800,23 @@ def generate_daily_morning_briefing() -> str:
         leave_count = len(today_leaves)
         leave_list_str = "\n  • " + "\n  • ".join(today_leaves) if today_leaves else " គ្មានទេ (មកធ្វើការគ្រប់គ្នា)"
         
-        pending_loans = list(loans_collection.find({"status": "pending"}))
+        loan_query = {"status": "pending"}
+        if branch:
+            loan_query["$or"] = [
+                {"branch": branch},
+                {"employee_name": {"$in": list(branch_emp_names)}}
+            ]
+        pending_loans = list(loans_collection.find(loan_query))
         pending_loan_count = len(pending_loans)
         pending_loan_amt = sum(ln.get("amount_khr", 0) for ln in pending_loans)
         
+        branch_display = f" - {branch}" if branch else ""
+        branch_label = "ក្នុងសាខា" if branch else "ក្នុងប្រព័ន្ធ"
         return (
-            f"🌅 <b>របាយការណ៍សង្ខេបពេលព្រឹក (Daily Briefing - ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
+            f"🌅 <b>របាយការណ៍សង្ខេបពេលព្រឹក{branch_display} (Daily Briefing - ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
             f"📅 <b>កាលបរិច្ឆេទ:</b> {today_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"👥 <b>បុគ្គលិកសរុបក្នុងប្រព័ន្ធ:</b> {total_emp} នាក់\n"
+            f"👥 <b>បុគ្គលិកសរុប{branch_label}:</b> {total_emp} នាក់\n"
             f"📝 <b>បុគ្គលិកសុំច្បាប់ថ្ងៃនេះ ({leave_count} នាក់):</b>{leave_list_str}\n"
             f"💰 <b>សំណើខ្ចីប្រាក់រង់ចាំពិនិត្យ:</b> {pending_loan_count} ករណី ({pending_loan_amt:,} ៛)\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -1473,31 +1491,55 @@ def format_telegram_monthly_loan_report_detailed(data: dict, filter_employee: st
 def check_and_send_scheduled_morning_briefing(force: bool = False) -> bool:
     """
     Checks if today's morning briefing was already sent.
-    If not and it's morning (06:00 to 11:59 AM) or force=True, sends to Telegram group
-    and records in MongoDB Atlas to prevent duplicate sending even after server restarts.
+    Sends branch-tailored morning briefings to BOTH Telegram groups (Kampong Cham & Tboung Khmum).
+    ONLY sends Monday through Friday (now_cam.weekday() < 5).
+    NEVER sends on Saturday or Sunday unless manually forced by admin.
     """
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         today_str = now_cam.strftime("%Y-%m-%d")
 
+        # 1. Day-of-week rule: Monday to Friday ONLY (weekday 0 to 4)!
+        # Saturday (5) & Sunday (6) are compensation days, not regular work days.
+        if not force and now_cam.weekday() in (5, 6):
+            return False
+
         rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
         last_sent = rec.get("last_daily_briefing_date", "")
 
         # Trigger if forced OR if it's morning (between 06:00 AM and 11:59 AM) and not yet sent today
         if force or (6 <= now_cam.hour < 12 and last_sent != today_str):
-            briefing = generate_daily_morning_briefing()
-            res = send_telegram_notify(briefing)
+            branches = get_all_branches()
+            sent_count = 0
+            
+            for b in branches:
+                b_name = b.get("name")
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                if c_id:
+                    briefing = generate_daily_morning_briefing(branch=b_name)
+                    res = send_telegram_notify(briefing, target_chat_id=c_id, fallback_to_default=False)
+                    if res:
+                        sent_count += 1
+                        print(f"Scheduled morning briefing sent to [{b_name}] ({c_id})")
+
+            # Fallback to default group if no branch chat_ids configured
+            if sent_count == 0:
+                briefing = generate_daily_morning_briefing()
+                send_telegram_notify(briefing, fallback_to_default=True)
+                sent_count = 1
+
             settings_collection.update_one(
                 {"_id": "scheduled_reports_state"},
                 {"$set": {
                     "last_daily_briefing_date": today_str,
                     "last_daily_briefing_time": now_cam.strftime("%Y-%m-%d %H:%M:%S"),
-                    "last_status": "sent" if res else "failed"
+                    "last_status": "sent" if sent_count > 0 else "failed",
+                    "sent_to_branches": sent_count
                 }},
                 upsert=True
             )
-            print(f"Scheduled morning briefing sent for {today_str} at {now_cam.strftime('%H:%M:%S')}")
+            print(f"Scheduled morning briefing completed for {today_str} (weekday={now_cam.weekday()}) to {sent_count} branch groups.")
             return True
     except Exception as e:
         print(f"check_and_send_scheduled_morning_briefing error: {e}")
@@ -2310,14 +2352,29 @@ async def test_telegram(payload: TelegramTestRequest):
 
 @app.post("/api/send-briefing")
 async def send_briefing_api(branch: Optional[str] = None):
-    briefing = generate_daily_morning_briefing()
     if branch:
         target_chat = get_chat_id_by_branch(branch)
         if not target_chat:
             raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
+        briefing = generate_daily_morning_briefing(branch=branch)
         send_telegram_notify(briefing, target_chat_id=target_chat, fallback_to_default=False)
         return {"message": f"បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅគ្រុប [{branch}] រួចរាល់!"}
-    send_telegram_to_all_branches(briefing)
+
+    # Broadcast to ALL branches with branch-specific data
+    branches = get_all_branches()
+    sent_count = 0
+    for b in branches:
+        b_name = b.get("name")
+        c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+        if c_id:
+            briefing = generate_daily_morning_briefing(branch=b_name)
+            send_telegram_notify(briefing, target_chat_id=c_id, fallback_to_default=False)
+            sent_count += 1
+            
+    if sent_count == 0:
+        briefing = generate_daily_morning_briefing()
+        send_telegram_notify(briefing, fallback_to_default=True)
+        
     return {"message": "បានផ្ញើរបាយការណ៍សង្ខេបពេលព្រឹកទៅ Telegram គ្រប់សាខាទាំងអស់រួចរាល់!"}
 
 @app.get("/api/reports/weekend-leave")
@@ -4576,7 +4633,8 @@ async def telegram_webhook(req: Request):
 
         # Feature 3: Daily Morning Briefing Command (/briefing, /report, /today)
         if clean_cmd in ["/briefing", "/report", "/today", "/morning"]:
-            briefing = generate_daily_morning_briefing()
+            branch_for_group = get_branch_by_chat_id(chat_id_str)
+            briefing = generate_daily_morning_briefing(branch=branch_for_group)
             send_telegram_notify(briefing, target_chat_id=chat_id_str)
             return {"ok": True}
 
