@@ -5308,12 +5308,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             primary: { DEFAULT: '#1565C0', light: '#1976D2', dark: '#0D47A1', surface: '#E3F2FD' },
           },
           keyframes: {
-            fadeIn: { from: { opacity: 0, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+            fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },
             slideIn: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(0)' } },
           },
           animation: {
-            fadeIn: 'fadeIn 0.3s ease-out',
-            slideIn: 'slideIn 0.25s ease-out',
+            fadeIn: 'fadeIn 0.15s ease-out',
+            slideIn: 'slideIn 0.2s ease-out',
           }
         }
       }
@@ -10019,10 +10019,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // Load Weekend Leave Report
-  async function loadWeekendLeaveReport() {
+  async function loadWeekendLeaveReport(silent = false) {
     const tbody = document.getElementById('rep-leave-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    const hasRows = tbody.children && tbody.children.length > 0 && !tbody.querySelector('.animate-spin');
+    if (!hasRows && !silent) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><div class="flex items-center justify-center gap-2"><span class="material-symbols-outlined text-lg animate-spin text-amber-500">progress_activity</span><span>កំពុងទាញយកទិន្នន័យ...</span></div></td></tr>';
+    }
     try {
       const url = currentActiveBranch ? `/api/reports/weekend-leave?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/reports/weekend-leave';
       const res = await fetch(url);
@@ -10293,10 +10296,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // Load Monthly Loan Report
-  async function loadMonthlyLoanReport() {
+  async function loadMonthlyLoanReport(silent = false) {
     const tbody = document.getElementById('rep-loan-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">កំពុងទាញយកទិន្នន័យ...</td></tr>';
+    const hasRows = tbody.children && tbody.children.length > 0 && !tbody.querySelector('.animate-spin');
+    if (!hasRows && !silent) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><div class="flex items-center justify-center gap-2"><span class="material-symbols-outlined text-lg animate-spin text-indigo-500">progress_activity</span><span>កំពុងទាញយកទិន្នន័យ...</span></div></td></tr>';
+    }
     try {
       const url = currentActiveBranch ? `/api/reports/monthly-loan?branch=${encodeURIComponent(currentActiveBranch)}` : '/api/reports/monthly-loan';
       const res = await fetch(url);
@@ -10651,10 +10657,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  // ===== Refresh (Manual & Live Auto-Refresh Rate) =====
+  // ===== Refresh (Manual & Non-Flicker Live Refresh) =====
   let isRefreshing = false;
   async function refreshAll(silent = false) {
     if (isRefreshing) return;
+
+    // Do NOT auto-poll or silently refresh static analytical reports or settings (prevents screen jumping/flicker)
+    if (silent && ['reports-finance', 'reports-leave', 'reports-loan', 'settings', 'catalog'].includes(currentActiveTab)) {
+      return;
+    }
+
     isRefreshing = true;
 
     const btn = document.getElementById('refresh-btn')?.querySelector('span');
@@ -10669,9 +10681,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     else if (currentActiveTab === 'income') tasks.push(loadIncome());
     else if (currentActiveTab === 'expense') tasks.push(loadExpense());
     else if (currentActiveTab === 'catalog') tasks.push(loadCatalogs());
-    else if (currentActiveTab === 'reports-leave') tasks.push(loadWeekendLeaveReport());
-    else if (currentActiveTab === 'reports-loan') tasks.push(loadMonthlyLoanReport());
-    else if (currentActiveTab === 'reports-finance') tasks.push(loadFinanceReports());
+    else if (currentActiveTab === 'reports-leave') tasks.push(loadWeekendLeaveReport(silent));
+    else if (currentActiveTab === 'reports-loan') tasks.push(loadMonthlyLoanReport(silent));
+    else if (currentActiveTab === 'reports-finance') tasks.push(loadFinanceReports(silent));
     else if (currentActiveTab === 'settings') tasks.push(loadSettings());
 
     try {
@@ -10688,16 +10700,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  // Live Auto-Refresh Rate: Polling every 15 seconds to ensure UI stays responsive & in-sync
+  // Live Auto-Refresh Rate: Polling every 60s only for active operational lists (never analytical reports)
   setInterval(() => {
-    if (!document.hidden && currentActiveTab) {
+    if (!document.hidden && currentActiveTab && !['reports-finance', 'reports-leave', 'reports-loan', 'settings', 'catalog'].includes(currentActiveTab)) {
       refreshAll(true);
     }
-  }, 15000);
+  }, 60000);
 
-  // Auto-refresh immediately when user switches back to browser tab
+  // Auto-refresh when user switches back to browser tab (never for analytical reports)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
+    if (!document.hidden && currentActiveTab && !['reports-finance', 'reports-leave', 'reports-loan', 'settings', 'catalog'].includes(currentActiveTab)) {
       refreshAll(true);
     }
   });
@@ -12451,8 +12463,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const yearOpts = [curYear - 2, curYear - 1, curYear, curYear + 1]
       .map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}</option>`).join('');
 
-    if (yearM) yearM.innerHTML = yearOpts;
-    if (yearY) yearY.innerHTML = yearOpts;
+    if (yearM && yearM.children.length === 0) yearM.innerHTML = yearOpts;
+    if (yearY && yearY.children.length === 0) yearY.innerHTML = yearOpts;
   }
 
   function switchFinanceReportPeriod(period) {
@@ -12499,9 +12511,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     loadFinanceReports();
   }
 
-  async function loadFinanceReports() {
+  async function loadFinanceReports(silent = false) {
     const contentArea = document.getElementById('rep-finance-content');
-    contentArea.innerHTML = '<div class="text-center py-12 text-gray-400 bg-white rounded-2xl border border-slate-100">កំពុងរៀបចំរបាយការណ៍...</div>';
+    if (!contentArea) return;
+
+    const hasExistingContent = contentArea.children && contentArea.children.length > 0 && !contentArea.querySelector('.animate-spin');
+
+    // Non-destructive loading: only show full placeholder if container is completely empty
+    if (!hasExistingContent && !silent) {
+      contentArea.innerHTML = '<div class="text-center py-16 text-gray-400 bg-white rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-2.5"><span class="material-symbols-outlined text-3xl animate-spin text-blue-500">progress_activity</span><div class="text-xs sm:text-sm font-medium">កំពុងរៀបចំរបាយការណ៍...</div></div>';
+    } else if (hasExistingContent) {
+      contentArea.style.opacity = '0.65';
+      contentArea.style.pointerEvents = 'none';
+      contentArea.style.transition = 'opacity 0.2s ease-in-out';
+    }
 
     try {
       const branchParam = currentActiveBranch ? '&branch=' + encodeURIComponent(currentActiveBranch) : '';
@@ -12534,7 +12557,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         renderFinanceReportYearly(data);
       }
     } catch (e) {
-      contentArea.innerHTML = '<div class="text-center py-12 text-rose-500 bg-white rounded-2xl border border-slate-100">កំហុសក្នុងការទាញយករបាយការណ៍</div>';
+      console.warn('loadFinanceReports error:', e);
+      if (!hasExistingContent) {
+        contentArea.innerHTML = '<div class="text-center py-12 text-rose-500 bg-white rounded-2xl border border-slate-100">កំហុសក្នុងការទាញយករបាយការណ៍</div>';
+      }
+    } finally {
+      if (contentArea) {
+        contentArea.style.opacity = '1';
+        contentArea.style.pointerEvents = '';
+      }
     }
   }
 
