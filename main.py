@@ -10559,6 +10559,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   let currentIncomeServiceItems = [];
+  const khmerTripsMap = {
+    '1': '១', '2': '២', '3': '៣', '4': '៤', '5': '៥',
+    '6': '៦', '7': '៧', '8': '៨', '9': '៩', '10': '១០',
+    '11': '១១', '12': '១២', '13': '១៣', '14': '១៤', '15': '១៥',
+    '16': '១៦', '17': '១៧', '18': '១៨', '19': '១៩', '20': '២០'
+  };
 
   function onItemCurrencyChange() {
     const itemCurr = document.getElementById('inc-item-currency')?.value || 'KHR';
@@ -11498,8 +11504,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (khrItems.length > 0 && usdItems.length > 0) {
       const sumKHR = khrItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
       const sumUSD = usdItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
-      const khrDesc = khrItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'KHR')})`).join('\\n') + (desc ? '\\n' + desc : '');
-      const usdDesc = usdItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'USD')})`).join('\\n') + (desc ? '\\n' + desc : '');
+      
+      // Preserve any manual non-location notes without duplicating location lines
+      const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
+
+      const khrDesc = khrItems.map(i => {
+        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
+        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, 'KHR')})`;
+      }).join('\\n') + (customNotes ? '\\n' + customNotes : '');
+
+      const usdDesc = usdItems.map(i => {
+        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
+        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, 'USD')})`;
+      }).join('\\n') + (customNotes ? '\\n' + customNotes : '');
 
       btn.disabled = true;
       try {
@@ -11566,6 +11583,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       finalItems = usdItems;
     }
 
+    let finalDesc = desc;
+    if (finalItems && finalItems.length > 0) {
+      const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
+      const itemsDesc = finalItems.map(i => {
+        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
+        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, finalCurrency)})`;
+      }).join('\\n');
+      finalDesc = itemsDesc + (customNotes ? '\\n' + customNotes : '');
+    }
+
     if (!finalAmount || finalAmount <= 0) {
       showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
       flashRedSaveButton('btn-save-income', 'សូមបញ្ចូលចំនួនទឹកប្រាក់!');
@@ -11588,7 +11615,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           time,
           payment_method: method,
           reference_no: ref,
-          description: desc,
+          description: finalDesc,
           recorded_by: adminUser,
           branch: branchVal,
           service_items: finalItems
