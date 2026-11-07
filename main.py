@@ -3022,10 +3022,12 @@ def calculate_finance_metrics(transactions):
                         if loc:
                             tr = parse_khmer_or_arabic_int(it.get("trips")) or 1
                             pr = float(it.get("price", 0.0) or 0.0)
-                            tx_items.append((loc, tr, pr))
+                            it_curr = str(it.get("currency") or curr).strip().upper()
+                            tx_items.append((loc, tr, pr, it_curr))
 
             if not tx_items:
-                tx_items = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                extracted = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                tx_items = [(loc, tr, pr, curr) for loc, tr, pr in extracted]
 
             if tx_items:
                 tx_total_trips = sum(entry[1] for entry in tx_items) or 1
@@ -3036,6 +3038,7 @@ def calculate_finance_metrics(transactions):
                     loc = entry[0]
                     tr = entry[1]
                     pr = entry[2] if len(entry) > 2 else 0.0
+                    it_curr = entry[3] if len(entry) > 3 else curr
 
                     if loc not in location_map:
                         location_map[loc] = {"location": loc, "trips": 0, "khr": 0.0, "usd": 0.0, "count": 0}
@@ -3048,7 +3051,7 @@ def calculate_finance_metrics(transactions):
                         portion = tr / tx_total_trips
                         allocated_rev = amt * portion
 
-                    if curr == "USD":
+                    if it_curr == "USD":
                         location_map[loc]["usd"] += allocated_rev
                     else:
                         location_map[loc]["khr"] += allocated_rev
@@ -10621,9 +10624,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     saveServiceLocation(loc);
 
-    // Keep form currency in sync with the added item's currency
+    // Do not overwrite form currency if mixed items exist
     const formCurr = document.getElementById('inc-form-currency');
-    if (formCurr && formCurr.value !== currency) {
+    if (formCurr && currentIncomeServiceItems.length === 0) {
       formCurr.value = currency;
     }
 
@@ -10665,7 +10668,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const totalSumEl = document.getElementById('inc-items-total-sum');
     const descEl = document.getElementById('inc-form-desc');
     const amountInp = document.getElementById('inc-form-amount');
-    const currency = getIncomeCurrency();
 
     if (!container) return;
 
@@ -10694,25 +10696,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     };
 
     let totalTrips = 0;
-    let totalSum = 0;
+    let totalSumKHR = 0;
+    let totalSumUSD = 0;
     const descLines = [];
 
     const itemsHtml = currentIncomeServiceItems.map(item => {
       totalTrips += Number(item.trips) || 0;
       const itemPrice = Number(item.price) || 0;
-      totalSum += itemPrice;
+      const itemCurr = item.currency || 'KHR';
+      if (itemCurr === 'USD') {
+        totalSumUSD += itemPrice;
+      } else {
+        totalSumKHR += itemPrice;
+      }
 
-      const avgPrice = item.trips > 0 ? Math.round(itemPrice / item.trips) : itemPrice;
+      const avgPrice = item.trips > 0 ? (itemCurr === 'USD' ? (itemPrice / item.trips) : Math.round(itemPrice / item.trips)) : itemPrice;
       const khmerNum = khmerTripsMap[String(item.trips)] || String(item.trips);
-      const formattedPrice = formatMoney(itemPrice, currency);
-      const formattedAvg = formatMoney(avgPrice, currency);
+      const formattedPrice = formatMoney(itemPrice, itemCurr);
+      const formattedAvg = formatMoney(avgPrice, itemCurr);
 
       descLines.push(`ទីតាំង៖ ${item.location} (${khmerNum} ជើង = ${formattedPrice})`);
 
       return `
         <div class="flex items-center justify-between gap-2 p-2 sm:p-2.5 bg-white rounded-xl border border-blue-100 shadow-sm hover:border-blue-300 transition">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg ${itemCurr === 'USD' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold text-xs flex-shrink-0">
               ${khmerNum}
             </div>
             <div class="min-w-0">
@@ -10720,6 +10728,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="material-symbols-outlined text-rose-500 text-sm">pin_drop</span>
                 <span>${escapeHtml(item.location)}</span>
                 <span class="text-[11px] font-normal text-slate-500">(${khmerNum} ជើង)</span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${itemCurr === 'USD' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">${itemCurr === 'USD' ? '$' : '៛'}</span>
               </div>
               <div class="text-[10px] sm:text-[11px] text-slate-500 font-mono">
                 មធ្យម៖ <span class="font-semibold text-slate-700">${formattedAvg}/ជើង</span>
@@ -10729,7 +10738,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="flex items-center gap-2 flex-shrink-0">
             <div class="text-right">
-              <span class="font-bold text-xs sm:text-sm font-mono text-emerald-700 block">${formattedPrice}</span>
+              <span class="font-bold text-xs sm:text-sm font-mono ${itemCurr === 'USD' ? 'text-amber-700' : 'text-emerald-700'} block">${formattedPrice}</span>
             </div>
             <button type="button" onclick="removeIncomeServiceItem('${item.id}')"
               class="w-7 h-7 flex items-center justify-center rounded-lg text-rose-400 hover:text-rose-700 hover:bg-rose-50 transition"
@@ -10744,14 +10753,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     container.innerHTML = itemsHtml;
 
     if (totalTripsEl) totalTripsEl.textContent = totalTrips;
-    if (totalSumEl) totalSumEl.textContent = formatMoney(totalSum, currency);
 
-    if (descEl) {
-      descEl.value = descLines.join(String.fromCharCode(10));
+    // Display dual sums without mixing currencies
+    if (totalSumEl) {
+      if (totalSumKHR > 0 && totalSumUSD > 0) {
+        totalSumEl.innerHTML = `<span class="text-emerald-700 font-bold">${formatMoney(totalSumKHR, 'KHR')}</span> + <span class="text-amber-700 font-bold">${formatMoney(totalSumUSD, 'USD')}</span>`;
+      } else if (totalSumUSD > 0) {
+        totalSumEl.innerHTML = `<span class="text-amber-700 font-bold">${formatMoney(totalSumUSD, 'USD')}</span>`;
+      } else {
+        totalSumEl.innerHTML = `<span class="text-emerald-700 font-bold">${formatMoney(totalSumKHR, 'KHR')}</span>`;
+      }
     }
 
-    if (totalSum > 0 && amountInp) {
-      amountInp.value = currency === 'USD' ? totalSum.toFixed(2) : totalSum.toLocaleString('en-US');
+    if (descEl) {
+      descEl.value = descLines.join('\n');
+    }
+
+    const formCurr = document.getElementById('inc-form-currency');
+    if (amountInp) {
+      if (totalSumKHR > 0 && totalSumUSD > 0) {
+        amountInp.value = `${formatMoney(totalSumKHR, 'KHR')} + ${formatMoney(totalSumUSD, 'USD')}`;
+        amountInp.readOnly = true;
+        if (formCurr) formCurr.value = 'MIXED';
+      } else if (totalSumUSD > 0) {
+        amountInp.value = totalSumUSD.toFixed(2);
+        amountInp.readOnly = true;
+        if (formCurr) formCurr.value = 'USD';
+      } else if (totalSumKHR > 0) {
+        amountInp.value = Math.round(totalSumKHR).toLocaleString('en-US');
+        amountInp.readOnly = true;
+        if (formCurr) formCurr.value = 'KHR';
+      }
     }
   }
 
@@ -11454,7 +11486,90 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       return;
     }
 
-    if (!amount || amount <= 0) {
+    const adminUser = localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល';
+    const branchVal = document.getElementById('inc-form-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+
+    // Separate KHR and USD items so they are NEVER mixed or falsely merged!
+    let khrItems = [];
+    let usdItems = [];
+    if (currentIncomeServiceItems.length > 0) {
+      khrItems = currentIncomeServiceItems.filter(i => (i.currency || 'KHR') === 'KHR');
+      usdItems = currentIncomeServiceItems.filter(i => i.currency === 'USD');
+    }
+
+    // CASE 1: Mixed currencies (both KHR and USD items entered)
+    if (khrItems.length > 0 && usdItems.length > 0) {
+      const sumKHR = khrItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
+      const sumUSD = usdItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
+      const khrDesc = khrItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'KHR')})`).join('\n') + (desc ? '\n' + desc : '');
+      const usdDesc = usdItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'USD')})`).join('\n') + (desc ? '\n' + desc : '');
+
+      btn.disabled = true;
+      try {
+        const [resKHR, resUSD] = await Promise.all([
+          fetch('/api/finance/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'income',
+              amount: sumKHR,
+              currency: 'KHR',
+              category, date, time, payment_method: method, reference_no: ref,
+              description: khrDesc,
+              recorded_by: adminUser,
+              branch: branchVal,
+              service_items: khrItems
+            })
+          }),
+          fetch('/api/finance/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'income',
+              amount: sumUSD,
+              currency: 'USD',
+              category, date, time, payment_method: method, reference_no: ref,
+              description: usdDesc,
+              recorded_by: adminUser,
+              branch: branchVal,
+              service_items: usdItems
+            })
+          })
+        ]);
+
+        if (resKHR.ok && resUSD.ok) {
+          showToast(`បានកត់ត្រាចំណូល៖ ${formatMoney(sumKHR, 'KHR')} និង ${formatMoney(sumUSD, 'USD')} ជោគជ័យ!`);
+          closeModal('income-modal');
+          setIncomeStep(1);
+          await loadIncome();
+          await loadFinanceStats();
+        } else {
+          showToast('បរាជ័យក្នុងការកត់ត្រាចំណូល!', true);
+        }
+      } catch (err) {
+        showToast('កំហុស៖ ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+      return;
+    }
+
+    // CASE 2: Single currency
+    let finalAmount = amount;
+    let finalCurrency = currency;
+    let finalItems = currentIncomeServiceItems;
+
+    if (khrItems.length > 0) {
+      finalAmount = khrItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
+      finalCurrency = 'KHR';
+      finalItems = khrItems;
+    } else if (usdItems.length > 0) {
+      finalAmount = usdItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
+      finalCurrency = 'USD';
+      finalItems = usdItems;
+    }
+
+    if (!finalAmount || finalAmount <= 0) {
       showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
       flashRedSaveButton('btn-save-income', 'សូមបញ្ចូលចំនួនទឹកប្រាក់!');
       const amtInp = document.getElementById('inc-form-amount');
@@ -11469,17 +11584,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'income',
-          amount,
-          currency,
+          amount: finalAmount,
+          currency: finalCurrency,
           category,
           date,
           time,
           payment_method: method,
           reference_no: ref,
           description: desc,
-          recorded_by: (localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល'),
-          branch: (document.getElementById('inc-form-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម'),
-          service_items: currentIncomeServiceItems
+          recorded_by: adminUser,
+          branch: branchVal,
+          service_items: finalItems
         })
       });
       const data = await res.json();
