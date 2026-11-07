@@ -5923,9 +5923,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ & គណនីវិនិយោគទុន</h4>
           </div>
           <div class="flex items-center gap-2.5">
-            <button onclick="openTransferModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition active:scale-95">
-              <span class="material-symbols-outlined text-sm">swap_horiz</span> 🔄 បង្វិលសាច់ប្រាក់
-            </button>
             <span class="text-xs text-gray-500 font-medium" id="dash-recon-period">កំពុងទាញទិន្នន័យ...</span>
           </div>
         </div>
