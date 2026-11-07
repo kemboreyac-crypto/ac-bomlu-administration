@@ -2039,19 +2039,22 @@ async def create_loan(request: LoanRequest):
             {"text": "❌ មិនអនុញ្ញាតិ", "callback_data": f"rej_loan:{loan_id}"}
         ]]
     }
-    target_chat = get_chat_id_by_branch(data["branch"])
-    send_telegram_notify(
-        f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
-        f"🏢 <b>សាខា:</b> {data['branch']}\n"
-        f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
-        f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
-        f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
-        f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
-        f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
-        reply_markup=adm_btn,
-        target_chat_id=target_chat,
-        fallback_to_default=False
-    )
+    # Strict Financial Privacy: Do NOT broadcast loan requests or amounts to public staff branch groups!
+    # Only notify dedicated admin private chat if configured
+    admin_chat = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+    if admin_chat:
+        send_telegram_notify(
+            f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (សម្ងាត់)!</b>\n\n"
+            f"🏢 <b>សាខា:</b> {data['branch']}\n"
+            f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
+            f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
+            f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
+            f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
+            reply_markup=adm_btn,
+            target_chat_id=admin_chat,
+            fallback_to_default=False
+        )
     return {"message": "Loan request saved!", "id": loan_id}
 
 @app.patch("/api/loan/{loan_id}/status")
@@ -2062,25 +2065,29 @@ async def update_loan_status(loan_id: str, status: str):
         name = loan.get("employee_name", "បុគ្គលិក")
         amount = f"{loan.get('amount_khr', 0):,}"
         branch = loan.get("branch", "ក្រុមហ៊ុនបូមលូ កំពង់ចាម")
-        target_chat = get_chat_id_by_branch(branch)
-        if status == "approved":
-            send_telegram_notify(
-                f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
-                f"🏢 <b>សាខា:</b> {branch}\n"
-                f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)",
-                target_chat_id=target_chat
-            )
-        elif status == "rejected":
-            send_telegram_notify(
-                f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
-                f"🏢 <b>សាខា:</b> {branch}\n"
-                f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)",
-                target_chat_id=target_chat
-            )
+        # Strict Financial Privacy: Never broadcast loan approvals or money amounts to branch group chats!
+        admin_chat = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+        if admin_chat:
+            if status == "approved":
+                send_telegram_notify(
+                    f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់ (Admin)</b>\n\n"
+                    f"🏢 <b>សាខា:</b> {branch}\n"
+                    f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                    f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
+                    f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)",
+                    target_chat_id=admin_chat,
+                    fallback_to_default=False
+                )
+            elif status == "rejected":
+                send_telegram_notify(
+                    f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់ (Admin)</b>\n\n"
+                    f"🏢 <b>សាខា:</b> {branch}\n"
+                    f"👤 <b>បុគ្គលិក:</b> {name}\n"
+                    f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
+                    f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)",
+                    target_chat_id=admin_chat,
+                    fallback_to_default=False
+                )
     return {"message": f"Loan updated to {status}"}
 
 @app.delete("/api/loan/{loan_id}")
@@ -5564,12 +5571,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     
     <!-- Action Buttons -->
-    <div class="flex gap-2.5">
+    <div class="flex flex-col sm:flex-row gap-2">
       <button id="btn-trigger-native-install" onclick="triggerDirectPWAInstall()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5 active:scale-95">
         <span class="material-symbols-outlined text-base">download</span>
         <span id="btn-trigger-install-text">ចុចដំឡើងឥឡូវនេះ (Install)</span>
       </button>
-      <button onclick="closeInstallModal()" class="px-4 py-2.5 bg-slate-100 text-gray-600 font-semibold rounded-xl text-xs hover:bg-slate-200 transition">
+      <button onclick="confirmInstalledOnDevice()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
+        <span class="material-symbols-outlined text-sm">check_circle</span>
+        <span>ខ្ញុំបានដំឡើងរួចរាល់ (Installed)</span>
+      </button>
+      <button onclick="closeInstallModal()" class="px-3 py-2.5 bg-slate-100 text-gray-600 font-semibold rounded-xl text-xs hover:bg-slate-200 transition">
         បិទ
       </button>
     </div>
@@ -5695,17 +5706,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </nav>
 
   <!-- PWA Install Sidebar Box (Hidden if already installed on this device) -->
-  <div id="pwa-install-sidebar-box" class="hidden p-3 mx-3 mb-2 bg-gradient-to-br from-blue-800/90 to-indigo-900/90 rounded-2xl border border-blue-600/30 text-white shadow-lg">
-    <div class="flex items-center gap-2 mb-1">
+  <div id="pwa-install-sidebar-box" class="hidden p-3 mx-3 mb-2 bg-gradient-to-br from-blue-800/90 to-indigo-900/90 rounded-2xl border border-blue-600/30 text-white shadow-lg relative">
+    <button onclick="dismissInstallBox(event)" class="absolute top-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition" title="លាក់ចេញ (បានដំឡើងរួច)">
+      <span class="material-symbols-outlined text-sm">close</span>
+    </button>
+    <div class="flex items-center gap-2 mb-1 pr-6">
       <span class="material-symbols-outlined text-amber-300 text-lg">download_for_offline</span>
       <span class="text-xs font-bold">ដំឡើងលើឧបករណ៍</span>
     </div>
     <p class="text-[11px] text-blue-200 mb-2 leading-relaxed">ដំឡើងលើទូរស័ព្ទ កុំព្យូទ័រ ឬ Tablet ដើម្បីបើកប្រើបានលឿនដូច App ពិតៗ</p>
-    <button onclick="handlePWAInstallClick()"
-      class="w-full py-2 bg-white text-blue-900 font-bold rounded-xl text-xs hover:bg-blue-50 transition shadow flex items-center justify-center gap-1.5 active:scale-95">
-      <span class="material-symbols-outlined text-sm">install_mobile</span>
-      <span>ដំឡើងកម្មវិធីឥឡូវនេះ</span>
-    </button>
+    <div class="flex gap-1.5">
+      <button onclick="handlePWAInstallClick()"
+        class="flex-1 py-2 bg-white text-blue-900 font-bold rounded-xl text-xs hover:bg-blue-50 transition shadow flex items-center justify-center gap-1 active:scale-95">
+        <span class="material-symbols-outlined text-sm">install_mobile</span>
+        <span>ដំឡើងឥឡូវនេះ</span>
+      </button>
+      <button onclick="dismissInstallBox(event)"
+        class="px-2.5 py-2 bg-blue-700/80 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition border border-white/20 active:scale-95 whitespace-nowrap" title="ប្រសិនបើបានដំឡើងរួច ចុចទីនេះដើម្បីលាក់">
+        <span>បានដំឡើងរួច</span>
+      </button>
+    </div>
   </div>
 
 
@@ -10097,10 +10117,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   let deferredPWAEvent = null;
 
   function isDeviceInstalled() {
-    // Only return true if ACTUALLY running in standalone mode (desktop window or mobile app window)
+    // 1. Check Display Mode: Standalone (Desktop Chrome/Edge, Android, iOS Home Screen)
     if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
     if (window.navigator.standalone === true) return true; // iOS Safari Home Screen
     if (document.referrer && document.referrer.includes('android-app://')) return true;
+
+    // 2. Check localStorage flag: if user confirmed or installed, hide on this device!
+    if (localStorage.getItem('acbomlu_pwa_installed') === 'true') return true;
+
     return false;
   }
 
@@ -10108,7 +10132,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const topBtn = document.getElementById('pwa-install-btn-top');
     const sidebarBox = document.getElementById('pwa-install-sidebar-box');
 
-    // If currently running inside standalone installed window, hide the install prompts
+    // If currently running inside standalone installed window or user already marked as installed:
     if (isDeviceInstalled()) {
       if (topBtn) {
         topBtn.classList.add('hidden');
@@ -10130,13 +10154,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  const APP_VERSION = '2.4.0';
-  function initPWA() {
-    // Clear legacy false-positive install flag so desktop button is always accessible
-    try {
-      localStorage.removeItem('acbomlu_pwa_installed');
-    } catch(e) {}
+  function dismissInstallBox(e) {
+    if (e) e.stopPropagation();
+    localStorage.setItem('acbomlu_pwa_installed', 'true');
+    updateInstallUI();
+    showToast('✅ បានដំឡើងរួចរាល់! ប្រព័ន្ធនឹងលែងបង្ហាញប៊ូតុងដំឡើងលើឧបករណ៍នេះទៀតឡើយ។');
+  }
 
+  const APP_VERSION = '2.4.1';
+  function initPWA() {
     // Register Service Worker with clean persistence
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('/sw.js').then(reg => {
@@ -10151,6 +10177,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     try {
       if (window.matchMedia) {
         window.matchMedia('(display-mode: standalone)').addEventListener('change', (evt) => {
+          if (evt.matches) {
+            localStorage.setItem('acbomlu_pwa_installed', 'true');
+          }
           updateInstallUI();
         });
       }
@@ -10165,6 +10194,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   });
 
   window.addEventListener('appinstalled', () => {
+    localStorage.setItem('acbomlu_pwa_installed', 'true');
     deferredPWAEvent = null;
     updateInstallUI();
     showToast('🎉 បានដំឡើងកម្មវិធី AC BOMLU លើឧបករណ៍ជោគជ័យ!');
@@ -10176,6 +10206,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         deferredPWAEvent.prompt();
         const choice = await deferredPWAEvent.userChoice;
         if (choice && choice.outcome === 'accepted') {
+          localStorage.setItem('acbomlu_pwa_installed', 'true');
           showToast('🎉 បានដំឡើងកម្មវិធីចូលក្នុងឧបករណ៍ជោគជ័យ!');
           closeInstallModal();
           deferredPWAEvent = null;
@@ -10202,6 +10233,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         deferredPWAEvent.prompt();
         const choice = await deferredPWAEvent.userChoice;
         if (choice && choice.outcome === 'accepted') {
+          localStorage.setItem('acbomlu_pwa_installed', 'true');
           showToast('🎉 បានដំឡើងកម្មវិធីលើ Desktop ជោគជ័យ!');
           deferredPWAEvent = null;
           updateInstallUI();
@@ -10252,7 +10284,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   function confirmInstalledOnDevice() {
+    localStorage.setItem('acbomlu_pwa_installed', 'true');
     closeInstallModal();
+    updateInstallUI();
+    showToast('✅ បានដំឡើងរួចរាល់! ប្រព័ន្ធនឹងលែងបង្ហាញប៊ូតុងដំឡើងលើឧបករណ៍នេះទៀតឡើយ។');
   }
 
   // ===== ADMIN AUTHENTICATION & LOGIN SYSTEM =====
