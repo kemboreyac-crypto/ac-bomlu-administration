@@ -1858,27 +1858,35 @@ async def api_admin_logout():
 @app.get("/manifest.json")
 async def get_manifest():
     manifest_data = {
+        "id": "/",
         "name": "AC BOMLU — ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក",
         "short_name": "AC BOMLU",
         "description": "ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក ច្បាប់ឈប់សម្រាក និងប្រាក់ខ្ចី AC BOMLU",
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
+        "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
         "orientation": "any",
         "background_color": "#0f172a",
         "theme_color": "#1565C0",
         "icons": [
             {
-                "src": "/static/ac_logo.jpg",
+                "src": "/static/ac_logo_192.png",
                 "sizes": "192x192",
-                "type": "image/jpeg",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/static/ac_logo_512.png",
+                "sizes": "512x512",
+                "type": "image/png",
                 "purpose": "any maskable"
             },
             {
                 "src": "/static/ac_logo.jpg",
                 "sizes": "512x512",
                 "type": "image/jpeg",
-                "purpose": "any maskable"
+                "purpose": "any"
             }
         ]
     }
@@ -1887,20 +1895,27 @@ async def get_manifest():
 @app.get("/sw.js")
 async def get_service_worker():
     sw_code = """
+const CACHE_NAME = 'acbomlu-pwa-v2';
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-      .then(() => self.registration.unregister())
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+      );
+    })
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
 });
 """
     return Response(
@@ -5491,34 +5506,68 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </script>
 
 <!-- ======================================================
-     2. PWA INSTALL GUIDE MODAL (FOR IOS & MANUAL INSTALL)
+     2. PWA INSTALL GUIDE MODAL (SMART DESKTOP & MOBILE GUIDE)
 ====================================================== -->
 <div id="ios-install-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] hidden items-center justify-center p-4">
-  <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center animate-fadeIn border border-slate-100">
+  <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl text-center animate-fadeIn border border-slate-100">
+    <!-- Top Icon -->
     <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-sm">
-      <span class="material-symbols-outlined text-3xl">add_to_home_screen</span>
+      <span class="material-symbols-outlined text-3xl" id="install-modal-icon">desktop_windows</span>
     </div>
-    <h3 class="text-base font-bold text-gray-800 mb-1">របៀបដំឡើងលើអេក្រង់ដើម (Home Screen)</h3>
-    <p class="text-xs text-gray-500 mb-4">ដំឡើងដើម្បីបើកប្រើប្រាស់ដូច App ពិតប្រាកដ ដោយមិនបាច់វាយឈ្មោះវេបសាយ</p>
     
-    <div class="text-left text-xs text-gray-600 space-y-2.5 bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-200/80 leading-relaxed">
+    <h3 class="text-base sm:text-lg font-bold text-gray-800 mb-1" id="install-modal-title">ដំឡើងកម្មវិធីលើឧបករណ៍ (Install App)</h3>
+    <p class="text-xs text-gray-500 mb-4" id="install-modal-subtitle">ដំឡើងដើម្បីបើកប្រើប្រាស់ដូច App ពិតប្រាកដ ដោយមិនបាច់វាយឈ្មោះវេបសាយ</p>
+    
+    <!-- Desktop Guide Section -->
+    <div id="guide-section-desktop" class="text-left text-xs text-gray-700 space-y-3 bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-200/80 leading-relaxed">
+      <div class="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/60 mb-2">
+        <p class="font-bold text-blue-900 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-base text-blue-600">laptop_chromebook</span>
+          <span>ការណែនាំដំឡើងលើកុំព្យូទ័រ (Desktop / Windows / Mac):</span>
+        </p>
+      </div>
+
       <div class="flex items-start gap-2.5">
         <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
-        <span>ចុចលើប៊ូតុង <b>Share (ចែករំលែក ⬆️)</b> នៅខាងក្រោម ឬខាងលើនៃ Browser របស់អ្នក</span>
+        <div>
+          <span class="font-bold text-gray-800">វិធីទី ១ (រហ័សបំផុត)៖</span>
+          <p class="text-[11px] text-gray-600 mt-0.5">ក្រឡេកមើលទៅ <b>របារ URL (ខាងលើស្ដាំដៃនៃ Google Chrome / Edge)</b> ចុចលើរូបសញ្ញា <b>Install (💻 ឬ ⬇️ «Install AC BOMLU»)</b> រួចចុច <b>«Install (ដំឡើង)»</b> ជាការស្រេច!</p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-2.5">
+        <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+        <div>
+          <span class="font-bold text-gray-800">វិធីទី ២ (តាម Menu ជ្រុងស្ដាំ)៖</span>
+          <p class="text-[11px] text-gray-600 mt-0.5">ចុចលើសញ្ញាចុចបី <b>(⋮)</b> នៅជ្រុងស្ដាំខាងលើបង្អស់នៃ Browser ➡️ ជ្រើសរើស <b>«Save and share»</b> ឬ <b>«Cast, save, and share»</b> ➡️ ចុច <b>«Install AC BOMLU...»</b> (ឬ Create shortcut... ធីក Open as window)។</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Guide Section -->
+    <div id="guide-section-mobile" class="hidden text-left text-xs text-gray-700 space-y-2.5 bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-200/80 leading-relaxed">
+      <div class="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200/60 mb-2">
+        <p class="font-bold text-emerald-900 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-base text-emerald-600">smartphone</span>
+          <span>ការណែនាំដំឡើងលើទូរស័ព្ទ (Mobile / Tablet):</span>
+        </p>
+      </div>
+
+      <div class="flex items-start gap-2.5">
+        <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
+        <span><b>iOS (iPhone/iPad):</b> ចុចប៊ូតុង <b>Share (ចែករំលែក ⬆️)</b> ខាងក្រោម ➡️ អូសចុះជ្រើសរើស <b>«Add to Home Screen» (➕ បន្ថែមទៅអេក្រង់ដើម)</b> ➡️ ចុច <b>Add</b></span>
       </div>
       <div class="flex items-start gap-2.5">
-        <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
-        <span>អូសចុះក្រោម រួចជ្រើសរើស <b>«Add to Home Screen» (➕ បន្ថែមទៅអេក្រង់ដើម)</b></span>
-      </div>
-      <div class="flex items-start gap-2.5">
-        <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">3</span>
-        <span>ចុចពាក្យ <b>«Add» (បន្ថែម)</b> នៅជ្រុងខាងស្ដាំខាងលើ ជាការស្រេច!</span>
+        <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+        <span><b>Android (Chrome):</b> ចុចសញ្ញាចុចបី <b>(⋮)</b> ជ្រុងស្ដាំ ➡️ ជ្រើសរើស <b>«Install app»</b> ឬ <b>«Add to Home screen»</b></span>
       </div>
     </div>
     
-    <div class="flex gap-2">
-      <button onclick="confirmInstalledOnDevice()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition shadow">
-        ✅ ខ្ញុំបានដំឡើងរួចរាល់
+    <!-- Action Buttons -->
+    <div class="flex gap-2.5">
+      <button id="btn-trigger-native-install" onclick="triggerDirectPWAInstall()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5 active:scale-95">
+        <span class="material-symbols-outlined text-base">download</span>
+        <span id="btn-trigger-install-text">ចុចដំឡើងឥឡូវនេះ (Install)</span>
       </button>
       <button onclick="closeInstallModal()" class="px-4 py-2.5 bg-slate-100 text-gray-600 font-semibold rounded-xl text-xs hover:bg-slate-200 transition">
         បិទ
@@ -10052,18 +10101,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   });
 
-  // ===== PWA INSTALLATION SYSTEM (HIDDEN ON INSTALLED DEVICES) =====
+  // ===== PWA INSTALLATION SYSTEM (DESKTOP & MOBILE COMPATIBLE) =====
   let deferredPWAEvent = null;
 
   function isDeviceInstalled() {
-    // 1. Check Display Mode: Standalone (Desktop Chrome/Edge, Android, iOS Home Screen)
+    // Only return true if ACTUALLY running in standalone mode (desktop window or mobile app window)
     if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
     if (window.navigator.standalone === true) return true; // iOS Safari Home Screen
     if (document.referrer && document.referrer.includes('android-app://')) return true;
-    
-    // 2. Check localStorage flag indicating user already installed it on this device
-    if (localStorage.getItem('acbomlu_pwa_installed') === 'true') return true;
-    
     return false;
   }
 
@@ -10071,7 +10116,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const topBtn = document.getElementById('pwa-install-btn-top');
     const sidebarBox = document.getElementById('pwa-install-sidebar-box');
 
-    // CRITICAL: If already installed on this device, NEVER SHOW IT!
+    // If currently running inside standalone installed window, hide the install prompts
     if (isDeviceInstalled()) {
       if (topBtn) {
         topBtn.classList.add('hidden');
@@ -10083,7 +10128,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       return;
     }
 
-    // Otherwise, show install button so user can install
+    // Otherwise, show install button so user can install or access shortcut
     if (topBtn) {
       topBtn.classList.remove('hidden');
       topBtn.classList.add('inline-flex');
@@ -10093,39 +10138,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  const APP_VERSION = '2.3.1';
+  const APP_VERSION = '2.4.0';
   function initPWA() {
+    // Clear legacy false-positive install flag so desktop button is always accessible
     try {
-      const savedVersion = localStorage.getItem('acbomlu_app_version');
-      if (savedVersion !== APP_VERSION) {
-        localStorage.setItem('acbomlu_app_version', APP_VERSION);
-        if ('caches' in window) {
-          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => {});
-        }
-      }
+      localStorage.removeItem('acbomlu_pwa_installed');
     } catch(e) {}
 
-    // Register Service Worker with auto-update
+    // Register Service Worker with clean persistence
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        for (let r of regs) r.update();
-      }).catch(() => {});
       navigator.serviceWorker.register('/sw.js').then(reg => {
         reg.update();
       }).catch(err => console.log('SW reg error:', err));
     }
 
-    // Initial check to show or hide
+    // Initial UI check
     updateInstallUI();
 
-    // Listen for display-mode change (e.g. if app is launched in standalone mode)
+    // Listen for display-mode change
     try {
       if (window.matchMedia) {
         window.matchMedia('(display-mode: standalone)').addEventListener('change', (evt) => {
-          if (evt.matches) {
-            localStorage.setItem('acbomlu_pwa_installed', 'true');
-            updateInstallUI();
-          }
+          updateInstallUI();
         });
       }
     } catch(e) {}
@@ -10134,46 +10168,86 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPWAEvent = e;
+    console.log('PWA beforeinstallprompt captured!');
     updateInstallUI();
   });
 
   window.addEventListener('appinstalled', () => {
-    localStorage.setItem('acbomlu_pwa_installed', 'true');
     deferredPWAEvent = null;
-    updateInstallUI(); // Immediately hides the button forever!
-    showToast('🎉 បានដំឡើងកម្មវិធី AC BOMLU ចូលក្នុងឧបករណ៍ជោគជ័យ!');
+    updateInstallUI();
+    showToast('🎉 បានដំឡើងកម្មវិធី AC BOMLU លើឧបករណ៍ជោគជ័យ!');
   });
 
-  async function handlePWAInstallClick() {
-    if (isDeviceInstalled()) {
-      updateInstallUI();
-      return;
-    }
-
-    // If browser supports native prompt (Chrome, Edge on Windows/Mac/Android)
+  async function triggerDirectPWAInstall() {
     if (deferredPWAEvent) {
       try {
         deferredPWAEvent.prompt();
         const choice = await deferredPWAEvent.userChoice;
         if (choice && choice.outcome === 'accepted') {
-          localStorage.setItem('acbomlu_pwa_installed', 'true');
-          updateInstallUI();
           showToast('🎉 បានដំឡើងកម្មវិធីចូលក្នុងឧបករណ៍ជោគជ័យ!');
+          closeInstallModal();
+          deferredPWAEvent = null;
+          updateInstallUI();
+          return;
         }
       } catch(err) {
         console.log('Install prompt error:', err);
       }
-      deferredPWAEvent = null;
-      return;
+    }
+    // If native prompt is not available, inform user to follow the on-screen steps
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      showToast('👉 សូមអនុវត្តតាមជំហានបង្ហាញលើអេក្រង់ខាងលើ ដើម្បីដំឡើង!', false);
+    } else {
+      showToast('👉 សូមចុចលើរូប Install (💻 ឬ ⬇️) នៅខាងលើស្ដាំនៃរបារ URL Chrome/Edge ដើម្បីដំឡើង!', false);
+    }
+  }
+
+  async function handlePWAInstallClick() {
+    // 1. If native prompt event is ready, immediately trigger it!
+    if (deferredPWAEvent) {
+      try {
+        deferredPWAEvent.prompt();
+        const choice = await deferredPWAEvent.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          showToast('🎉 បានដំឡើងកម្មវិធីលើ Desktop ជោគជ័យ!');
+          deferredPWAEvent = null;
+          updateInstallUI();
+          return;
+        }
+      } catch(err) {
+        console.log('Native install prompt error:', err);
+      }
     }
 
-    // If on iOS Safari or browser without direct prompt event, show visual guide
+    // 2. Otherwise open smart guide modal tailored to the user's OS (Desktop vs Mobile)
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const modal = document.getElementById('ios-install-modal');
+    const secDesktop = document.getElementById('guide-section-desktop');
+    const secMobile = document.getElementById('guide-section-mobile');
+    const icon = document.getElementById('install-modal-icon');
+    const title = document.getElementById('install-modal-title');
+    const sub = document.getElementById('install-modal-subtitle');
+    const btnText = document.getElementById('btn-trigger-install-text');
+
     if (modal) {
+      if (isMobile) {
+        if (secDesktop) secDesktop.classList.add('hidden');
+        if (secMobile) secMobile.classList.remove('hidden');
+        if (icon) icon.textContent = 'smartphone';
+        if (title) title.textContent = 'ដំឡើងលើទូរស័ព្ទ (Install on Mobile)';
+        if (sub) sub.textContent = 'ដំឡើងលើ Home Screen ដើម្បីបើកប្រើបានលឿន';
+        if (btnText) btnText.textContent = 'ដំឡើងលើទូរស័ព្ទ (Install)';
+      } else {
+        if (secDesktop) secDesktop.classList.remove('hidden');
+        if (secMobile) secMobile.classList.add('hidden');
+        if (icon) icon.textContent = 'desktop_windows';
+        if (title) title.textContent = 'ដំឡើងកម្មវិធីលើ Desktop (Install on PC)';
+        if (sub) sub.textContent = 'បើកប្រើប្រាស់ជាកម្មវិធីដាច់ដោយឡែកលើកុំព្យូទ័រ (Standalone App)';
+        if (btnText) btnText.textContent = 'ចុចដំឡើងលើ Desktop (Install)';
+      }
       modal.classList.remove('hidden');
       modal.classList.add('flex');
-    } else {
-      alert("👉 ដើម្បីដំឡើងកម្មវិធី សូមចុចប៊ូតុង Share (ចែករំលែក ⬆️) រួចជ្រើសរើស 'Add to Home Screen' (➕ បន្ថែមទៅអេក្រង់ដើម)។");
     }
   }
 
@@ -10186,10 +10260,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   function confirmInstalledOnDevice() {
-    localStorage.setItem('acbomlu_pwa_installed', 'true');
     closeInstallModal();
-    updateInstallUI(); // Permanently hides button on this device!
-    showToast('✅ បានកត់ត្រាការដំឡើងលើឧបករណ៍នេះរួចរាល់!');
   }
 
   // ===== ADMIN AUTHENTICATION & LOGIN SYSTEM =====
