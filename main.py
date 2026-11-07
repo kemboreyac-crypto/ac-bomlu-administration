@@ -114,9 +114,10 @@ class FinanceTransactionUpdate(BaseModel):
 class LeaveRequest(BaseModel):
     employee_name: str
     reason: str
-    days: int = 1
+    days: float = 1
     status: str = "pending"
     branch: Optional[str] = None
+    date: Optional[str] = None
 
 class LoanRequest(BaseModel):
     employee_name: str
@@ -124,6 +125,7 @@ class LoanRequest(BaseModel):
     purpose: Optional[str] = ""
     status: str = "pending"
     branch: Optional[str] = None
+    date: Optional[str] = None
 
 class Employee(BaseModel):
     name: str
@@ -1957,10 +1959,16 @@ async def get_leaves(branch: Optional[str] = None):
 
 @app.post("/api/leave")
 async def create_leave(request: LeaveRequest):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
     data = request.dict()
     if not data.get("branch"):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
+    date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
+    data["date"] = date_str
+    if "created_at" not in data:
+        data["created_at"] = now.isoformat()
     result = leaves_collection.insert_one(data)
     leave_id = str(result.inserted_id)
     adm_btn = {
@@ -1974,6 +1982,7 @@ async def create_leave(request: LeaveRequest):
         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
         f"🏢 <b>សាខា:</b> {data['branch']}\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
+        f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
         f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
@@ -2025,10 +2034,16 @@ async def get_loans(branch: Optional[str] = None):
 
 @app.post("/api/loan")
 async def create_loan(request: LoanRequest):
+    cam_tz = timezone(timedelta(hours=7))
+    now = datetime.now(cam_tz)
     data = request.dict()
     if not data.get("branch"):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
+    date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
+    data["date"] = date_str
+    if "created_at" not in data:
+        data["created_at"] = now.isoformat()
     result = loans_collection.insert_one(data)
     loan_id = str(result.inserted_id)
     formatted_amount = f"{request.amount_khr:,}"
@@ -2043,6 +2058,7 @@ async def create_loan(request: LoanRequest):
         f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី!</b>\n\n"
         f"🏢 <b>សាខា:</b> {data['branch']}\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
+        f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
         f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
         f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
@@ -7249,6 +7265,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <form onsubmit="submitLeave(event)" class="p-6 space-y-4">
       <div>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+        <input id="leave-date" type="date" required
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm" />
+      </div>
+      <div>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន *</label>
+        <select id="leave-branch" required onchange="onLeaveBranchChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+      <div>
         <div class="flex items-center justify-between gap-1 mb-1">
           <label class="block text-xs sm:text-sm font-semibold text-gray-700">ឈ្មោះបុគ្គលិក *</label>
           <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">បុគ្គលិកក្នុងប្រព័ន្ធ</span>
@@ -7256,14 +7285,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <select id="leave-name" required onchange="onLeaveEmployeeChanged()"
           class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm">
           <option value="" disabled selected>-- ជ្រើសរើសឈ្មោះបុគ្គលិក --</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
-        <select id="leave-branch" required onchange="onLeaveBranchChanged()"
-          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm">
-          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
-          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
         </select>
       </div>
       <div>
@@ -7299,6 +7320,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <form onsubmit="submitLoan(event)" class="p-6 space-y-4">
       <div>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+        <input id="loan-date" type="date" required
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm" />
+      </div>
+      <div>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន *</label>
+        <select id="loan-branch" required onchange="onLoanBranchChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm">
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+        </select>
+      </div>
+      <div>
         <div class="flex items-center justify-between gap-1 mb-1">
           <label class="block text-xs sm:text-sm font-semibold text-gray-700">ឈ្មោះបុគ្គលិក *</label>
           <span class="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">បុគ្គលិកក្នុងប្រព័ន្ធ</span>
@@ -7306,14 +7340,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <select id="loan-name" required onchange="onLoanEmployeeChanged()"
           class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm">
           <option value="" disabled selected>-- ជ្រើសរើសឈ្មោះបុគ្គលិក --</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
-        <select id="loan-branch" required onchange="onLoanBranchChanged()"
-          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm">
-          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
-          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
         </select>
       </div>
       <div>
@@ -8306,8 +8332,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!el) return;
     el.classList.remove('hidden');
 
-    // Populate employee dropdown for leave and loan
+    // Populate employee dropdown and set default date for leave and loan
+    const getKhmerTodayStr = () => {
+      const tzOffset = 7 * 60;
+      const now = new Date(Date.now() + tzOffset * 60000);
+      return now.toISOString().slice(0, 10);
+    };
+
     if (id === 'leave-modal') {
+      const d = document.getElementById('leave-date');
+      if (d && !d.value) d.value = getKhmerTodayStr();
       const b = document.getElementById('leave-branch');
       if (b && currentActiveBranch) b.value = currentActiveBranch;
       const targetBranch = (b ? b.value : currentActiveBranch) || null;
@@ -8315,6 +8349,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         populateEmployeeSelect('leave-name', targetBranch);
       });
     } else if (id === 'loan-modal') {
+      const d = document.getElementById('loan-date');
+      if (d && !d.value) d.value = getKhmerTodayStr();
       const b = document.getElementById('loan-branch');
       if (b && currentActiveBranch) b.value = currentActiveBranch;
       const targetBranch = (b ? b.value : currentActiveBranch) || null;
@@ -8615,7 +8651,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <tr class="hover:bg-slate-50 transition">
           <td class="px-5 py-3.5 font-medium whitespace-nowrap">
             <div>${escapeHtml(l.employee_name)}</div>
-            <div class="mt-0.5"><span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span></div>
+            <div class="mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span>
+              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(l.date)}</span>` : ''}
+            </div>
           </td>
           <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">
             <div>${escapeHtml(l.reason)}</div>
@@ -8765,7 +8804,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       employee_name: empName,
       branch: document.getElementById('leave-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
       reason: document.getElementById('leave-reason')?.value || '',
-      days: daysVal
+      days: daysVal,
+      date: document.getElementById('leave-date')?.value || ''
     };
     try {
       const res = await fetch('/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -8810,7 +8850,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <tr class="hover:bg-slate-50 transition">
           <td class="px-5 py-3.5 font-medium whitespace-nowrap">
             <div>${escapeHtml(l.employee_name)}</div>
-            <div class="mt-0.5"><span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span></div>
+            <div class="mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span>
+              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(l.date)}</span>` : ''}
+            </div>
           </td>
           <td class="px-5 py-3.5 font-bold text-blue-700 whitespace-nowrap">${Number(l.amount_khr).toLocaleString('km-KH')} ៛</td>
           <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">
@@ -8962,7 +9005,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       employee_name: empName,
       branch: document.getElementById('loan-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
       amount_khr: amt,
-      purpose: document.getElementById('loan-purpose')?.value || ''
+      purpose: document.getElementById('loan-purpose')?.value || '',
+      date: document.getElementById('loan-date')?.value || ''
     };
     try {
       const res = await fetch('/api/loan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -10479,6 +10523,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     return parseFloat(latin) || 0;
   }
 
+  function parseKhmerNumber(str) {
+    return parseFormattedAmount(str);
+  }
+
   // Service Locations Persistent Memory & Combobox Management
   const DEFAULT_SERVICE_LOCATIONS = [
     'ភ្នំពេញ', 'សៀមរាប', 'បាត់ដំបង', 'កំពង់ចាម', 'កំពង់សោម (ព្រះសីហនុ)',
@@ -11702,27 +11750,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   async function submitTransfer(e) {
-    e.preventDefault();
-    const fromMethod = document.getElementById('tf-from')?.value || 'សាច់ប្រាក់សុទ្ធ';
-    const rawAmt = document.getElementById('tf-amount')?.value || '';
-    const currency = document.getElementById('tf-currency')?.value || 'KHR';
-    const dateVal = document.getElementById('tf-date')?.value || '';
-    const branchVal = document.getElementById('tf-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
-    const descVal = document.getElementById('tf-desc')?.value || '';
-
-    const cleanNum = parseKhmerNumber(rawAmt.replace(/,/g, ''));
-    if (isNaN(cleanNum) || cleanNum <= 0) {
-      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់បង្វិលឱ្យបានត្រឹមត្រូវ!', true);
-      return;
-    }
-
+    if (e && e.preventDefault) e.preventDefault();
     const btn = document.getElementById('btn-save-transfer');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-base">sync</span> កំពុងរក្សាទុក...';
-    }
 
     try {
+      const fromMethod = document.getElementById('tf-from')?.value || 'សាច់ប្រាក់សុទ្ធ';
+      const rawAmt = document.getElementById('tf-amount')?.value || '';
+      const currency = document.getElementById('tf-currency')?.value || 'KHR';
+      const dateVal = document.getElementById('tf-date')?.value || '';
+      const branchVal = document.getElementById('tf-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+      const descVal = document.getElementById('tf-desc')?.value || '';
+
+      const cleanNum = parseFormattedAmount(rawAmt);
+      if (isNaN(cleanNum) || cleanNum <= 0) {
+        showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់បង្វិលឱ្យបានត្រឹមត្រូវ!', true);
+        const amtInp = document.getElementById('tf-amount');
+        if (amtInp) amtInp.focus();
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-base">sync</span> កំពុងរក្សាទុក...';
+      }
+
       const adminUser = localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល';
       const payload = {
         type: 'transfer',
@@ -11747,6 +11798,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (res.ok && data.success) {
         showToast('✅ បានបង្វិលសាច់ប្រាក់ចូល «គណនីវិនិយោគទុន» ជោគជ័យ!');
         closeModal('transfer-modal');
+        const form = document.querySelector('#transfer-modal form');
+        if (form) form.reset();
         await loadFinanceStats();
         await loadTransferHistory();
       } else {
