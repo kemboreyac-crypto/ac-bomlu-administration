@@ -4925,16 +4925,23 @@ async def startup_event():
             with urllib.request.urlopen(req, timeout=5) as r:
                 print("Webhook Auto-Registered:", r.read().decode())
             
-            # Ensure all Telegram bot commands are completely hidden across all scopes (Button-Only Policy)
-            for sc in [None, {"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
+            # Register official bot commands so staff have 1-tap command menu in chat input bar
+            bot_cmds = [
+                {"command": "leave", "description": "📝 ស្នើសុំច្បាប់ឈប់សម្រាក"},
+                {"command": "loan", "description": "💰 ស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"},
+                {"command": "buttons", "description": "🔄 បង្ហាញក្ដារចុចប៊ូតុងឡើងវិញ"},
+                {"command": "briefing", "description": "🌅 របាយការណ៍សង្ខេបពេលព្រឹក"},
+                {"command": "help", "description": "ℹ️ ជំនួយ និងការណែនាំ"}
+            ]
+            for sc in [{"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}]:
                 try:
-                    payload = json.dumps({"scope": sc}).encode("utf-8") if sc else b"{}"
-                    del_req = urllib.request.Request(
-                        f"https://api.telegram.org/bot{token}/deleteMyCommands",
+                    payload = json.dumps({"commands": bot_cmds, "scope": sc}).encode("utf-8")
+                    cmd_req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{token}/setMyCommands",
                         data=payload,
                         headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
                     )
-                    with urllib.request.urlopen(del_req, timeout=5) as dr:
+                    with urllib.request.urlopen(cmd_req, timeout=5):
                         pass
                 except Exception:
                     pass
