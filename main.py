@@ -915,25 +915,16 @@ def generate_daily_morning_briefing(branch: Optional[str] = None) -> str:
         leave_count = len(today_leaves)
         leave_list_str = "\n  • " + "\n  • ".join(today_leaves) if today_leaves else " គ្មានទេ (មកធ្វើការគ្រប់គ្នា)"
         
-        loan_query = {"status": "pending"}
-        if branch:
-            loan_query["$or"] = [
-                {"branch": branch},
-                {"employee_name": {"$in": list(branch_emp_names)}}
-            ]
-        pending_loans = list(loans_collection.find(loan_query))
-        pending_loan_count = len(pending_loans)
-        pending_loan_amt = sum(ln.get("amount_khr", 0) for ln in pending_loans)
-        
+        # Financial privacy: Do NOT leak loan amounts or financial figures in morning Telegram briefing.
+        # Daily morning briefing is strictly focused on employee attendance and approved leaves (របាយការណ៍សុំច្បាប់ និងវត្តមាន).
         branch_display = f" - {branch}" if branch else ""
         branch_label = "ក្នុងសាខា" if branch else "ក្នុងប្រព័ន្ធ"
         return (
-            f"🌅 <b>របាយការណ៍សង្ខេបពេលព្រឹក{branch_display} (Daily Briefing - ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
+            f"🌅 <b>របាយការណ៍វត្តមាន និងច្បាប់ឈប់សម្រាកពេលព្រឹក{branch_display} (ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
             f"📅 <b>កាលបរិច្ឆេទ:</b> {today_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"👥 <b>បុគ្គលិកសរុប{branch_label}:</b> {total_emp} នាក់\n"
             f"📝 <b>បុគ្គលិកសុំច្បាប់ថ្ងៃនេះ ({leave_count} នាក់):</b>{leave_list_str}\n"
-            f"💰 <b>សំណើខ្ចីប្រាក់រង់ចាំពិនិត្យ:</b> {pending_loan_count} ករណី ({pending_loan_amt:,} ៛)\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"💪 <i>សូមជូនពរឱ្យដំណើរការការងារថ្ងៃនេះទទួលបានជោគជ័យ និងរលូនល្អ!</i>"
         )
@@ -1414,7 +1405,9 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📌 <i>ប្រព័ន្ធគ្រប់គ្រងបុគ្គលិក AC BOMLU</i>"
         )
-        send_telegram_notify(tg_receipt)
+        # Financial privacy: Do NOT broadcast loan repayment/salary deduction receipts to public Telegram group.
+        # This information remains confidential on the Admin Dashboard.
+        # send_telegram_notify(tg_receipt)
         
         return {
             "success": True,
@@ -1689,41 +1682,19 @@ def check_and_send_scheduled_weekend_report() -> bool:
     return False
 
 def check_and_send_scheduled_monthly_loan_report() -> bool:
-    """Last day of every month from 06:00 AM onwards: notifies payroll deduction report."""
-    try:
-        cambodia_tz = timezone(timedelta(hours=7))
-        now_cam = datetime.now(cambodia_tz)
-        today_str = now_cam.strftime("%Y-%m-%d")
-        last_day = calendar.monthrange(now_cam.year, now_cam.month)[1]
-
-        if now_cam.day == last_day and now_cam.hour >= 6:
-            rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
-            last_sent = rec.get("last_monthly_loan_report_date", "")
-            if last_sent != today_str:
-                loan_rep_data = generate_monthly_loan_report()
-                if loan_rep_data.get("items"):
-                    loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
-                    send_telegram_notify(loan_tg_msg)
-                settings_collection.update_one(
-                    {"_id": "scheduled_reports_state"},
-                    {"$set": {
-                        "last_monthly_loan_report_date": today_str,
-                        "last_monthly_loan_report_time": now_cam.strftime("%Y-%m-%d %H:%M:%S")
-                    }},
-                    upsert=True
-                )
-                return True
-    except Exception as e:
-        print(f"check_and_send_scheduled_monthly_loan_report error: {e}")
+    """Financial privacy rule: Monthly loan reports are confidential on the Admin Dashboard only.
+    Automated broadcasting to Telegram groups is strictly disabled."""
     return False
 
 async def morning_briefing_scheduler():
-    """Continuous background loop with database-backed persistence."""
+    """Continuous background loop for permitted Telegram reports:
+    - Daily morning attendance & approved leave briefing (របាយការណ៍សុំច្បាប់ប្រចាំថ្ងៃ)
+    - Weekly weekend leave compensation report (របាយការណ៍សងថ្ងៃច្បាប់ចុងសប្ដាហ៍)
+    """
     while True:
         try:
             check_and_send_scheduled_morning_briefing()
             check_and_send_scheduled_weekend_report()
-            check_and_send_scheduled_monthly_loan_report()
         except Exception as e:
             print("Scheduler error:", e)
         await asyncio.sleep(60)
@@ -2542,31 +2513,11 @@ async def api_get_monthly_loan_report(branch: Optional[str] = None):
 
 @app.post("/api/reports/send-monthly-loan")
 async def api_send_monthly_loan_report(req: Optional[SendReportRequest] = None):
-    mode = req.mode if req else "summary"
-    emp_filter = (req.employee_name or "").strip() if req else ""
-    branch = (req.branch or "").strip() if req else ""
-    data = generate_monthly_loan_report(branch=branch or None)
-    if mode == "detailed":
-        msg = format_telegram_monthly_loan_report_detailed(data, filter_employee=emp_filter)
-    else:
-        msg = format_telegram_monthly_loan_report(data)
-        
-    if branch:
-        target_chat = get_chat_id_by_branch(branch)
-        if not target_chat:
-            raise HTTPException(status_code=400, detail=f"សាខា «{branch}» មិនទាន់មាន Telegram Chat ID នៅឡើយទេ! សូមបញ្ចូល Chat ID ក្នុងទំព័រ Settings ជាមុនសិន។")
-        send_telegram_notify(msg, target_chat_id=target_chat, fallback_to_default=False)
-    else:
-        send_telegram_to_all_branches(msg)
-        
-    title = "របាយការណ៍ខ្ចីប្រាក់លម្អិត" if mode == "detailed" else "របាយការណ៍ខ្ចីប្រាក់សង្ខេប"
-    if emp_filter:
-        title += f" ({emp_filter})"
-    if branch:
-        title += f" [{branch}]"
-    else:
-        title += " [គ្រប់សាខា]"
-    return {"message": f"បានផ្ញើ{title}ទៅ Telegram រួចរាល់!"}
+    # Strict financial privacy rule: loan and money reports are strictly confidential.
+    raise HTTPException(
+        status_code=403,
+        detail="ដើម្បីរក្សាការសម្ងាត់ទិន្នន័យហិរញ្ញវត្ថុ របាយការណ៍ខ្ចីប្រាក់មិនត្រូវបានអនុញ្ញាតឱ្យផ្ញើចូលក្នុង Telegram ឡើយ! សូមពិនិត្យផ្ទាល់លើ Admin Dashboard។"
+    )
 
 @app.post("/api/reports/compensate-leave")
 async def api_compensate_leave(req: LeaveCompensationRequest):
@@ -2895,26 +2846,7 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
     res = finance_transactions_collection.insert_one(doc)
     doc["_id"] = str(res.inserted_id)
 
-    # Telegram notification for Month-End Fund Transfers to Investment Fund
-    if t_type == "transfer":
-        try:
-            from_desc = "💵 សាច់ប្រាក់សុទ្ធ" if any(w in str(doc.get("transfer_from", "")).lower() for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]) else "📱 បាញ់តាមធនាគារ"
-            amt_formatted = f"{float(payload.amount):,.0f} ៛" if currency == "KHR" else f"${float(payload.amount):,.2f}"
-            note_line = f"\n📝 <b>កំណត់ចំណាំ:</b> {doc.get('description')}" if doc.get('description') else ""
-            tg_transfer_msg = (
-                f"🔄 <b>ការបង្វិលសាច់ប្រាក់ចូល «គណនីវិនិយោគទុន» ត្រូវបានកត់ត្រា!</b>\n\n"
-                f"🏢 <b>សាខា:</b> {doc.get('branch')}\n"
-                f"💰 <b>ចំនួនទឹកប្រាក់:</b> <b>{amt_formatted}</b>\n"
-                f"📤 <b>ផ្ទេរចេញពី:</b> {from_desc}\n"
-                f"📥 <b>ផ្ទេរទៅកាន់:</b> 🏦 គណនីវិនិយោគទុន\n"
-                f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str} {time_str}"
-                f"{note_line}\n"
-                f"👮‍♂️ <b>ដោយរដ្ឋបាល:</b> {doc.get('recorded_by')}"
-            )
-            send_telegram_notify(tg_transfer_msg)
-        except Exception as tg_err:
-            print(f"Transfer Telegram notify error: {tg_err}")
-
+    # Financial privacy: Fund transfers are strictly confidential. Do NOT broadcast to Telegram groups.
     return {"success": True, "message": "បានកត់ត្រាប្រតិបត្តិការជោគជ័យ!", "transaction": doc}
 
 @app.get("/api/finance/transactions/{tx_id}")
@@ -4902,15 +4834,14 @@ async def telegram_webhook(req: Request):
             send_telegram_notify(tg_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
-        # Monthly Loan Deduction Report Command (/month_report, /loan_report, /loan_detail)
+        # Monthly Loan Deduction Report Command: Strictly Protected by Financial Privacy Policy
         if clean_cmd in ["/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail"]:
-            is_detailed = "detail" in text.lower() or "លម្អិត" in text or clean_cmd in ["/loan_detail", "/month_detail"]
-            loan_rep_data = generate_monthly_loan_report()
-            if is_detailed:
-                loan_tg_msg = format_telegram_monthly_loan_report_detailed(loan_rep_data)
-            else:
-                loan_tg_msg = format_telegram_monthly_loan_report(loan_rep_data)
-            send_telegram_notify(loan_tg_msg, target_chat_id=chat_id_str)
+            privacy_msg = (
+                "🔒 <b>ការរក្សាការសម្ងាត់ទិន្នន័យហិរញ្ញវត្ថុ (Financial Privacy)</b>\n\n"
+                "⚠️ របាយការណ៍ខ្ចីប្រាក់ និងទិន្នន័យហិរញ្ញវត្ថុ មិនត្រូវបានអនុញ្ញាតឱ្យបង្ហោះក្នុងក្រុម Telegram ឡើយ!\n"
+                "👉 សូមចូលទៅកាន់ <b>Admin Dashboard</b> ដើម្បីពិនិត្យរបាយការណ៍នេះដោយសុវត្ថិភាព។"
+            )
+            send_telegram_notify(privacy_msg, target_chat_id=chat_id_str)
             return {"ok": True}
 
         # Admin Leave Compensation Command (/compensate [ឈ្មោះ] [ចំនួនថ្ងៃ])
@@ -6735,42 +6666,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
               <h2 class="text-base sm:text-lg font-bold text-gray-800">របាយការណ៍ខ្ចីប្រាក់ (សម្រាប់កាត់ប្រាក់ខែចុងខែ)</h2>
-              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែដែលត្រូវកាត់ប្រាក់ខែ (ស្វ័យប្រវត្តិតាម Telegram នៅថ្ងៃចុងក្រោយនៃរៀងរាល់ខែ ម៉ោង ៦:០០ ព្រឹក)</p>
+              <p class="text-xs text-gray-500 mt-0.5">បញ្ជីបុគ្គលិកខ្ចីប្រាក់ក្នុងខែដែលត្រូវកាត់ប្រាក់ខែ (ទិន្នន័យសម្ងាត់សម្រាប់តែរដ្ឋបាលលើ Dashboard មិនបង្ហោះក្នុងក្រុម Telegram ឡើយ)</p>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <!-- Dropdown Menu for Sending to Telegram -->
-            <div class="relative inline-block text-left" id="loan-send-menu-container">
-              <button onclick="toggleLoanSendMenu(event)" id="btn-send-tg-loan"
-                class="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow transition">
-                <span class="material-symbols-outlined text-lg" id="icon-send-tg-loan">send</span>
-                <span>ផ្ញើទៅ Telegram</span>
-                <span class="material-symbols-outlined text-base">expand_more</span>
-              </button>
-              <div id="menu-send-loan" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fadeIn">
-                <div class="px-4 py-2 border-b border-slate-100">
-                  <p class="text-xs font-bold text-gray-700">ជម្រើសផ្ញើរបាយការណ៍ខ្ចីប្រាក់</p>
-                  <p class="text-[11px] text-gray-400">ជ្រើសរើសទម្រង់ដែលត្រូវផ្ញើ</p>
-                </div>
-                <div class="p-1 space-y-1">
-                  <button onclick="sendMonthlyLoanReportTelegram('summary')"
-                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-600 flex items-start gap-2.5 transition">
-                    <span class="material-symbols-outlined text-blue-600 text-xl mt-0.5">summarize</span>
-                    <div>
-                      <p class="text-xs sm:text-sm font-semibold">១. របាយការណ៍សង្ខេប (តាមឈ្មោះ)</p>
-                      <p class="text-[11px] text-gray-400">សរុបប្រាក់ត្រូវកាត់តាមឈ្មោះបុគ្គលិកម្នាក់ៗ</p>
-                    </div>
-                  </button>
-                  <button onclick="sendMonthlyLoanReportTelegram('detailed')"
-                    class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 flex items-start gap-2.5 transition">
-                    <span class="material-symbols-outlined text-indigo-600 text-xl mt-0.5">receipt_long</span>
-                    <div>
-                      <p class="text-xs sm:text-sm font-semibold">២. របាយការណ៍លម្អិត (គ្រប់ប្រតិបត្តិការ)</p>
-                      <p class="text-[11px] text-gray-400">បង្ហាញរាល់ប្រតិបត្តិការ ថ្ងៃខ្ចី គោលបំណង និងការកាត់</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
+            <!-- Confidential Privacy Badge -->
+            <div class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-200/80 text-xs font-semibold shadow-xs">
+              <span class="material-symbols-outlined text-base text-amber-600">lock</span>
+              <span>ទិន្នន័យសម្ងាត់ (មិនបង្ហោះក្នុង Telegram)</span>
             </div>
             <button onclick="loadMonthlyLoanReport()"
               class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition" title="Refresh">
@@ -6801,11 +6704,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
           <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
             <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
-              <span class="material-symbols-outlined text-2xl">event_repeat</span>
+              <span class="material-symbols-outlined text-2xl">shield</span>
             </div>
             <div>
-              <p class="text-xs text-gray-500 font-medium">កាលបរិច្ឆេទជូនដំណឹង</p>
-              <p class="text-xs sm:text-sm font-semibold text-purple-600">ថ្ងៃចុងក្រោយនៃរៀងរាល់ខែ (ម៉ោង ០៦:០០ ព្រឹក)</p>
+              <p class="text-xs text-gray-500 font-medium">គោលការណ៍រក្សាការសម្ងាត់</p>
+              <p class="text-xs sm:text-sm font-semibold text-purple-700">សម្រាប់រដ្ឋបាលលើ Dashboard</p>
             </div>
           </div>
         </div>
@@ -10130,40 +10033,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  function toggleLoanSendMenu(e) {
-    if (e) e.stopPropagation();
-    const menu = document.getElementById('menu-send-loan');
-    if (menu) menu.classList.toggle('hidden');
-    const leaveMenu = document.getElementById('menu-send-leave');
-    if (leaveMenu) leaveMenu.classList.add('hidden');
-  }
-
-  async function sendMonthlyLoanReportTelegram(mode = 'summary') {
-    const menu = document.getElementById('menu-send-loan');
-    if (menu) menu.classList.add('hidden');
-    const btn = document.getElementById('btn-send-tg-loan');
-    const icon = document.getElementById('icon-send-tg-loan');
-    if (icon) icon.classList.add('animate-spin');
-    if (btn) btn.disabled = true;
-    try {
-      const selectedEmp = (document.getElementById('rep-loan-emp-filter')?.value || '').trim();
-      const res = await fetch('/api/reports/send-monthly-loan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: mode, employee_name: selectedEmp, branch: currentActiveBranch })
-      });
-      const d = await res.json();
-      if (res.ok) {
-        showToast(d.message || 'បានផ្ញើរបាយការណ៍ខ្ចីប្រាក់ទៅ Telegram រួចរាល់!');
-      } else {
-        showToast(d.detail || 'បរាជ័យក្នុងការផ្ញើ', true);
-      }
-    } catch(e) {
-      showToast('បរាជ័យ: ' + e.message, true);
-    } finally {
-      if (icon) icon.classList.remove('animate-spin');
-      if (btn) btn.disabled = false;
-    }
+  function toggleLoanSendMenu(e) {}
+  async function sendMonthlyLoanReportTelegram() {
+    showToast('ទិន្នន័យខ្ចីប្រាក់ជារឿងសម្ងាត់ មិនអាចផ្ញើចូលគ្រុប Telegram បានទេ!', true);
   }
 
   // Close Telegram send dropdown menus when clicking outside
