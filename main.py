@@ -398,12 +398,12 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
         if reply_markup is None:
             reply_markup = {
                 "keyboard": [
-                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើកម្ចី"}]
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True,
                 "one_time_keyboard": False,
-                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើខ្ចីប្រាក់]..."
+                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើកម្ចី]..."
             }
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -2206,7 +2206,7 @@ async def api_save_branches(payload: dict):
                     f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
                     f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
                     f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
-                    f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន",
+                    f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី",
                     target_chat_id=c_id,
                     fallback_to_default=False
                 )
@@ -2238,7 +2238,7 @@ async def api_send_buttons_to_branch(branch_id: str):
         f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
         f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
         f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
-        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន",
+        f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី",
         target_chat_id=c_id,
         fallback_to_default=False
     )
@@ -4551,12 +4551,12 @@ async def telegram_webhook(req: Request):
             )
             done_kb = {
                 "keyboard": [
-                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើកម្ចី"}]
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True,
                 "one_time_keyboard": False,
-                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើខ្ចីប្រាក់]..."
+                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើកម្ចី]..."
             }
             send_telegram_notify(conf_msg, reply_markup=done_kb, target_chat_id=chat_id_str)
             return {"ok": True}
@@ -4574,8 +4574,8 @@ async def telegram_webhook(req: Request):
         is_hr_topic = any(w in text for w in ["សុំច្បាប់", "សុំឈប់", "ឈប់សម្រាក", "leave", "ខ្ចីប្រាក់", "បុរេប្រទាន", "loan", "វត្តមាន"])
 
         clean_btn_text = text.replace(" ", "").replace("📝", "").replace("💰", "").strip()
-        is_leave_btn = clean_btn_text in ["ស្នើសុំច្បាប់", "សុំច្បាប់", "ស្នើសុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
-        is_loan_btn = clean_btn_text in ["ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ស្នើកម្ចី", "សុំកម្ចី"] or clean_cmd in ["/loan", "/request_loan"]
+        is_leave_btn = clean_btn_text in ["ស្នើសុំច្បាប់", "សុំច្បាប់", "ស្នើច្បាប់", "សុំឈប់"] or clean_cmd in ["/leave", "/request_leave"]
+        is_loan_btn = clean_btn_text in ["ស្នើកម្ចី", "សុំកម្ចី", "កម្ចី", "ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
         is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone", "/buttons", "/menu", "/keyboard", "/btn"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Re-attach Keyboard in Group Chats or DM when typing /buttons, /menu, /help, /start, etc.
@@ -4586,7 +4586,7 @@ async def telegram_webhook(req: Request):
                 f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
                 f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
                 f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
-                f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+                f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី"
             )
             sent_wg = send_telegram_notify(welcome_group, target_chat_id=chat_id_str)
             if isinstance(sent_wg, dict) and "result" in sent_wg and chat_id_str.startswith("-"):
@@ -4600,7 +4600,7 @@ async def telegram_webhook(req: Request):
             contact_kb = {
                 "keyboard": [
                     [{"text": "📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone)", "request_contact": True}],
-                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើខ្ចីប្រាក់"}]
+                    [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើកម្ចី"}]
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True,
@@ -4611,7 +4611,7 @@ async def telegram_webhook(req: Request):
                 f"សូមស្វាគមន៍មកកាន់ប្រព័ន្ធរដ្ឋបាល <b>AC BOMLU Staff Control</b>!\n\n"
                 f"📱 <b>ដើម្បីភ្ជាប់លេខទូរស័ព្ទរបស់អ្នកជាមួយកាតបុគ្គលិកស្វ័យប្រវត្តិ៖</b>\n"
                 f"សូមចុចប៊ូតុង <b>[ 📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone) ]</b> ខាងក្រោមតែមួយដង នោះលេខទូរស័ព្ទរបស់អ្នកនឹងត្រូវកត់ត្រាចូលក្នុង Dashboard ដោយស្វ័យប្រវត្តិ។\n\n"
-                f"ក្រៅពីនេះ អ្នកក៏អាចចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
+                f"ក្រៅពីនេះ អ្នកក៏អាចចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
             )
             send_telegram_notify(welcome_private, reply_markup=contact_kb, target_chat_id=chat_id_str)
             return {"ok": True}
@@ -4925,20 +4925,16 @@ async def startup_event():
             with urllib.request.urlopen(req, timeout=5) as r:
                 print("Webhook Auto-Registered:", r.read().decode())
             
-            # Register official bot commands: only 2 original commands (leave & loan)
-            bot_cmds = [
-                {"command": "leave", "description": "📝 ស្នើសុំច្បាប់"},
-                {"command": "loan", "description": "💰 ស្នើកម្ចី"}
-            ]
-            for sc in [{"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
+            # Ensure all Latin slash commands are completely removed (Button-Only Policy: No Latin commands)
+            for sc in [None, {"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
                 try:
-                    payload = json.dumps({"commands": bot_cmds, "scope": sc}).encode("utf-8")
-                    cmd_req = urllib.request.Request(
-                        f"https://api.telegram.org/bot{token}/setMyCommands",
+                    payload = json.dumps({"scope": sc}).encode("utf-8") if sc else b"{}"
+                    del_req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{token}/deleteMyCommands",
                         data=payload,
                         headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
                     )
-                    with urllib.request.urlopen(cmd_req, timeout=5):
+                    with urllib.request.urlopen(del_req, timeout=5):
                         pass
                 except Exception:
                     pass
