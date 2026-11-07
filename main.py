@@ -1968,7 +1968,7 @@ async def create_leave(request: LeaveRequest):
         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
         f"🏢 <b>សាខា:</b> {data['branch']}\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
-        f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
+        f"📅 <b>កាលបរិច្ឆេទ:</b> {format_date_display_py(date_str)}\n"
         f"📝 <b>មូលហេតុ:</b> {request.reason}\n"
         f"⏱️ <b>ចំនួនថ្ងៃ:</b> {request.days} ថ្ងៃ\n"
         f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
@@ -2047,7 +2047,7 @@ async def create_loan(request: LoanRequest):
             f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (សម្ងាត់)!</b>\n\n"
             f"🏢 <b>សាខា:</b> {data['branch']}\n"
             f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
-            f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {format_date_display_py(date_str)}\n"
             f"💵 <b>ចំនួនទឹកប្រាក់:</b> {formatted_amount} រៀល\n"
             f"🎯 <b>គោលបំណង:</b> {request.purpose or 'មិនបានបញ្ជាក់'}\n"
             f"🟡 <b>ស្ថានភាព:</b> រង់ចាំរដ្ឋបាលអនុញ្ញាតិ",
@@ -2770,12 +2770,33 @@ def parse_khmer_or_arabic_number(s):
     except ValueError:
         return 0.0
 
+def format_date_display_py(d_str: str) -> str:
+    if not d_str:
+        return ""
+    s = str(d_str).strip()
+    parts = s.split("-")
+    if len(parts) == 3 and len(parts[0]) == 4:
+        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    return s
+
 def extract_trips_and_locations(desc, is_sewage_income=True):
     if not desc:
         return [("សេវាទូទៅ", 1, 0.0)] if is_sewage_income else []
 
     entries = []
     text = str(desc).strip()
+
+    # Pattern 0: <loc>: <trips> (e.g. "មេមុត: 01 , ដា: 03 , សួង: 01" or "ដា: 01")
+    p0 = re.compile(r'([^,:\n]+?):\s*([០-៩0-9]+)')
+    matches0 = list(p0.finditer(text))
+    if matches0 and not "ជើង" in text:
+        for m in matches0:
+            loc = m.group(1).replace("ទីតាំង៖", "").replace("ទីតាំង:", "").strip()
+            trips = parse_khmer_or_arabic_int(m.group(2)) or 1
+            if loc:
+                entries.append((loc, trips, 0.0))
+        if entries:
+            return entries
 
     # Pattern 1: ទីតាំង[៖:] <loc> (<trips> ជើង [= <price> [៛|$|...]])
     # Handles multiple on same line or separate lines
@@ -6906,17 +6927,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2.5 min-w-[110px] max-w-[180px]">ពិពណ៌នា / ចំណាំ</th>
-                <th class="px-2.5 py-2.5 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2 py-2.5 whitespace-nowrap">លេខវិក្កយបត្រ</th>
-                <th class="px-3 py-2.5 font-bold text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
-                <th class="px-2 py-2.5 text-right whitespace-nowrap w-16">សកម្មភាព</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-3 py-2 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-2 py-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="income-tbody" class="divide-y divide-slate-50 text-gray-700">
-              <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
+              <tr><td colspan="6" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
             </tbody>
           </table>
         </div>
@@ -6996,17 +7016,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2.5 min-w-[110px] max-w-[180px]">ពិពណ៌នា / ចំណាំ</th>
-                <th class="px-2.5 py-2.5 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2 py-2.5 whitespace-nowrap">លេខវិក្កយបត្រ</th>
-                <th class="px-3 py-2.5 font-bold text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
-                <th class="px-2 py-2.5 text-right whitespace-nowrap w-16">សកម្មភាព</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-3 py-2 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-2 py-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="expense-tbody" class="divide-y divide-slate-50 text-gray-700">
-              <tr><td colspan="7" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
+              <tr><td colspan="6" class="text-center py-8 text-gray-400">កំពុងទាញទិន្នន័យ...</td></tr>
             </tbody>
           </table>
         </div>
@@ -8183,6 +8202,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
      JAVASCRIPT
 ====================================================== -->
 <script>
+  // Universal Date Display Formatter: YYYY-MM-DD -> DD-MM-YYYY (e.g. 07-11-2026)
+  function formatDateDisplay(d) {
+    if (!d) return '';
+    const s = String(d).trim();
+    if (/^\\d{2}-\\d{2}-\\d{4}/.test(s)) return s;
+    const m = s.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);
+    if (m) {
+      const yyyy = m[1];
+      const mm = m[2].padStart(2, '0');
+      const dd = m[3].padStart(2, '0');
+      const rest = s.slice(m[0].length);
+      return `${dd}-${mm}-${yyyy}${rest}`;
+    }
+    return s;
+  }
+
+  // Universal Location & Trips Formatter: Ex: មេមុត: 01 , ដា: 03 , សួង: 01
+  function formatTransactionDesc(tx) {
+    if (!tx) return '—';
+    if (Array.isArray(tx.service_items) && tx.service_items.length > 0) {
+      const items = tx.service_items
+        .filter(it => it && it.location)
+        .map(it => {
+          const tr = parseInt(it.trips, 10) || 1;
+          const trStr = tr < 10 ? ('0' + tr) : String(tr);
+          return `${it.location.trim()}: ${trStr}`;
+        });
+      if (items.length > 0) return items.join(' , ');
+    }
+    const desc = typeof tx === 'string' ? tx : (tx.description || '');
+    if (!desc) return '—';
+
+    const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
+    // Pattern 1: ទីតាំង៖ <loc> (<trips> ជើង...)
+    const oldMatches = Array.from(desc.matchAll(/ទីតាំង៖\\s*([^(:\\n]+?)(?:\\s*\\((?:(\\d+|[០-៩]+)\\s*ជើង)?.*?\\)|(?=\\n|$|(?:\\s*ទីតាំង)))/g));
+    if (oldMatches.length > 0) {
+      const parsed = [];
+      for (const m of oldMatches) {
+        const loc = m[1].trim();
+        const rawTr = m[2] || '1';
+        let tr = 0;
+        for (const ch of rawTr) {
+          if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
+          else if (/\\d/.test(ch)) tr = tr * 10 + parseInt(ch, 10);
+        }
+        if (!tr) tr = 1;
+        const trStr = tr < 10 ? ('0' + tr) : String(tr);
+        if (loc) parsed.push(`${loc}: ${trStr}`);
+      }
+      if (parsed.length > 0) return parsed.join(' , ');
+    }
+
+    // Pattern 2: <loc>: <digits>
+    const colonMatches = Array.from(desc.matchAll(/([^,:\\n]+?):\\s*(\\d+|[០-៩]+)/g));
+    if (colonMatches.length > 0) {
+      const parsed = [];
+      for (const m of colonMatches) {
+        const loc = m[1].replace(/ទីតាំង៖?/g, '').trim();
+        const rawTr = m[2] || '1';
+        let tr = 0;
+        for (const ch of rawTr) {
+          if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
+          else if (/\\d/.test(ch)) tr = tr * 10 + parseInt(ch, 10);
+        }
+        if (!tr) tr = 1;
+        const trStr = tr < 10 ? ('0' + tr) : String(tr);
+        if (loc) parsed.push(`${loc}: ${trStr}`);
+      }
+      if (parsed.length > 0) return parsed.join(' , ');
+    }
+
+    return desc;
+  }
+
   // ===== State =====
   let leavesData = [], loansData = [], currentLeaveFilter = 'all', currentLoanFilter = 'all';
   const avatarColors = ['bg-blue-500','bg-purple-500','bg-green-500','bg-orange-500','bg-pink-500','bg-teal-500'];
@@ -8642,7 +8735,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div>${escapeHtml(l.employee_name)}</div>
             <div class="mt-0.5 flex items-center gap-1.5 flex-wrap">
               <span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span>
-              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(l.date)}</span>` : ''}
+              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(formatDateDisplay(l.date))}</span>` : ''}
             </div>
           </td>
           <td class="px-5 py-3.5 text-gray-600 whitespace-nowrap">
@@ -8841,7 +8934,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div>${escapeHtml(l.employee_name)}</div>
             <div class="mt-0.5 flex items-center gap-1.5 flex-wrap">
               <span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md font-medium">🏢 ${escapeHtml(l.branch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')}</span>
-              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(l.date)}</span>` : ''}
+              ${l.date ? `<span class="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-mono">📅 ${escapeHtml(formatDateDisplay(l.date))}</span>` : ''}
             </div>
           </td>
           <td class="px-5 py-3.5 font-bold text-blue-700 whitespace-nowrap">${Number(l.amount_khr).toLocaleString('km-KH')} ៛</td>
@@ -9713,7 +9806,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <tr class="hover:bg-slate-50/70 transition">
             <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
             <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
-            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${formatDateDisplay(it.date)}</td>
             <td class="py-3 px-4 font-medium text-gray-700">${it.days}</td>
             <td class="py-3 px-4 font-semibold text-emerald-600">${it.compensated_days || '0 ថ្ងៃ'}</td>
             <td class="py-3 px-4 font-bold text-amber-600">${it.remaining_days}</td>
@@ -9983,7 +10076,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <tr class="hover:bg-slate-50/70 transition">
             <td class="py-3 px-4 font-mono text-xs text-gray-400">${idx + 1}</td>
             <td class="py-3 px-4 font-semibold text-gray-800">${escapeHtml(it.employee_name)}</td>
-            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${it.date}</td>
+            <td class="py-3 px-4 text-gray-500 font-mono text-xs">${formatDateDisplay(it.date)}</td>
             <td class="py-3 px-4 font-medium text-gray-700">${Number(it.amount_khr).toLocaleString()} ៛</td>
             <td class="py-3 px-4 font-semibold text-emerald-600">${Number(it.paid_amount_khr || 0).toLocaleString()} ៛</td>
             <td class="py-3 px-4 font-bold text-indigo-600">
@@ -10714,11 +10807,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       const avgPrice = item.trips > 0 ? (itemCurr === 'USD' ? (itemPrice / item.trips) : Math.round(itemPrice / item.trips)) : itemPrice;
-      const khmerNum = khmerTripsMap[String(item.trips)] || String(item.trips);
+      const trNum = Number(item.trips) || 1;
+      const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
       const formattedPrice = formatMoney(itemPrice, itemCurr);
       const formattedAvg = formatMoney(avgPrice, itemCurr);
 
-      descLines.push(`ទីតាំង៖ ${item.location} (${khmerNum} ជើង = ${formattedPrice})`);
+      descLines.push(`${item.location}: ${trStr}`);
 
       return `
         <div class="flex items-center justify-between gap-2 p-2 sm:p-2.5 bg-white rounded-xl border border-blue-100 shadow-sm hover:border-blue-300 transition">
@@ -10769,7 +10863,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     if (descEl) {
-      descEl.value = descLines.join('\\n');
+      descEl.value = descLines.join(' , ');
     }
 
     const formCurr = document.getElementById('inc-form-currency');
@@ -11248,7 +11342,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderIncomeTable();
     } catch (e) {
       console.warn('loadIncome error:', e);
-      document.getElementById('income-tbody').innerHTML = '<tr><td colspan="7" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណូល</td></tr>';
+      document.getElementById('income-tbody').innerHTML = '<tr><td colspan="6" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណូល</td></tr>';
     }
   }
 
@@ -11257,7 +11351,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const mobileContainer = document.getElementById('income-mobile-cards');
 
     if (!incomeTransactions.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណូលក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណូលក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
       mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">មិនមានទិន្នន័យចំណូលឡើយ</div>';
       return;
     }
@@ -11266,27 +11360,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
-            <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs">
+            <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span class="material-symbols-outlined text-xs">storefront</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[180px]">
-            <div class="text-xs text-gray-800 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(tx.description || '—')}</div>
+          <td class="px-3 py-2 min-w-[130px] max-w-[220px]">
+            <div class="text-xs text-gray-900 font-bold whitespace-pre-line break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2 py-2 whitespace-nowrap text-xs font-mono text-gray-400">
-            ${escapeHtml(tx.reference_no || '—')}
-          </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
             + ${amtStr}
           </td>
           <td class="px-2 py-2 whitespace-nowrap text-right">
@@ -11312,11 +11403,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 ${escapeHtml(tx.category)}
               </span>
-              <p class="text-[11px] text-gray-400 mt-1">${escapeHtml(tx.date)} ${escapeHtml(tx.time || '')}</p>
+              <p class="text-[11px] text-gray-400 mt-1 font-mono">${escapeHtml(formatDateDisplay(tx.date))} ${escapeHtml(tx.time || '')}</p>
             </div>
             <p class="text-base font-extrabold text-emerald-600">+ ${amtStr}</p>
           </div>
-          ${tx.description ? `<p class="text-xs text-gray-700 font-medium">${escapeHtml(tx.description)}</p>` : ''}
+          ${tx.description || (tx.service_items && tx.service_items.length) ? `<p class="text-xs text-gray-800 font-bold">${escapeHtml(formatTransactionDesc(tx))}</p>` : ''}
           <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-gray-500">
             <span>💳 ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')} ${tx.reference_no ? '(' + escapeHtml(tx.reference_no) + ')' : ''}</span>
             <div class="flex items-center gap-1">
@@ -11509,14 +11600,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
 
       const khrDesc = khrItems.map(i => {
-        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
-        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, 'KHR')})`;
-      }).join('\\n') + (customNotes ? '\\n' + customNotes : '');
+        const trNum = Number(i.trips) || 1;
+        const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
+        return `${i.location}: ${trStr}`;
+      }).join(' , ') + (customNotes ? ' ' + customNotes : '');
 
       const usdDesc = usdItems.map(i => {
-        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
-        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, 'USD')})`;
-      }).join('\\n') + (customNotes ? '\\n' + customNotes : '');
+        const trNum = Number(i.trips) || 1;
+        const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
+        return `${i.location}: ${trStr}`;
+      }).join(' , ') + (customNotes ? ' ' + customNotes : '');
 
       btn.disabled = true;
       try {
@@ -11587,10 +11680,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (finalItems && finalItems.length > 0) {
       const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
       const itemsDesc = finalItems.map(i => {
-        const kn = khmerTripsMap[String(i.trips)] || String(i.trips);
-        return `ទីតាំង៖ ${i.location} (${kn} ជើង = ${formatMoney(i.price, finalCurrency)})`;
-      }).join('\\n');
-      finalDesc = itemsDesc + (customNotes ? '\\n' + customNotes : '');
+        const trNum = Number(i.trips) || 1;
+        const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
+        return `${i.location}: ${trStr}`;
+      }).join(' , ');
+      finalDesc = itemsDesc + (customNotes ? ' ' + customNotes : '');
     }
 
     if (!finalAmount || finalAmount <= 0) {
@@ -11722,7 +11816,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderExpenseTable();
     } catch (e) {
       console.warn('loadExpense error:', e);
-      document.getElementById('expense-tbody').innerHTML = '<tr><td colspan="7" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណាយ</td></tr>';
+      document.getElementById('expense-tbody').innerHTML = '<tr><td colspan="6" class="text-center py-8 text-rose-500">កំហុសក្នុងការទាញយកទិន្នន័យចំណាយ</td></tr>';
     }
   }
 
@@ -11731,7 +11825,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const mobileContainer = document.getElementById('expense-mobile-cards');
 
     if (!expenseTransactions.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណាយក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-gray-400">មិនមានទិន្នន័យចំណាយក្នុងចន្លោះពេលនេះឡើយ</td></tr>';
       mobileContainer.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">មិនមានទិន្នន័យចំណាយឡើយ</div>';
       return;
     }
@@ -11740,27 +11834,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
-            <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs">
+            <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
               <span class="material-symbols-outlined text-xs">shopping_cart</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[180px]">
-            <div class="text-xs text-gray-800 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(tx.description || '—')}</div>
+          <td class="px-3 py-2 min-w-[130px] max-w-[220px]">
+            <div class="text-xs text-gray-900 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2 py-2 whitespace-nowrap text-xs font-mono text-gray-400">
-            ${escapeHtml(tx.reference_no || '—')}
-          </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
+          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
             - ${amtStr}
           </td>
           <td class="px-2 py-2 whitespace-nowrap text-right">
@@ -11786,11 +11877,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                 ${escapeHtml(tx.category)}
               </span>
-              <p class="text-[11px] text-gray-400 mt-1">${escapeHtml(tx.date)} ${escapeHtml(tx.time || '')}</p>
+              <p class="text-[11px] text-gray-400 mt-1 font-mono">${escapeHtml(formatDateDisplay(tx.date))} ${escapeHtml(tx.time || '')}</p>
             </div>
             <p class="text-base font-extrabold text-rose-600">- ${amtStr}</p>
           </div>
-          ${tx.description ? `<p class="text-xs text-gray-700 font-medium">${escapeHtml(tx.description)}</p>` : ''}
+          ${tx.description || (tx.service_items && tx.service_items.length) ? `<p class="text-xs text-gray-800 font-bold">${escapeHtml(formatTransactionDesc(tx))}</p>` : ''}
           <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-gray-500">
             <span>💳 ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')} ${tx.reference_no ? '(' + escapeHtml(tx.reference_no) + ')' : ''}</span>
             <div class="flex items-center gap-1">
@@ -12063,7 +12154,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">📱 បាញ់តាមធនាគារ</span>';
       const amtStr = t.currency === 'USD' ? '$' + Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : Number(t.amount).toLocaleString('en-US') + ' ៛';
       return `<tr class="border-b border-gray-50 hover:bg-slate-50/60 transition">
-        <td class="py-2.5 px-3 font-mono text-xs text-gray-600">${t.date || ''} <span class="text-[10px] text-gray-400">${t.time || ''}</span></td>
+        <td class="py-2.5 px-3 font-mono text-xs text-gray-600">${formatDateDisplay(t.date || '')} <span class="text-[10px] text-gray-400">${t.time || ''}</span></td>
         <td class="py-2.5 px-3">${fromBadge}</td>
         <td class="py-2.5 px-3">
           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">🏦 គណនីវិនិយោគទុន</span>
@@ -12638,7 +12729,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div class="px-5 py-3.5 bg-rose-50/50 border-b border-slate-100 flex items-center justify-between">
             <h4 class="font-bold text-rose-800 text-sm flex items-center gap-2">
-              <span class="material-symbols-outlined text-rose-600">trending_down</span> ចំណាយតាមកាតាឡុក (${date})
+              <span class="material-symbols-outlined text-rose-600">trending_down</span> ចំណាយតាមកាតាឡុក (${formatDateDisplay(date)})
             </h4>
             <span class="text-xs font-semibold text-rose-700 font-mono">${formatDualMoney(summary.expense_khr, summary.expense_usd)}</span>
           </div>
@@ -12657,7 +12748,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-6">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h4 class="font-bold text-gray-800 text-sm sm:text-base flex items-center gap-2">
-            <span class="material-symbols-outlined text-blue-600">receipt_long</span> បញ្ជីប្រតិបត្តិការថ្ងៃទី ${date}
+            <span class="material-symbols-outlined text-blue-600">receipt_long</span> បញ្ជីប្រតិបត្តិការថ្ងៃទី ${formatDateDisplay(date)}
           </h4>
           <span class="text-xs text-gray-500 font-medium">សរុប ${transactions.length} ប្រតិបត្តិការ</span>
         </div>
@@ -12772,7 +12863,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const isPos = d.net_khr >= 0 && d.net_usd >= 0;
                 return `
                   <tr class="hover:bg-slate-50 transition ${hasData ? 'bg-white' : 'opacity-60'}">
-                    <td class="px-5 py-2.5 font-sans font-medium text-gray-800">${escapeHtml(d.date)}</td>
+                    <td class="px-5 py-2.5 font-sans font-medium text-gray-800">${escapeHtml(formatDateDisplay(d.date))}</td>
                     <td class="px-5 py-2.5 text-center font-sans font-bold text-indigo-700">${d.trips || 0} ជើង</td>
                     <td class="px-5 py-2.5 text-right font-bold text-emerald-600">${Math.round(d.income_khr).toLocaleString('en-US')} ៛</td>
                     <td class="px-5 py-2.5 text-right font-bold text-emerald-600">$${d.income_usd.toFixed(2)}</td>
