@@ -7678,10 +7678,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
           </div>
 
-          <!-- Input fields row: Location (4 cols) | Trips (2 cols) | Price (3 cols) | Currency (៛ default, 1 col) | Add Button (2 cols) -->
+          <!-- Input fields row: Location (3 cols) | Trips (2 cols) | Price (3 cols) | Currency (2 cols) | Add Button (2 cols) -->
           <div class="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
-            <!-- Location Combobox (4 cols) -->
-            <div class="col-span-12 sm:col-span-4 relative">
+            <!-- Location Combobox (3 cols on desktop, 12 cols on mobile) -->
+            <div class="col-span-12 sm:col-span-3 relative">
               <input list="service-locations-list" id="inc-location-input" type="text"
                 placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
                 onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inc-price-input')?.focus();}"
@@ -7689,7 +7689,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <datalist id="service-locations-list"></datalist>
             </div>
 
-            <!-- Trips Dropdown (2 cols) -->
+            <!-- Trips Dropdown (2 cols on desktop, 4 cols on mobile) -->
             <div class="col-span-4 sm:col-span-2">
               <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
                 <option value="1">១ ជើង</option>
@@ -7715,7 +7715,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </select>
             </div>
 
-            <!-- Price input (3 cols) -->
+            <!-- Price input (3 cols on desktop, 5 cols on mobile) -->
             <div class="col-span-5 sm:col-span-3">
               <input id="inc-price-input" type="text" inputmode="numeric"
                 placeholder="ឧ. 360,000"
@@ -7724,17 +7724,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 class="w-full border border-slate-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm font-mono text-right" />
             </div>
 
-            <!-- Currency Select (1 col on desktop, 3 cols on mobile) -> Default KHR -->
-            <div class="col-span-3 sm:col-span-1">
+            <!-- Currency Select (2 cols on desktop, 3 cols on mobile) -> Prominently displays "៛" or "$" -->
+            <div class="col-span-3 sm:col-span-2">
               <select id="inc-item-currency" onchange="onItemCurrencyChange()"
-                title="ជ្រើសរើសរូបិយប័ណ្ណ"
-                class="w-full border border-slate-200 rounded-xl px-1.5 py-2 text-xs sm:text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm text-center">
+                title="ជ្រើសរើសរូបិយប័ណ្ណ (៛ ឬ $)"
+                class="w-full border-2 border-blue-400 bg-blue-50/70 hover:bg-blue-100/70 rounded-xl px-2 py-2 text-xs sm:text-sm font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-center cursor-pointer">
                 <option value="KHR" selected>៛</option>
                 <option value="USD">$</option>
               </select>
             </div>
 
-            <!-- Add Button (2 cols) -->
+            <!-- Add Button (2 cols on desktop, 12 cols on mobile) -->
             <div class="col-span-12 sm:col-span-2">
               <button type="button" onclick="addServiceTripItem()" id="btn-add-location"
                 class="w-full py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
@@ -7762,26 +7762,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Total Amount & Currency -->
-        <div class="grid grid-cols-3 gap-2.5 sm:gap-3.5">
-          <div class="col-span-2">
-            <div class="flex items-center justify-between gap-1 mb-1">
-              <label id="inc-form-amount-label" class="text-xs font-semibold text-gray-700">ចំនួនទឹកប្រាក់សរុប *</label>
-              <span id="inc-amount-auto-badge" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
-                <span class="material-symbols-outlined text-[12px]">sync</span> គណនាស្វ័យប្រវត្ត
-              </span>
-            </div>
-            <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="០ ៛"
-              oninput="formatAmountInput(this)"
-              class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
+        <!-- Total Amount (Full Width - Currency determined by item selector in Step 2) -->
+        <div>
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <label id="inc-form-amount-label" class="text-xs font-semibold text-gray-700">ចំនួនទឹកប្រាក់សរុប * (៛)</label>
+            <span id="inc-amount-auto-badge" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-[12px]">sync</span> គណនាស្វ័យប្រវត្ត
+            </span>
           </div>
-          <div class="col-span-1">
-            <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-            <select id="inc-form-currency" onchange="onFormCurrencyChange()" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
-              <option value="KHR" selected>៛ (រៀល)</option>
-              <option value="USD">$ (ដុល្លារ)</option>
-            </select>
-          </div>
+          <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="០ ៛"
+            oninput="formatAmountInput(this)"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
+          <input type="hidden" id="inc-form-currency" value="KHR" />
         </div>
 
         <!-- Description / Notes -->
@@ -10536,7 +10528,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   function onItemCurrencyChange() {
     const itemCurr = document.getElementById('inc-item-currency')?.value || 'KHR';
     const formCurr = document.getElementById('inc-form-currency');
-    if (formCurr && formCurr.value !== itemCurr) {
+    if (formCurr) {
       formCurr.value = itemCurr;
     }
     updateIncomeCurrencyBadge();
@@ -10552,8 +10544,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   function getIncomeCurrency() {
-    const el = document.getElementById('inc-form-currency');
-    return el ? el.value : 'KHR';
+    const itemCurr = document.getElementById('inc-item-currency');
+    if (itemCurr && itemCurr.value) return itemCurr.value;
+    const formCurr = document.getElementById('inc-form-currency');
+    return formCurr ? formCurr.value : 'KHR';
   }
 
   function updateIncomeCurrencyBadge() {
@@ -10561,6 +10555,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const priceInp = document.getElementById('inc-price-input');
     if (priceInp) {
       priceInp.placeholder = curr === 'USD' ? 'ឧ. 90.00' : 'ឧ. 360,000';
+    }
+    const amtInp = document.getElementById('inc-form-amount');
+    if (amtInp) {
+      amtInp.placeholder = curr === 'USD' ? '០ $' : '០ ៛';
+    }
+    const amtLabel = document.getElementById('inc-form-amount-label');
+    if (amtLabel) {
+      amtLabel.textContent = `ចំនួនទឹកប្រាក់សរុប * (${curr === 'USD' ? '$' : '៛'})`;
     }
     renderIncomeServiceItems();
   }
