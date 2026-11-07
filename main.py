@@ -8234,39 +8234,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const desc = typeof tx === 'string' ? tx : (tx.description || '');
     if (!desc) return '—';
 
-    const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
-    // Pattern 1: ទីតាំង៖ <loc> (<trips> ជើង...)
-    const oldMatches = Array.from(desc.matchAll(/ទីតាំង៖[ \t]*([^(: \n]+?)(?:[ \t]*[(](?:([0-9]+|[០-៩]+)[ \t]*ជើង)?.*?[)]|(?=\n|$|(?:[ \t]*ទីតាំង)))/g));
-    if (oldMatches.length > 0) {
-      const parsed = [];
-      for (const m of oldMatches) {
-        const loc = m[1].trim();
-        const rawTr = m[2] || '1';
-        let tr = 0;
-        for (const ch of rawTr) {
-          if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
-          else if (ch >= '0' && ch <= '9') tr = tr * 10 + parseInt(ch, 10);
-        }
-        if (!tr) tr = 1;
-        const trStr = tr < 10 ? ('0' + tr) : String(tr);
-        if (loc) parsed.push(loc + ': ' + trStr);
-      }
-      if (parsed.length > 0) return parsed.join(' , ');
+    // If already in 'Loc: 01 , Loc: 02' format, return as is
+    if (desc.includes(':') && !desc.includes('ទីតាំង៖') && !desc.includes('ជើង =')) {
+      return desc;
     }
 
-    // Pattern 2: <loc>: <digits>
-    const colonMatches = Array.from(desc.matchAll(/([^,:\n]+?):[ \t]*([0-9]+|[០-៩]+)/g));
-    if (colonMatches.length > 0) {
+    const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
+    const locRegex = new RegExp('ទីតាំង៖[ \\t]*([^(: \\r\\n]+)', 'g');
+    const tripRegex = new RegExp('([0-9]+|[០-៩]+)[ \\t]*ជើង');
+    const matches = Array.from(desc.matchAll(locRegex));
+    if (matches.length > 0) {
       const parsed = [];
-      for (const m of colonMatches) {
-        const loc = m[1].replace(/ទីតាំង៖?/g, '').trim();
-        const rawTr = m[2] || '1';
-        let tr = 0;
-        for (const ch of rawTr) {
-          if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
-          else if (ch >= '0' && ch <= '9') tr = tr * 10 + parseInt(ch, 10);
+      for (const m of matches) {
+        const loc = m[1].trim();
+        const trMatch = desc.slice(m.index).match(tripRegex);
+        let tr = 1;
+        if (trMatch) {
+          tr = 0;
+          for (const ch of trMatch[1]) {
+            if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
+            else if (ch >= '0' && ch <= '9') tr = tr * 10 + parseInt(ch, 10);
+          }
+          if (!tr) tr = 1;
         }
-        if (!tr) tr = 1;
         const trStr = tr < 10 ? ('0' + tr) : String(tr);
         if (loc) parsed.push(loc + ': ' + trStr);
       }
