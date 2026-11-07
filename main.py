@@ -539,6 +539,27 @@ def delete_telegram_message(chat_id: str, message_id: int):
         # Silently fail if message was already deleted or expired
         return False
 
+async def schedule_message_timeout_cleanup(chat_id: str, message_id: int, user_id: str = None, timeout_seconds: int = 60):
+    """
+    Time out after 1 minute (60s) and automatically delete the prompt message
+    if the user does not move on to the next step of the request.
+    Keeps Telegram chats 100% clean and removes uncompleted request prompts.
+    """
+    try:
+        await asyncio.sleep(timeout_seconds)
+        if not chat_id or not message_id:
+            return
+        # Delete message from Telegram chat
+        delete_telegram_message(chat_id, message_id)
+        # Clean up database flow if user did not move on
+        if user_id:
+            curr = user_flows_collection.find_one({"user_id": str(user_id)})
+            if curr:
+                if curr.get("step1_msg_id") == message_id or curr.get("reason_msg_id") == message_id or curr.get("purpose_msg_id") == message_id:
+                    user_flows_collection.delete_one({"user_id": str(user_id)})
+    except Exception as e:
+        print(f"schedule_message_timeout_cleanup error: {e}")
+
 def sync_or_update_employee_from_telegram(tg_user: dict, phone: str = None, position: str = None, branch: str = None) -> dict:
     """
     Auto-registers or auto-updates employee records from Telegram.
@@ -3992,6 +4013,8 @@ async def telegram_webhook(req: Request):
                 )
                 sent_res = send_telegram_notify(ask_reason_msg, reply_markup=reason_buttons, target_chat_id=cq_chat_id)
                 reason_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+                if reason_msg_id:
+                    asyncio.create_task(schedule_message_timeout_cleanup(cq_chat_id, reason_msg_id, cq_user_id, 60))
                 
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
@@ -4181,6 +4204,8 @@ async def telegram_webhook(req: Request):
                 )
                 sent_res = send_telegram_notify(ask_purpose_msg, reply_markup=purpose_buttons, target_chat_id=cq_chat_id)
                 purpose_msg_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+                if purpose_msg_id:
+                    asyncio.create_task(schedule_message_timeout_cleanup(cq_chat_id, purpose_msg_id, cq_user_id, 60))
                 
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
@@ -4819,7 +4844,16 @@ async def telegram_webhook(req: Request):
 
         # 3. Handle Leave Button -> Step 1: Show Days Selection Buttons
         if is_leave_btn:
-            user_flows_collection.delete_one({"user_id": user_id_str})
+            prev_flow = user_flows_collection.find_one({"user_id": user_id_str})
+            if prev_flow:
+                old_m1 = prev_flow.get("step1_msg_id")
+                old_m2 = prev_flow.get("reason_msg_id") or prev_flow.get("purpose_msg_id")
+                if old_m1:
+                    delete_telegram_message(chat_id_str, old_m1)
+                if old_m2:
+                    delete_telegram_message(chat_id_str, old_m2)
+                user_flows_collection.delete_one({"user_id": user_id_str})
+
             inline_days = {
                 "inline_keyboard": [
                     [
@@ -4838,12 +4872,37 @@ async def telegram_webhook(req: Request):
                 f"📋 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនថ្ងៃឈប់សម្រាក» ខាងក្រោម៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
+            sent_res = send_telegram_notify(msg, reply_markup=inline_days, target_chat_id=chat_id_str)
+            m_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+            if m_id:
+                user_flows_collection.replace_one(
+                    {"user_id": user_id_str},
+                    {
+                        "user_id": user_id_str,
+                        "type": "leave",
+                        "step": 1,
+                        "name": sender_name,
+                        "chat_id": chat_id_str,
+                        "step1_msg_id": m_id,
+                        "created_at": time.time()
+                    },
+                    upsert=True
+                )
+                asyncio.create_task(schedule_message_timeout_cleanup(chat_id_str, m_id, user_id_str, 60))
             return {"ok": True}
 
         # 4. Handle Loan Button -> Step 1: Show Amount Selection Buttons
         if is_loan_btn:
-            user_flows_collection.delete_one({"user_id": user_id_str})
+            prev_flow = user_flows_collection.find_one({"user_id": user_id_str})
+            if prev_flow:
+                old_m1 = prev_flow.get("step1_msg_id")
+                old_m2 = prev_flow.get("reason_msg_id") or prev_flow.get("purpose_msg_id")
+                if old_m1:
+                    delete_telegram_message(chat_id_str, old_m1)
+                if old_m2:
+                    delete_telegram_message(chat_id_str, old_m2)
+                user_flows_collection.delete_one({"user_id": user_id_str})
+
             inline_amounts = {
                 "inline_keyboard": [
                     [
@@ -4867,7 +4926,23 @@ async def telegram_webhook(req: Request):
                 f"💰 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"👉 <b>សូមចុចជ្រើសរើស «ចំនួនទឹកប្រាក់ដែលចង់ខ្ចី» (រៀល)៖</b>"
             )
-            send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
+            sent_res = send_telegram_notify(msg, reply_markup=inline_amounts, target_chat_id=chat_id_str)
+            m_id = (sent_res.get("result", {}).get("message_id") if isinstance(sent_res, dict) else None)
+            if m_id:
+                user_flows_collection.replace_one(
+                    {"user_id": user_id_str},
+                    {
+                        "user_id": user_id_str,
+                        "type": "loan",
+                        "step": 1,
+                        "name": sender_name,
+                        "chat_id": chat_id_str,
+                        "step1_msg_id": m_id,
+                        "created_at": time.time()
+                    },
+                    upsert=True
+                )
+                asyncio.create_task(schedule_message_timeout_cleanup(chat_id_str, m_id, user_id_str, 60))
             return {"ok": True}
 
         # 5. Handle Help/Start Command
