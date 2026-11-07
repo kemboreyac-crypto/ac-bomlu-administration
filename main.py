@@ -7660,170 +7660,195 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </button>
     </div>
 
-    <form onsubmit="submitIncome(event)" class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3 sm:space-y-3.5">
-      <!-- Row 1: Date & Time + Branch -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-          <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
-          <input id="inc-form-time" type="hidden" value="" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
-          <select id="inc-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
-            <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
-            <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
-          </select>
-          <input id="inc-form-ref" type="hidden" value="" />
-        </div>
-      </div>
-
-      <!-- Row 2: Category & Payment Method -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
-        <div>
-          <div class="flex items-center justify-between gap-1 mb-1 flex-wrap">
-            <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទ *</label>
-            <button type="button" onclick="openCatalogModal('income')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
-              <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
-            </button>
+    <form onsubmit="submitIncome(event)" class="p-4 sm:p-6 overflow-y-auto flex-1 flex flex-col justify-between">
+      <!-- STEP 1: ផ្នែកទី ១ (រូបទី២) - កាលបរិច្ឆេទ, សាខា, ប្រភេទចំណូល, មធ្យោបាយទូទាត់ -->
+      <div id="inc-step-1" class="space-y-4">
+        <!-- Row 1: Date & Branch -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+            <input id="inc-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
+            <input id="inc-form-time" type="hidden" value="" />
           </div>
-          <select id="inc-form-category" onchange="handleIncomeCategoryChange()" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
-            <option value="ចំណូលពីសេវាបូមលូ" selected>ចំណូលពីសេវាបូមលូ</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
-          <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
-            <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ</option>
-            <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Row 3: ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង (Smart Sub-entry + Auto-sum) -->
-      <div id="inc-service-location-section" class="p-3 sm:p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2">
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5 whitespace-nowrap">
-            <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
-            <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
-          </label>
-          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
-        </div>
-
-        <!-- Input fields row: Location (4 cols) | Trips (3 cols) | Price (3 cols) | Add Button (2 cols) -->
-        <div class="grid grid-cols-2 sm:grid-cols-12 gap-2">
-          <!-- Location Combobox -->
-          <div class="col-span-2 sm:col-span-4 relative">
-            <input list="service-locations-list" id="inc-location-input" type="text"
-              placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
-              onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inc-price-input')?.focus();}"
-              class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
-            <datalist id="service-locations-list">
-              <!-- Dynamically populated from stored locations -->
-            </datalist>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+            <select id="inc-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+              <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+              <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+            </select>
+            <input id="inc-form-ref" type="hidden" value="" />
           </div>
+        </div>
 
-          <!-- Trips Dropdown -->
-          <div class="col-span-1 sm:col-span-3">
-            <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
-              <option value="1">១ ជើង</option>
-              <option value="2">២ ជើង</option>
-              <option value="3">៣ ជើង</option>
-              <option value="4">៤ ជើង</option>
-              <option value="5">៥ ជើង</option>
-              <option value="6">៦ ជើង</option>
-              <option value="7">៧ ជើង</option>
-              <option value="8">៨ ជើង</option>
-              <option value="9">៩ ជើង</option>
-              <option value="10">១០ ជើង</option>
-              <option value="11">១១ ជើង</option>
-              <option value="12">១២ ជើង</option>
-              <option value="13">១៣ ជើង</option>
-              <option value="14">១៤ ជើង</option>
-              <option value="15">១៥ ជើង</option>
-              <option value="16">១៦ ជើង</option>
-              <option value="17">១៧ ជើង</option>
-              <option value="18">១៨ ជើង</option>
-              <option value="19">១៩ ជើង</option>
-              <option value="20">២០ ជើង</option>
+        <!-- Row 2: Category & Payment Method -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div>
+            <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
+              <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទ *</label>
+              <button type="button" onclick="openCatalogModal('income')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
+                <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+              </button>
+            </div>
+            <select id="inc-form-category" onchange="handleIncomeCategoryChange()" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+              <option value="ចំណូលពីសេវាបូមលូ" selected>ចំណូលពីសេវាបូមលូ</option>
             </select>
           </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+            <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ</option>
+              <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
+            </select>
+          </div>
+        </div>
 
-          <!-- Price input with Currency symbol -->
-          <div class="col-span-1 sm:col-span-3 relative">
-            <input id="inc-price-input" type="text" inputmode="numeric"
-              placeholder="តម្លៃទីតាំងនេះ"
+        <!-- Step 1 Footer Buttons -->
+        <div class="flex gap-2.5 sm:gap-3 pt-4 border-t border-slate-100 flex-shrink-0 bg-white">
+          <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">
+            បោះបង់
+          </button>
+          <button type="button" onclick="nextIncomeStep()" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+            <span>បន្តទៅមុខទៀត (Next)</span>
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: ផ្នែកទី ២ (រូបទី៣) - ទីតាំង, ចំនួនជើង, តម្លៃ, រូបិយប័ណ្ណ, ទឹកប្រាក់សរុប, ចំណាំ -->
+      <div id="inc-step-2" class="space-y-3 sm:space-y-3.5 hidden">
+        <!-- ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង (Smart Sub-entry + Auto-sum) -->
+        <div id="inc-service-location-section" class="p-3 sm:p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5 whitespace-nowrap">
+              <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
+              <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
+            </label>
+            <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
+          </div>
+
+          <!-- Input fields row: Location (4 cols) | Trips (2 cols) | Price (3 cols) | Currency (៛ default, 1 col) | Add Button (2 cols) -->
+          <div class="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
+            <!-- Location Combobox (4 cols) -->
+            <div class="col-span-12 sm:col-span-4 relative">
+              <input list="service-locations-list" id="inc-location-input" type="text"
+                placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
+                onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inc-price-input')?.focus();}"
+                class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
+              <datalist id="service-locations-list"></datalist>
+            </div>
+
+            <!-- Trips Dropdown (2 cols) -->
+            <div class="col-span-4 sm:col-span-2">
+              <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+                <option value="1">១ ជើង</option>
+                <option value="2">២ ជើង</option>
+                <option value="3">៣ ជើង</option>
+                <option value="4">៤ ជើង</option>
+                <option value="5">៥ ជើង</option>
+                <option value="6">៦ ជើង</option>
+                <option value="7">៧ ជើង</option>
+                <option value="8">៨ ជើង</option>
+                <option value="9">៩ ជើង</option>
+                <option value="10">១០ ជើង</option>
+                <option value="11">១១ ជើង</option>
+                <option value="12">១២ ជើង</option>
+                <option value="13">១៣ ជើង</option>
+                <option value="14">១៤ ជើង</option>
+                <option value="15">១៥ ជើង</option>
+                <option value="16">១៦ ជើង</option>
+                <option value="17">១៧ ជើង</option>
+                <option value="18">១៨ ជើង</option>
+                <option value="19">១៩ ជើង</option>
+                <option value="20">២០ ជើង</option>
+              </select>
+            </div>
+
+            <!-- Price input (3 cols) -->
+            <div class="col-span-5 sm:col-span-3">
+              <input id="inc-price-input" type="text" inputmode="numeric"
+                placeholder="ឧ. 360,000"
+                oninput="formatAmountInput(this)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();addServiceTripItem();}"
+                class="w-full border border-slate-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm font-mono text-right" />
+            </div>
+
+            <!-- Currency Select (1 col on desktop, 3 cols on mobile) -> Default KHR -->
+            <div class="col-span-3 sm:col-span-1">
+              <select id="inc-item-currency" onchange="onItemCurrencyChange()"
+                title="ជ្រើសរើសរូបិយប័ណ្ណ"
+                class="w-full border border-slate-200 rounded-xl px-1.5 py-2 text-xs sm:text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm text-center">
+                <option value="KHR" selected>៛</option>
+                <option value="USD">$</option>
+              </select>
+            </div>
+
+            <!-- Add Button (2 cols) -->
+            <div class="col-span-12 sm:col-span-2">
+              <button type="button" onclick="addServiceTripItem()" id="btn-add-location"
+                class="w-full py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
+                <span class="material-symbols-outlined text-base">add</span>
+                <span>បញ្ចូល</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Items List Container -->
+          <div id="inc-service-items-list" class="space-y-1.5 max-h-32 overflow-y-auto">
+            <!-- Dynamic item cards will be rendered here -->
+          </div>
+
+          <!-- Auto-sum Summary Bar -->
+          <div id="inc-items-summary" class="hidden flex items-center justify-between px-3 py-1.5 bg-blue-100/70 rounded-xl text-xs font-semibold text-blue-900 border border-blue-200/80">
+            <div class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm text-blue-700">functions</span>
+              <span>សរុប៖ <b id="inc-items-total-trips" class="font-bold text-blue-800">0</b> ជើង</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span>សរុបប្រាក់៖ <b id="inc-items-total-sum" class="font-bold text-emerald-700 font-mono">0 ៛</b></span>
+              <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-sync</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Total Amount & Currency -->
+        <div class="grid grid-cols-3 gap-2.5 sm:gap-3.5">
+          <div class="col-span-2">
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <label id="inc-form-amount-label" class="text-xs font-semibold text-gray-700">ចំនួនទឹកប្រាក់សរុប *</label>
+              <span id="inc-amount-auto-badge" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                <span class="material-symbols-outlined text-[12px]">sync</span> គណនាស្វ័យប្រវត្ត
+              </span>
+            </div>
+            <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="០ ៛"
               oninput="formatAmountInput(this)"
-              onkeydown="if(event.key==='Enter'){event.preventDefault();addServiceTripItem();}"
-              class="w-full border border-slate-200 rounded-xl pl-3 pr-7 py-2 sm:py-2 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm font-mono" />
-            <span id="inc-price-currency-badge" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">៛</span>
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
           </div>
-
-          <!-- Add Button -->
-          <div class="col-span-2 sm:col-span-2 flex items-stretch">
-            <button type="button" onclick="addServiceTripItem()"
-              class="w-full py-2 sm:py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
-              <span class="material-symbols-outlined text-base">add</span>
-              <span>បញ្ចូល</span>
-            </button>
+          <div class="col-span-1">
+            <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+            <select id="inc-form-currency" onchange="onFormCurrencyChange()" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+              <option value="KHR" selected>៛ (រៀល)</option>
+              <option value="USD">$ (ដុល្លារ)</option>
+            </select>
           </div>
         </div>
 
-        <!-- Items List Container -->
-        <div id="inc-service-items-list" class="space-y-1.5 max-h-32 overflow-y-auto">
-          <!-- Dynamic item cards will be rendered here -->
+        <!-- Description / Notes -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា / ចំណាំ</label>
+          <textarea id="inc-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
         </div>
 
-        <!-- Auto-sum Summary Bar -->
-        <div id="inc-items-summary" class="hidden flex items-center justify-between px-3 py-1.5 bg-blue-100/70 rounded-xl text-xs font-semibold text-blue-900 border border-blue-200/80">
-          <div class="flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-sm text-blue-700">functions</span>
-            <span>សរុប៖ <b id="inc-items-total-trips" class="font-bold text-blue-800">0</b> ជើង</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <span>សរុបប្រាក់៖ <b id="inc-items-total-sum" class="font-bold text-emerald-700 font-mono">0 ៛</b></span>
-            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-sync</span>
-          </div>
+        <!-- Step 2 Footer Buttons -->
+        <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
+          <button type="button" onclick="prevIncomeStep()" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            <span>ថយក្រោយ (Back)</span>
+          </button>
+          <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-base">check_circle</span>
+            <span>រក្សាទុកចំណូល</span>
+          </button>
         </div>
-      </div>
-
-      <!-- Row 4: Total Amount & Currency -->
-      <div class="grid grid-cols-3 gap-2.5 sm:gap-3.5">
-        <div class="col-span-2">
-          <div class="flex items-center justify-between gap-1 mb-1">
-            <label id="inc-form-amount-label" class="text-xs font-semibold text-gray-700">ចំនួនទឹកប្រាក់សរុប *</label>
-            <span id="inc-amount-auto-badge" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
-              <span class="material-symbols-outlined text-[12px]">sync</span> គណនាស្វ័យប្រវត្ត
-            </span>
-          </div>
-          <input id="inc-form-amount" type="text" inputmode="numeric" required placeholder="០ ៛"
-            oninput="formatAmountInput(this)"
-            class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono tracking-wide" />
-        </div>
-        <div class="col-span-1">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-          <select id="inc-form-currency" onchange="updateIncomeCurrencyBadge()" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
-            <option value="KHR">៛ (រៀល)</option>
-            <option value="USD">$ (ដុល្លារ)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Row 5: Description / Notes -->
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា / ចំណាំ</label>
-        <textarea id="inc-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-      </div>
-
-      <!-- Footer Buttons -->
-      <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
-        <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-          បោះបង់
-        </button>
-        <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
-          <span class="material-symbols-outlined text-base">check_circle</span>
-          <span>រក្សាទុកចំណូល</span>
-        </button>
       </div>
     </form>
   </div>
@@ -10565,6 +10590,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   let currentIncomeServiceItems = [];
 
+  function onItemCurrencyChange() {
+    const itemCurr = document.getElementById('inc-item-currency')?.value || 'KHR';
+    const formCurr = document.getElementById('inc-form-currency');
+    if (formCurr && formCurr.value !== itemCurr) {
+      formCurr.value = itemCurr;
+    }
+    updateIncomeCurrencyBadge();
+  }
+
+  function onFormCurrencyChange() {
+    const formCurr = document.getElementById('inc-form-currency')?.value || 'KHR';
+    const itemCurr = document.getElementById('inc-item-currency');
+    if (itemCurr && itemCurr.value !== formCurr) {
+      itemCurr.value = formCurr;
+    }
+    updateIncomeCurrencyBadge();
+  }
+
   function getIncomeCurrency() {
     const el = document.getElementById('inc-form-currency');
     return el ? el.value : 'KHR';
@@ -10572,11 +10615,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   function updateIncomeCurrencyBadge() {
     const curr = getIncomeCurrency();
-    const badge = document.getElementById('inc-price-currency-badge');
     const priceInp = document.getElementById('inc-price-input');
-    if (badge) {
-      badge.textContent = curr === 'USD' ? '$' : '៛';
-    }
     if (priceInp) {
       priceInp.placeholder = curr === 'USD' ? 'ឧ. 90.00' : 'ឧ. 360,000';
     }
@@ -10587,7 +10626,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const locInput = document.getElementById('inc-location-input');
     const tripsSelect = document.getElementById('inc-trips-select');
     const priceInput = document.getElementById('inc-price-input');
-    const currency = getIncomeCurrency();
+    const itemCurrSelect = document.getElementById('inc-item-currency');
+    const currency = itemCurrSelect ? itemCurrSelect.value : (getIncomeCurrency() || 'KHR');
 
     const loc = (locInput ? locInput.value : '').trim();
     const trips = parseInt(tripsSelect ? tripsSelect.value : '1', 10) || 1;
@@ -10601,11 +10641,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     saveServiceLocation(loc);
 
+    // Keep form currency in sync with the added item's currency
+    const formCurr = document.getElementById('inc-form-currency');
+    if (formCurr && formCurr.value !== currency) {
+      formCurr.value = currency;
+    }
+
     const newItem = {
       id: Date.now() + Math.random().toString(36).substr(2, 5),
       location: loc,
       trips: trips,
-      price: priceVal
+      price: priceVal,
+      currency: currency
     };
 
     currentIncomeServiceItems.push(newItem);
@@ -11267,10 +11314,51 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).join('');
   }
 
-  // Helper stubs for backwards compatibility
-  function setIncomeStep() {}
-  function nextIncomeStep() {}
-  function prevIncomeStep() {}
+  let currentIncomeStep = 1;
+
+  function setIncomeStep(step) {
+    currentIncomeStep = step;
+    const s1 = document.getElementById('inc-step-1');
+    const s2 = document.getElementById('inc-step-2');
+    if (!s1 || !s2) return;
+    if (step === 1) {
+      s1.classList.remove('hidden');
+      s2.classList.add('hidden');
+    } else {
+      s1.classList.add('hidden');
+      s2.classList.remove('hidden');
+    }
+  }
+
+  function nextIncomeStep() {
+    const date = document.getElementById('inc-form-date')?.value;
+    if (!date) {
+      showToast('សូមជ្រើសរើសកាលបរិច្ឆេទ!', true);
+      const dInp = document.getElementById('inc-form-date');
+      if (dInp) dInp.focus();
+      return;
+    }
+    const cat = document.getElementById('inc-form-category')?.value;
+    if (!cat) {
+      showToast('សូមជ្រើសរើសកាតាឡុក / ប្រភេទចំណូល!', true);
+      return;
+    }
+    setIncomeStep(2);
+    handleIncomeCategoryChange();
+    setTimeout(() => {
+      const isSewage = cat.includes('បូមលូ') || cat.includes('សេវា');
+      const targetFocus = isSewage ? document.getElementById('inc-location-input') : document.getElementById('inc-form-amount');
+      if (targetFocus) targetFocus.focus();
+    }, 100);
+  }
+
+  function prevIncomeStep() {
+    setIncomeStep(1);
+    setTimeout(() => {
+      const dInp = document.getElementById('inc-form-date');
+      if (dInp) dInp.focus();
+    }, 100);
+  }
 
   function handleIncomeCategoryChange() {
     const cat = document.getElementById('inc-form-category')?.value || '';
@@ -11303,12 +11391,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   async function openIncomeModal() {
     const form = document.querySelector('#income-modal form');
     if (form) form.reset();
+    setIncomeStep(1);
     if (document.getElementById('inc-form-branch')) {
       document.getElementById('inc-form-branch').value = currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
     }
     document.getElementById('inc-form-date').value = getTodayString();
     document.getElementById('inc-form-time').value = getCurrentTimeString();
     document.getElementById('inc-form-currency').value = 'KHR';
+    const itemCurr = document.getElementById('inc-item-currency');
+    if (itemCurr) itemCurr.value = 'KHR';
 
     if (!financeCatalogs || financeCatalogs.length === 0) {
       await loadCatalogs();
@@ -11344,14 +11435,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     updateIncomeCurrencyBadge();
     openModal('income-modal');
     setTimeout(() => {
-      const isSewage = (document.getElementById('inc-form-category')?.value || '').includes('បូមលូ');
-      const targetFocus = isSewage ? document.getElementById('inc-location-input') : document.getElementById('inc-form-amount');
-      if (targetFocus) targetFocus.focus();
+      const dInp = document.getElementById('inc-form-date');
+      if (dInp) dInp.focus();
     }, 150);
   }
 
   async function submitIncome(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (currentIncomeStep === 1) {
+      nextIncomeStep();
+      return;
+    }
     const date = document.getElementById('inc-form-date').value;
     const time = document.getElementById('inc-form-time').value;
     const amount = parseFormattedAmount(document.getElementById('inc-form-amount').value);
@@ -11412,6 +11506,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (res.ok && data.success) {
         showToast(data.message || 'បានកត់ត្រាចំណូលជោគជ័យ!');
         closeModal('income-modal');
+        setIncomeStep(1);
         await loadIncome();
         await loadFinanceStats();
       } else {
