@@ -4575,7 +4575,7 @@ async def telegram_webhook(req: Request):
 
         clean_btn_text = text.replace(" ", "").replace("📝", "").replace("💰", "").strip()
         is_leave_btn = clean_btn_text in ["ស្នើសុំច្បាប់", "សុំច្បាប់", "ស្នើសុំច្បាប់", "សុំច្បាប់"] or clean_cmd in ["/leave", "/request_leave"]
-        is_loan_btn = clean_btn_text in ["ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់"] or clean_cmd in ["/loan", "/request_loan"]
+        is_loan_btn = clean_btn_text in ["ស្នើខ្ចីប្រាក់", "សុំខ្ចីប្រាក់", "ស្នើកម្ចី", "សុំកម្ចី"] or clean_cmd in ["/loan", "/request_loan"]
         is_system_cmd = clean_cmd in ["/start", "/help", "/briefing", "/report", "/today", "/morning", "/me", "/status", "/profile", "/my_leave", "/my_loan", "/weekend_report", "/leave_report", "/weekend", "/leave_detail", "/weekend_detail", "/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail", "/sync", "/sync_members", "/sync_telegram", "/connect", "/register_members", "/checkin", "/link", "/request_phone", "/phone_request", "/get_phone", "/share_phone", "/buttons", "/menu", "/keyboard", "/btn"] or clean_cmd.startswith("/compensate") or clean_cmd.startswith("/សង") or clean_cmd.startswith("/repay") or clean_cmd.startswith("/កាត់លុយ") or clean_cmd.startswith("/setphone") or clean_cmd.startswith("/phone") or clean_cmd.startswith("/setposition") or clean_cmd.startswith("/position") or is_leave_btn or is_loan_btn
 
         # Re-attach Keyboard in Group Chats or DM when typing /buttons, /menu, /help, /start, etc.
@@ -4925,15 +4925,12 @@ async def startup_event():
             with urllib.request.urlopen(req, timeout=5) as r:
                 print("Webhook Auto-Registered:", r.read().decode())
             
-            # Register official bot commands so staff have 1-tap command menu in chat input bar
+            # Register official bot commands: only 2 original commands (leave & loan)
             bot_cmds = [
-                {"command": "leave", "description": "📝 ស្នើសុំច្បាប់ឈប់សម្រាក"},
-                {"command": "loan", "description": "💰 ស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"},
-                {"command": "buttons", "description": "🔄 បង្ហាញក្ដារចុចប៊ូតុងឡើងវិញ"},
-                {"command": "briefing", "description": "🌅 របាយការណ៍សង្ខេបពេលព្រឹក"},
-                {"command": "help", "description": "ℹ️ ជំនួយ និងការណែនាំ"}
+                {"command": "leave", "description": "📝 ស្នើសុំច្បាប់"},
+                {"command": "loan", "description": "💰 ស្នើកម្ចី"}
             ]
-            for sc in [{"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}]:
+            for sc in [{"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
                 try:
                     payload = json.dumps({"commands": bot_cmds, "scope": sc}).encode("utf-8")
                     cmd_req = urllib.request.Request(
