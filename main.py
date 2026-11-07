@@ -6906,9 +6906,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-3 py-2.5 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-3 py-2.5 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2.5 min-w-[140px] max-w-[220px]">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-3 py-2.5 min-w-[110px] max-w-[180px]">ពិពណ៌នា / ចំណាំ</th>
                 <th class="px-2.5 py-2.5 whitespace-nowrap">ការទូទាត់</th>
                 <th class="px-2 py-2.5 whitespace-nowrap">លេខវិក្កយបត្រ</th>
                 <th class="px-3 py-2.5 font-bold text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
@@ -6996,9 +6996,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-3 py-2.5 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-3 py-2.5 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2.5 min-w-[140px] max-w-[220px]">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-3 py-2.5 min-w-[110px] max-w-[180px]">ពិពណ៌នា / ចំណាំ</th>
                 <th class="px-2.5 py-2.5 whitespace-nowrap">ការទូទាត់</th>
                 <th class="px-2 py-2.5 whitespace-nowrap">លេខវិក្កយបត្រ</th>
                 <th class="px-3 py-2.5 font-bold text-right whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
@@ -11266,17 +11266,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-3 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-3 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span class="material-symbols-outlined text-xs">storefront</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-3 py-2 min-w-[140px] max-w-[220px]">
+          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[180px]">
             <div class="text-xs text-gray-800 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(tx.description || '—')}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
@@ -11286,7 +11286,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <td class="px-2 py-2 whitespace-nowrap text-xs font-mono text-gray-400">
             ${escapeHtml(tx.reference_no || '—')}
           </td>
-          <td class="px-3 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
             + ${amtStr}
           </td>
           <td class="px-2 py-2 whitespace-nowrap text-right">
@@ -11740,17 +11740,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-3 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800">${escapeHtml(tx.date)}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-3 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
               <span class="material-symbols-outlined text-xs">shopping_cart</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-3 py-2 min-w-[140px] max-w-[220px]">
+          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[180px]">
             <div class="text-xs text-gray-800 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(tx.description || '—')}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
@@ -11760,7 +11760,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <td class="px-2 py-2 whitespace-nowrap text-xs font-mono text-gray-400">
             ${escapeHtml(tx.reference_no || '—')}
           </td>
-          <td class="px-3 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
             - ${amtStr}
           </td>
           <td class="px-2 py-2 whitespace-nowrap text-right">
