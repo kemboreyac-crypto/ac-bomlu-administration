@@ -512,6 +512,92 @@ def pin_telegram_message(chat_id: str, message_id: int):
         print(f"Error pinning telegram message: {e}")
         return False
 
+def enforce_telegram_group_permissions(chat_id: str) -> bool:
+    """
+    Enforces Telegram group permissions so that NO regular members can pin
+    or unpin messages or change chat info — ONLY Administrators can do so.
+    """
+    try:
+        if not chat_id or not str(chat_id).startswith("-"):
+            return False
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            return False
+        url = f"https://api.telegram.org/bot{token}/setChatPermissions"
+        payload = {
+            "chat_id": str(chat_id),
+            "permissions": {
+                "can_send_messages": True,
+                "can_send_audios": True,
+                "can_send_documents": True,
+                "can_send_photos": True,
+                "can_send_videos": True,
+                "can_send_video_notes": True,
+                "can_send_voice_notes": True,
+                "can_send_polls": True,
+                "can_send_other_messages": True,
+                "can_add_web_page_previews": True,
+                "can_change_info": False,
+                "can_invite_users": True,
+                "can_pin_messages": False  # Crucial: Only admins can pin or unpin!
+            }
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("ok", False)
+    except Exception as e:
+        print(f"Error enforcing permissions on {chat_id}: {e}")
+        return False
+
+def ensure_pinned_official_message(chat_id: str, branch_name: str = "") -> bool:
+    """
+    Verifies that the official buttons announcement is pinned at the top of the group.
+    If unpinned or deleted, it re-creates and re-pins the message automatically.
+    """
+    try:
+        if not chat_id or not str(chat_id).startswith("-"):
+            return False
+        s = settings_collection.find_one({"_id": "app_settings"})
+        token = (s.get("telegram_bot_token", "").strip() if s else "") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            return False
+
+        enforce_telegram_group_permissions(chat_id)
+
+        url = f"https://api.telegram.org/bot{token}/getChat?chat_id={chat_id}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            chat_info = json.loads(resp.read().decode("utf-8")).get("result", {})
+            pinned = chat_info.get("pinned_message")
+            if pinned and pinned.get("text") and "ក្ដារចុចប៊ូតុងផ្លូវការ" in pinned.get("text", ""):
+                return True
+
+        b_label = branch_name or chat_info.get("title") or "ក្រុមហ៊ុន"
+        res = send_telegram_notify(
+            f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_label} ទាំងអស់!</b>\n\n"
+            f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
+            f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
+            f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
+            f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី",
+            target_chat_id=chat_id,
+            fallback_to_default=False
+        )
+        if res and isinstance(res, dict) and "result" in res:
+            m_id = res["result"].get("message_id")
+            if m_id:
+                pin_telegram_message(chat_id, m_id)
+                return True
+        return False
+    except Exception as e:
+        print(f"Error ensuring pinned message on {chat_id}: {e}")
+        return False
+
 def delete_telegram_message(chat_id: str, message_id: int):
     """
     Deletes an intermediate Telegram message (e.g. step 1 or step 2 prompt)
@@ -2224,6 +2310,7 @@ async def api_save_branches(payload: dict):
         b_name = b.get("name", "សាខា")
         if c_id:
             try:
+                enforce_telegram_group_permissions(c_id)
                 res_notify = send_telegram_notify(
                     f"👋 <b>សូមជម្រាបសួរបុគ្គលិក {b_name} ទាំងអស់!</b>\n\n"
                     f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
@@ -2268,7 +2355,8 @@ async def api_send_buttons_to_branch(branch_id: str):
     if not res:
         raise HTTPException(status_code=500, detail="មិនអាចផ្ញើសារទៅកាន់ Telegram បានទេ! សូមពិនិត្យមើល Bot Token និង Chat ID។")
     
-    # Pin message at top of group for permanent visibility
+    # Enforce permissions (Only Admins can pin/unpin) & Pin message at top of group
+    enforce_telegram_group_permissions(c_id)
     if isinstance(res, dict) and "result" in res:
         m_id = res["result"].get("message_id")
         if m_id:
@@ -5086,6 +5174,13 @@ async def startup_event():
                         pass
                 except Exception:
                     pass
+
+            # Enforce Group Chat Permissions (Only Admins can pin/unpin) & ensure pinned buttons
+            for b in get_all_branches():
+                c_id = str(b.get("telegram_chat_id") or b.get("chat_id") or "").strip()
+                if c_id and c_id.startswith("-"):
+                    enforce_telegram_group_permissions(c_id)
+                    ensure_pinned_official_message(c_id, b.get("name", ""))
     except Exception as e:
         print("Startup webhook error:", e)
 
