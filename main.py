@@ -5356,10 +5356,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="flex-1 flex flex-col overflow-hidden">
 
   <!-- TOP BAR -->
-  <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shadow-sm flex-shrink-0">
-    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+  <header class="h-14 sm:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-2 sm:px-6 shadow-sm flex-shrink-0 gap-1.5 sm:gap-4">
+    <div class="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
       <!-- Hamburger (mobile) -->
-      <button onclick="toggleSidebar()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition flex-shrink-0" aria-label="Menu">
+      <button onclick="toggleSidebar()" class="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-gray-600 hover:text-blue-700 lg:hidden transition flex-shrink-0" aria-label="Menu">
         <span class="material-symbols-outlined text-2xl">menu</span>
       </button>
 
@@ -5375,42 +5375,41 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </button>
       </div>
 
-      <div class="truncate">
-        <h1 id="page-title" class="text-base font-semibold text-gray-800 truncate">ទំព័រដើម</h1>
-        <p class="text-xs text-gray-400 truncate" id="page-date"></p>
+      <div class="hidden sm:block truncate">
+        <h1 id="page-title" class="text-sm sm:text-base font-semibold text-gray-800 truncate">ទំព័រដើម</h1>
+        <p class="text-[11px] sm:text-xs text-gray-400 truncate" id="page-date"></p>
       </div>
     </div>
 
-    <!-- Global Branch Switcher -->
-    <div class="flex items-center">
-      <div class="flex items-center gap-1.5 bg-blue-50/90 hover:bg-blue-100/80 border border-blue-200/90 rounded-xl px-2 sm:px-3 py-1 shadow-xs transition">
-        <span class="material-symbols-outlined text-blue-700 text-lg">store</span>
-        <select id="global-branch-select" onchange="onGlobalBranchChange(this.value)" class="bg-transparent text-xs font-bold text-blue-900 focus:outline-none cursor-pointer pr-1">
+    <!-- Global Branch Switcher (Flexible on all mobile phones) -->
+    <div class="flex items-center justify-center flex-1 min-w-0 max-w-[170px] xs:max-w-[210px] sm:max-w-xs mx-1">
+      <div class="w-full flex items-center gap-1 sm:gap-1.5 bg-blue-50/90 hover:bg-blue-100/80 border border-blue-200/90 rounded-xl px-2 sm:px-3 py-1 sm:py-1.5 shadow-xs transition min-w-0">
+        <span class="material-symbols-outlined text-blue-700 text-base sm:text-lg flex-shrink-0">store</span>
+        <select id="global-branch-select" onchange="onGlobalBranchChange(this.value)" class="bg-transparent text-[11px] sm:text-xs font-bold text-blue-900 focus:outline-none cursor-pointer truncate w-full">
           <option value="">🏢 គ្រប់សាខាទាំងអស់</option>
-          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">📍 ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
-          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">📍 ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">📍 សាខាកំពង់ចាម</option>
+          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">📍 សាខាត្បូងឃ្មុំ</option>
         </select>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+    <div class="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
       <!-- Install PWA Button (Hidden if already installed on this device) -->
       <button id="pwa-install-btn-top" onclick="handlePWAInstallClick()"
-        class="hidden items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md transition transform active:scale-95"
+        class="hidden items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md transition transform active:scale-95 flex-shrink-0"
         title="ដំឡើងកម្មវិធី AC BOMLU លើឧបករណ៍របស់អ្នក">
         <span class="material-symbols-outlined text-base">install_mobile</span>
-        <span class="hidden sm:inline">ដំឡើងកម្មវិធី</span>
-        <span class="sm:hidden">Install</span>
+        <span class="hidden md:inline">ដំឡើងកម្មវិធី</span>
       </button>
 
       <!-- Refresh -->
       <button onclick="refreshAll()" title="ធ្វើឱ្យស្រស់" id="refresh-btn"
-        class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-gray-500 hover:text-blue-600 transition">
+        class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-gray-500 hover:text-blue-600 transition flex-shrink-0">
         <span class="material-symbols-outlined text-xl">refresh</span>
       </button>
 
       <!-- Admin Status & Logout -->
-      <div class="flex items-center gap-2 pl-2 border-l border-slate-200">
+      <div class="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 border-l border-slate-200 flex-shrink-0">
         <div class="hidden md:flex flex-col text-right leading-none">
           <span id="top-admin-name" class="text-xs font-bold text-gray-800">Admin</span>
           <span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5 justify-end mt-0.5">
@@ -5418,13 +5417,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </span>
         </div>
         <button onclick="handleAdminLogout()" title="ចាកចេញ (Log Out)"
-          class="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-red-50 text-gray-500 hover:text-red-600 transition" aria-label="Log Out">
+          class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-red-50 text-gray-500 hover:text-red-600 transition flex-shrink-0" aria-label="Log Out">
           <span class="material-symbols-outlined text-lg">logout</span>
         </button>
       </div>
 
       <!-- Avatar -->
-      <div onclick="goToHomepage()" class="w-9 h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition" title="ទៅកាន់ទំព័រដើម (Homepage)">
+      <div onclick="goToHomepage()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition flex-shrink-0" title="ទៅកាន់ទំព័រដើម (Homepage)">
         <img src="/static/ac_logo.jpg" alt="AC" class="w-full h-full object-cover" />
       </div>
     </div>
@@ -7171,7 +7170,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <!-- Income Modal -->
 <div id="income-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm modal-overlay z-50 hidden flex items-center justify-center p-2.5 sm:p-4">
-  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
         <span class="material-symbols-outlined text-emerald-600 text-xl">add_circle</span> បញ្ចូលចំណូលថ្មី (Add Income)
@@ -7179,25 +7178,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button onclick="closeModal('income-modal')" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition">
         <span class="material-symbols-outlined text-xl">close</span>
       </button>
-    </div>
-
-    <!-- Stepper Indicator -->
-    <div class="px-5 sm:px-6 py-2.5 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between flex-shrink-0 select-none">
-      <div id="inc-step-badge-1" onclick="if(currentIncomeStep===2) prevIncomeStep()" class="flex items-center gap-2 cursor-pointer transition">
-        <span id="inc-step-num-1" class="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-sm">1</span>
-        <div class="flex flex-col">
-          <span class="text-xs font-bold text-emerald-800">ផ្នែកទី ១</span>
-          <span class="text-[11px] text-gray-500">កាលបរិច្ឆេទ & ទឹកប្រាក់</span>
-        </div>
-      </div>
-      <div class="flex-1 max-w-[60px] sm:max-w-[100px] border-t-2 border-dashed border-slate-300 mx-2 sm:mx-3"></div>
-      <div id="inc-step-badge-2" class="flex items-center gap-2 transition">
-        <span id="inc-step-num-2" class="w-6 h-6 rounded-full bg-slate-200 text-gray-500 text-xs font-bold flex items-center justify-center">2</span>
-        <div class="flex flex-col">
-          <span id="inc-step-title-2" class="text-xs font-medium text-gray-500">ផ្នែកទី ២</span>
-          <span class="text-[11px] text-gray-400">ព័ត៌មានលម្អិត & ទីតាំង</span>
-        </div>
-      </div>
     </div>
 
     <form onsubmit="submitIncome(event)" class="p-4 sm:p-6 overflow-y-auto flex-1 flex flex-col justify-between">
@@ -7225,7 +7205,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <div class="flex gap-2.5 sm:gap-3 pt-4 border-t border-slate-100">
+        <div class="flex gap-2.5 sm:gap-3 pt-4 border-t border-slate-100 flex-shrink-0 bg-white">
           <button type="button" onclick="closeModal('income-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
           <button type="button" onclick="nextIncomeStep()" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
             <span>បន្តទៅមុខទៀត (Next)</span>
@@ -7236,19 +7216,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <!-- STEP 2: ផ្នែកទី ២ (រូប ទី៣) -->
       <div id="inc-step-2" class="space-y-3 sm:space-y-4 hidden">
-        <!-- Amount Summary Pill -->
-        <div class="flex items-center justify-between p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-900">
-          <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-emerald-600 text-base">payments</span>
-            <span>ទឹកប្រាក់៖ <strong id="inc-step2-summary-amt" class="font-bold text-emerald-700 font-mono text-sm">0 ៛</strong></span>
-            <span class="text-gray-300">|</span>
-            <span id="inc-step2-summary-date" class="text-gray-600 font-medium"></span>
-          </div>
-          <button type="button" onclick="prevIncomeStep()" class="text-blue-600 hover:text-blue-800 font-bold underline text-[11px] flex items-center gap-0.5">
-            <span class="material-symbols-outlined text-xs">edit</span> កែប្រែ
-          </button>
-        </div>
-
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
           <select id="inc-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
@@ -7342,7 +7309,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <textarea id="inc-form-desc" rows="3" placeholder="ព័ត៌មានបន្ថែម ឬទីតាំងសេវា..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
         </div>
 
-        <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100">
+        <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
           <button type="button" onclick="prevIncomeStep()" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5">
             <span class="material-symbols-outlined text-base">arrow_back</span>
             <span>ថយក្រោយ (Back)</span>
@@ -9536,7 +9503,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (topAdminName) topAdminName.textContent = data.username || 'Admin';
         const settingAdminUser = document.getElementById('setting-admin-username');
         if (settingAdminUser) settingAdminUser.value = data.username || 'admin';
-        await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
+        await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs()]);
       } else {
         localStorage.removeItem('acbomlu_admin_token');
         if (loginScreen) loginScreen.classList.remove('hidden');
@@ -9545,7 +9512,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       console.error('Auth verification error:', e);
       // In case of temporary network glitch, allow dashboard if local token exists
       if (loginScreen) loginScreen.classList.add('hidden');
-      await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
+      await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs()]);
     }
   }
 
@@ -10295,43 +10262,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     currentIncomeStep = step;
     const step1 = document.getElementById('inc-step-1');
     const step2 = document.getElementById('inc-step-2');
-    const num1 = document.getElementById('inc-step-num-1');
-    const num2 = document.getElementById('inc-step-num-2');
-    const title2 = document.getElementById('inc-step-title-2');
 
     if (step === 1) {
       if (step1) step1.classList.remove('hidden');
       if (step2) step2.classList.add('hidden');
-      if (num1) {
-        num1.className = 'w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-sm';
-        num1.textContent = '1';
-      }
-      if (num2) {
-        num2.className = 'w-6 h-6 rounded-full bg-slate-200 text-gray-500 text-xs font-bold flex items-center justify-center';
-        num2.textContent = '2';
-      }
-      if (title2) title2.className = 'text-xs font-medium text-gray-500';
     } else {
       if (step1) step1.classList.add('hidden');
       if (step2) step2.classList.remove('hidden');
-      if (num1) {
-        num1.className = 'w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-bold flex items-center justify-center';
-        num1.textContent = '✓';
-      }
-      if (num2) {
-        num2.className = 'w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-sm';
-        num2.textContent = '2';
-      }
-      if (title2) title2.className = 'text-xs font-bold text-emerald-800';
-
-      // Update Step 2 summary badge
-      const amt = document.getElementById('inc-form-amount')?.value || '0';
-      const curr = document.getElementById('inc-form-currency')?.value === 'USD' ? '$' : '៛';
-      const dt = document.getElementById('inc-form-date')?.value || '';
-      const summaryAmt = document.getElementById('inc-step2-summary-amt');
-      const summaryDate = document.getElementById('inc-step2-summary-date');
-      if (summaryAmt) summaryAmt.textContent = `${amt} ${curr}`;
-      if (summaryDate) summaryDate.textContent = dt;
     }
   }
 
@@ -10362,7 +10299,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }, 100);
   }
 
-  function openIncomeModal() {
+  async function openIncomeModal() {
     const form = document.querySelector('#income-modal form');
     if (form) form.reset();
     setIncomeStep(1);
@@ -10372,9 +10309,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('inc-form-date').value = getTodayString();
     document.getElementById('inc-form-time').value = getCurrentTimeString();
     document.getElementById('inc-form-currency').value = 'KHR';
-    populateCatalogDropdowns();
 
-    // Default category to "ចំណូលពីសេវាបូមលូ" and payment method to "សាច់ប្រាក់សុទ្ធ"
+    if (!financeCatalogs || financeCatalogs.length === 0) {
+      await loadCatalogs();
+    } else {
+      populateCatalogDropdowns();
+    }
+
     const incCat = document.getElementById('inc-form-category');
     if (incCat) {
       const defaultCat = 'ចំណូលពីសេវាបូមលូ';
@@ -10624,7 +10565,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).join('');
   }
 
-  function openExpenseModal() {
+  async function openExpenseModal() {
     const form = document.querySelector('#expense-modal form');
     if (form) form.reset();
     if (document.getElementById('exp-form-branch')) {
@@ -10633,7 +10574,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('exp-form-date').value = getTodayString();
     document.getElementById('exp-form-time').value = getCurrentTimeString();
     document.getElementById('exp-form-currency').value = 'KHR';
-    populateCatalogDropdowns();
+    if (!financeCatalogs || financeCatalogs.length === 0) {
+      await loadCatalogs();
+    } else {
+      populateCatalogDropdowns();
+    }
     openModal('expense-modal');
   }
 
@@ -11807,6 +11752,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     initPWA();
     initGlobalBranchSelect();
     initFinanceReportFilters();
+    loadCatalogs();
 
     // Check if URL has a hash for deep-linking (e.g. #reports-leave, #income)
     const initialHash = window.location.hash ? window.location.hash.replace('#', '') : '';
