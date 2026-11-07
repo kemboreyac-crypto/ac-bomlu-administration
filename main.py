@@ -77,7 +77,7 @@ class FinanceCatalogUpdate(BaseModel):
     description: Optional[str] = None
 
 class FinanceTransactionCreate(BaseModel):
-    type: str  # "income" or "expense"
+    type: str  # "income", "expense", or "transfer"
     amount: float
     currency: str = "KHR"  # "KHR" or "USD"
     category: str
@@ -90,6 +90,8 @@ class FinanceTransactionCreate(BaseModel):
     recorded_by: Optional[str] = "រដ្ឋបាល"
     branch: Optional[str] = "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
     service_items: Optional[List[Dict[str, Any]]] = None
+    transfer_from: Optional[str] = None
+    transfer_to: Optional[str] = "គណនីវិនិយោគទុន"
 
 class FinanceTransactionUpdate(BaseModel):
     type: Optional[str] = None
@@ -105,6 +107,8 @@ class FinanceTransactionUpdate(BaseModel):
     recorded_by: Optional[str] = None
     branch: Optional[str] = None
     service_items: Optional[List[Dict[str, Any]]] = None
+    transfer_from: Optional[str] = None
+    transfer_to: Optional[str] = None
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -1910,7 +1914,7 @@ async def get_manifest():
 @app.get("/sw.js")
 async def get_service_worker():
     sw_code = """
-const CACHE_NAME = 'acbomlu-admin-v2.3';
+const CACHE_NAME = 'acbomlu-admin-v2.3.1';
 const STATIC_ASSETS = ['/manifest.json', '/static/ac_logo.jpg'];
 
 self.addEventListener('install', (event) => {
@@ -2703,7 +2707,7 @@ async def api_get_transactions(
     query = {}
     if branch:
         query["branch"] = branch
-    if type and type in ["income", "expense"]:
+    if type and type in ["income", "expense", "transfer"]:
         query["type"] = type
     if category and category != "all":
         query["category"] = category
@@ -2847,8 +2851,8 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
     now = datetime.now(cam_tz)
     
     t_type = (payload.type or "income").strip().lower()
-    if t_type not in ["income", "expense"]:
-        raise HTTPException(status_code=400, detail="ប្រភេទប្រតិបត្តិការត្រូវតែជា ចំណូល (income) ឬ ចំណាយ (expense)!")
+    if t_type not in ["income", "expense", "transfer"]:
+        raise HTTPException(status_code=400, detail="ប្រភេទប្រតិបត្តិការត្រូវតែជា ចំណូល (income), ចំណាយ (expense) ឬ បង្វិលប្រាក់ (transfer)!")
     
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="ចំនួនទឹកប្រាក់ត្រូវតែធំជាង ០!")
@@ -2859,7 +2863,8 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
 
     date_str = (payload.date or "").strip() or now.strftime("%Y-%m-%d")
     time_str = (payload.time or "").strip() or now.strftime("%H:%M")
-    category = (payload.category or "").strip() or ("ចំណូលផ្សេងៗ" if t_type == "income" else "ចំណាយផ្សេងៗ")
+    default_cat = "បង្វិលចូលគណនីវិនិយោគទុន" if t_type == "transfer" else ("ចំណូលផ្សេងៗ" if t_type == "income" else "ចំណាយផ្សេងៗ")
+    category = (payload.category or "").strip() or default_cat
 
     service_items = payload.service_items
     if not service_items:
@@ -2881,11 +2886,34 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
         "recorded_by": (payload.recorded_by or "").strip() or "រដ្ឋបាល",
         "branch": (getattr(payload, "branch", None) or "ក្រុមហ៊ុនបូមលូ កំពង់ចាម").strip(),
         "service_items": service_items or [],
+        "transfer_from": payload.transfer_from or payload.payment_method or "សាច់ប្រាក់សុទ្ធ",
+        "transfer_to": payload.transfer_to or "គណនីវិនិយោគទុន",
         "created_at": now.isoformat(),
         "updated_at": now.isoformat()
     }
     res = finance_transactions_collection.insert_one(doc)
     doc["_id"] = str(res.inserted_id)
+
+    # Telegram notification for Month-End Fund Transfers to Investment Fund
+    if t_type == "transfer":
+        try:
+            from_desc = "💵 សាច់ប្រាក់សុទ្ធ" if any(w in str(doc.get("transfer_from", "")).lower() for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]) else "📱 បាញ់តាមធនាគារ"
+            amt_formatted = f"{float(payload.amount):,.0f} ៛" if currency == "KHR" else f"${float(payload.amount):,.2f}"
+            note_line = f"\n📝 <b>កំណត់ចំណាំ:</b> {doc.get('description')}" if doc.get('description') else ""
+            tg_transfer_msg = (
+                f"🔄 <b>ការបង្វិលសាច់ប្រាក់ចូល «គណនីវិនិយោគទុន» ត្រូវបានកត់ត្រា!</b>\n\n"
+                f"🏢 <b>សាខា:</b> {doc.get('branch')}\n"
+                f"💰 <b>ចំនួនទឹកប្រាក់:</b> <b>{amt_formatted}</b>\n"
+                f"📤 <b>ផ្ទេរចេញពី:</b> {from_desc}\n"
+                f"📥 <b>ផ្ទេរទៅកាន់:</b> 🏦 គណនីវិនិយោគទុន\n"
+                f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str} {time_str}"
+                f"{note_line}\n"
+                f"👮‍♂️ <b>ដោយរដ្ឋបាល:</b> {doc.get('recorded_by')}"
+            )
+            send_telegram_notify(tg_transfer_msg)
+        except Exception as tg_err:
+            print(f"Transfer Telegram notify error: {tg_err}")
+
     return {"success": True, "message": "បានកត់ត្រាប្រតិបត្តិការជោគជ័យ!", "transaction": doc}
 
 @app.get("/api/finance/transactions/{tx_id}")
@@ -2980,6 +3008,12 @@ def calculate_finance_metrics(transactions):
         "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ចំណាយប្រតិបត្តិការផ្សេងៗ (Other)"}
     }
 
+    inv_from_cash_khr = 0.0
+    inv_from_cash_usd = 0.0
+    inv_from_bank_khr = 0.0
+    inv_from_bank_usd = 0.0
+    transfer_count = 0
+
     for tx in transactions:
         t = tx.get("type", "income")
         amt = float(tx.get("amount", 0.0) or 0.0)
@@ -2988,6 +3022,18 @@ def calculate_finance_metrics(transactions):
         pay_method = (tx.get("payment_method") or "").strip().lower()
         desc = tx.get("description") or ""
         staff = tx.get("recorded_by") or "រដ្ឋបាល"
+
+        # Month-End Fund Transfer into Investment Account
+        if t == "transfer":
+            transfer_count += 1
+            tf_from = (tx.get("transfer_from") or pay_method).strip().lower()
+            if any(w in tf_from for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]):
+                if curr == "USD": inv_from_cash_usd += amt
+                else: inv_from_cash_khr += amt
+            else:
+                if curr == "USD": inv_from_bank_usd += amt
+                else: inv_from_bank_khr += amt
+            continue
 
         if any(w in pay_method for w in ["សាច់ប្រាក់", "cash", "ប្រាក់សុទ្ធ"]):
             pay_key = "cash"
@@ -3104,18 +3150,27 @@ def calculate_finance_metrics(transactions):
     arpt_usd = round(inc_usd / total_trips, 2) if total_trips > 0 else 0.0
     locations_list = sorted(location_map.values(), key=lambda x: (x["trips"], x["khr"], x["usd"]), reverse=True)
 
-    cash_net_khr = payment_breakdown["income"]["cash"]["khr"] - payment_breakdown["expense"]["cash"]["khr"]
-    cash_net_usd = payment_breakdown["income"]["cash"]["usd"] - payment_breakdown["expense"]["cash"]["usd"]
-    bank_net_khr = payment_breakdown["income"]["bank"]["khr"] - payment_breakdown["expense"]["bank"]["khr"]
-    bank_net_usd = payment_breakdown["income"]["bank"]["usd"] - payment_breakdown["expense"]["bank"]["usd"]
+    cash_net_khr = payment_breakdown["income"]["cash"]["khr"] - payment_breakdown["expense"]["cash"]["khr"] - inv_from_cash_khr
+    cash_net_usd = payment_breakdown["income"]["cash"]["usd"] - payment_breakdown["expense"]["cash"]["usd"] - inv_from_cash_usd
+    bank_net_khr = payment_breakdown["income"]["bank"]["khr"] - payment_breakdown["expense"]["bank"]["khr"] - inv_from_bank_khr
+    bank_net_usd = payment_breakdown["income"]["bank"]["usd"] - payment_breakdown["expense"]["bank"]["usd"] - inv_from_bank_usd
+
+    investment_khr = inv_from_cash_khr + inv_from_bank_khr
+    investment_usd = inv_from_cash_usd + inv_from_bank_usd
 
     reconciliation = {
         "cash_balance": {"khr": cash_net_khr, "usd": cash_net_usd},
         "bank_balance": {"khr": bank_net_khr, "usd": bank_net_usd},
+        "investment_balance": {"khr": investment_khr, "usd": investment_usd},
+        "investment_from_cash": {"khr": inv_from_cash_khr, "usd": inv_from_cash_usd},
+        "investment_from_bank": {"khr": inv_from_bank_khr, "usd": inv_from_bank_usd},
+        "cash_transfers_out": {"khr": inv_from_cash_khr, "usd": inv_from_cash_usd},
+        "bank_transfers_out": {"khr": inv_from_bank_khr, "usd": inv_from_bank_usd},
         "cash_income": payment_breakdown["income"]["cash"],
         "cash_expense": payment_breakdown["expense"]["cash"],
         "bank_income": payment_breakdown["income"]["bank"],
-        "bank_expense": payment_breakdown["expense"]["bank"]
+        "bank_expense": payment_breakdown["expense"]["bank"],
+        "transfer_count": transfer_count
     }
 
     total_rev_approx = inc_khr + (inc_usd * 4100.0)
@@ -5801,7 +5856,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="material-symbols-outlined text-sm">add_circle</span> + បញ្ចូលចំណូល
             </button>
             <button onclick="openExpenseModal()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow transition active:scale-95">
-              <span class="material-symbols-outlined text-sm">remove_circle</span> + បញ្ចូលចំណាយ
+              <span class="material-symbols-outlined text-sm">remove_circle</span> - បញ្ចូលចំណាយ
+            </button>
+            <button onclick="openTransferModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow transition active:scale-95" title="បង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន">
+              <span class="material-symbols-outlined text-sm">swap_horiz</span> 🔄 បង្វិលសាច់ប្រាក់
             </button>
             <button onclick="showTab('reports-finance')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition">
               <span class="material-symbols-outlined text-sm">bar_chart</span> របាយការណ៍
@@ -5831,16 +5889,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Cash vs Bank Reconciliation (This Month) -->
+      <!-- Cash vs Bank vs Investment Fund Reconciliation (This Month) -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
         <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-blue-600">account_balance_wallet</span>
-            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)</h4>
+            <span class="material-symbols-outlined text-indigo-600">account_balance_wallet</span>
+            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ & គណនីវិនិយោគទុន (Cash, Bank & Investment Fund)</h4>
           </div>
-          <span class="text-xs text-gray-500 font-medium" id="dash-recon-period">កំពុងទាញទិន្នន័យ...</span>
+          <div class="flex items-center gap-2.5">
+            <button onclick="openTransferModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition active:scale-95">
+              <span class="material-symbols-outlined text-sm">swap_horiz</span> 🔄 បង្វិលសាច់ប្រាក់
+            </button>
+            <span class="text-xs text-gray-500 font-medium" id="dash-recon-period">កំពុងទាញទិន្នន័យ...</span>
+          </div>
         </div>
-        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
           <!-- Cash in Hand Safe Box -->
           <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
@@ -5858,7 +5921,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="text-gray-600">ចំណាយសាច់ប្រាក់ (-)</span>
                 <span id="dash-cash-expense" class="font-bold text-rose-600 font-mono">0 ៛</span>
               </div>
-              <div class="flex items-center justify-between pt-2">
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span class="text-gray-600">បង្វិលទៅវិនិយោគ (-)</span>
+                <span id="dash-cash-transfers-out" class="font-bold text-amber-600 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between pt-1">
                 <span class="font-bold text-gray-800">សាច់ប្រាក់នៅសល់ជាក់ស្ដែង៖</span>
                 <span id="dash-cash-balance" class="text-sm font-black text-emerald-800 font-mono">0 ៛</span>
               </div>
@@ -5882,11 +5949,71 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="text-gray-600">ប្រាក់ផ្ទេរចេញ (-)</span>
                 <span id="dash-bank-expense" class="font-bold text-rose-600 font-mono">0 ៛</span>
               </div>
-              <div class="flex items-center justify-between pt-2">
-                <span class="font-bold text-gray-800">សមតុល្យធនាគារកើនឡើង៖</span>
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
+                <span class="text-gray-600">បង្វិលទៅវិនិយោគ (-)</span>
+                <span id="dash-bank-transfers-out" class="font-bold text-amber-600 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <span class="font-bold text-gray-800">សមតុល្យធនាគារនៅសល់៖</span>
                 <span id="dash-bank-balance" class="text-sm font-black text-blue-800 font-mono">0 ៛</span>
               </div>
             </div>
+          </div>
+
+          <!-- Investment Fund Account Box -->
+          <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-purple-50/40 p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-indigo-950 font-bold text-sm">
+                <span class="material-symbols-outlined text-indigo-600">account_balance</span> គណនីវិនិយោគទុន (Investment Fund)
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-900">ទុនវិនិយោគបន្ត</span>
+            </div>
+            <div class="space-y-2 text-xs text-gray-700">
+              <div class="flex items-center justify-between py-1 border-b border-indigo-100/80">
+                <span class="text-gray-600">បង្វិលពីសាច់ប្រាក់ (+)</span>
+                <span id="dash-inv-from-cash" class="font-bold text-emerald-700 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-indigo-100/80">
+                <span class="text-gray-600">បង្វិលពីធនាគារ (+)</span>
+                <span id="dash-inv-from-bank" class="font-bold text-blue-700 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-indigo-100/80 text-[11px] text-gray-400">
+                <span>កន្លែងប្រមូលផ្តុំសាច់ប្រាក់បំណាច់ខែ</span>
+                <span>🏦 កុងមេ</span>
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <span class="font-bold text-gray-800">សរុបទុនវិនិយោគសន្សំបាន៖</span>
+                <span id="dash-investment-balance" class="text-sm font-black text-indigo-900 font-mono">0 ៛</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer History Table -->
+        <div id="dash-transfer-history" class="px-5 pb-5 pt-1 border-t border-slate-100/80">
+          <div class="flex items-center justify-between py-3">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-indigo-600 text-sm">history</span>
+              <h5 class="font-bold text-gray-700 text-xs sm:text-sm">ប្រវត្តិបង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន (Transfer History)</h5>
+            </div>
+            <span id="dash-transfer-count" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">0 ប្រតិបត្តិការ</span>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-100">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="bg-slate-50/80 text-gray-600 uppercase text-[10px] font-bold border-b border-slate-100">
+                <tr>
+                  <th class="py-2 px-3">កាលបរិច្ឆេទ</th>
+                  <th class="py-2 px-3">ផ្ទេរចេញពី</th>
+                  <th class="py-2 px-3">ផ្ទេរទៅកាន់</th>
+                  <th class="py-2 px-3 text-right">ចំនួនទឹកប្រាក់</th>
+                  <th class="py-2 px-3">កំណត់ចំណាំ</th>
+                  <th class="py-2 px-3 text-right">សកម្មភាព</th>
+                </tr>
+              </thead>
+              <tbody id="dash-transfer-tbody" class="divide-y divide-slate-50">
+                <tr><td colspan="6" class="text-center py-4 text-gray-400 text-xs">មិនទាន់មានប្រវត្តិបង្វិលសាច់ប្រាក់នៅឡើយទេ</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -7923,6 +8050,97 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Transfer to Investment Fund Modal -->
+<div id="transfer-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm modal-overlay z-50 hidden flex items-center justify-center p-4">
+  <div class="modal-box bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 animate-scaleUp">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+          <span class="material-symbols-outlined text-xl">swap_horiz</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm sm:text-base">បង្វិលសាច់ប្រាក់ចូល «គណនីវិនិយោគទុន»</h3>
+          <p class="text-[11px] text-gray-500 font-medium">ប្រមូលផ្តុំសាច់ប្រាក់បំណាច់ខែសម្រាប់វិនិយោគទុនបន្ត</p>
+        </div>
+      </div>
+      <button onclick="closeModal('transfer-modal')" class="w-8 h-8 rounded-full hover:bg-slate-200/60 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">
+        <span class="material-symbols-outlined text-lg">close</span>
+      </button>
+    </div>
+
+    <form onsubmit="submitTransfer(event)" class="p-6 space-y-4">
+      <!-- From -> To Box -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
+            <span class="material-symbols-outlined text-amber-600 text-xs">arrow_upward</span> ផ្ទេរចេញពី (From) *
+          </label>
+          <select id="tf-from" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash In Hand)</option>
+            <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ (Operating Bank)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
+            <span class="material-symbols-outlined text-indigo-600 text-xs">arrow_downward</span> ផ្ទេរទៅកាន់ (To)
+          </label>
+          <div class="w-full border border-indigo-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold bg-indigo-50/60 text-indigo-900 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm text-indigo-600">account_balance</span> 🏦 គណនីវិនិយោគទុន
+          </div>
+        </div>
+      </div>
+
+      <!-- Amount and Currency -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-bold text-gray-700 mb-1">ចំនួនទឹកប្រាក់បង្វិល *</label>
+          <input id="tf-amount" type="text" inputmode="numeric" required placeholder="ឧ. 500,000"
+            oninput="formatAmountInput(this)"
+            class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-black focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono tracking-wide text-indigo-900 bg-white" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+          <select id="tf-currency" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="KHR">៛ (រៀល)</option>
+            <option value="USD">$ (ដុល្លារ)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Date and Branch -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">កាលបរិច្ឆេទបង្វិល *</label>
+          <input id="tf-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white font-medium" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+          <select id="tf-branch" class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+            <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Note / Description -->
+      <div>
+        <label class="block text-xs font-bold text-gray-700 mb-1">កំណត់ចំណាំ / បរិយាយ (Notes)</label>
+        <textarea id="tf-desc" rows="2" placeholder="ឧ. បង្វិលសាច់ប្រាក់ចំណេញបំណាច់ខែចូលគណនីវិនិយោគទុនបន្ត..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"></textarea>
+      </div>
+
+      <!-- Submit & Cancel Buttons -->
+      <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <button type="button" onclick="closeModal('transfer-modal')" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-gray-600 hover:bg-slate-100 transition active:scale-95">
+          បោះបង់
+        </button>
+        <button type="submit" id="btn-save-transfer" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 transition active:scale-95 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-base">check_circle</span> រក្សាទុកការបង្វិលប្រាក់
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"
   class="fixed bottom-6 right-6 z-50 hidden max-w-xs bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
@@ -9766,23 +9984,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  const APP_VERSION = '2.3.0';
+  const APP_VERSION = '2.3.1';
   function initPWA() {
     try {
       const savedVersion = localStorage.getItem('acbomlu_app_version');
       if (savedVersion !== APP_VERSION) {
         localStorage.setItem('acbomlu_app_version', APP_VERSION);
         if ('caches' in window) {
-          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => {});
         }
       }
     } catch(e) {}
 
     // Register Service Worker with auto-update
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       navigator.serviceWorker.getRegistrations().then(regs => {
         for (let r of regs) r.update();
-      });
+      }).catch(() => {});
       navigator.serviceWorker.register('/sw.js').then(reg => {
         reg.update();
       }).catch(err => console.log('SW reg error:', err));
@@ -10009,7 +10227,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     const tasks = [loadStats(), loadFinanceStats()];
     if (currentActiveTab === 'dashboard') {
-      tasks.push(loadLeaves(), loadLoans());
+      tasks.push(loadLeaves(), loadLoans(), loadTransferHistory());
     } else if (currentActiveTab === 'leaves') tasks.push(loadLeaves());
     else if (currentActiveTab === 'loans') tasks.push(loadLoans());
     else if (currentActiveTab === 'employees') tasks.push(loadEmployees());
@@ -10281,7 +10499,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (totalSumEl) totalSumEl.textContent = formatMoney(totalSum, currency);
 
     if (descEl) {
-      descEl.value = descLines.join('\n');
+      descEl.value = descLines.join(String.fromCharCode(10));
     }
 
     if (totalSum > 0 && amountInp) {
@@ -10609,6 +10827,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const cashExpEl = document.getElementById('dash-cash-expense');
         if (cashExpEl) cashExpEl.textContent = formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd);
 
+        const cashOutEl = document.getElementById('dash-cash-transfers-out');
+        if (cashOutEl) cashOutEl.textContent = formatDualMoney(rec.cash_transfers_out?.khr || 0, rec.cash_transfers_out?.usd || 0);
+
         const cashBalEl = document.getElementById('dash-cash-balance');
         if (cashBalEl) cashBalEl.textContent = formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd);
 
@@ -10618,8 +10839,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const bankExpEl = document.getElementById('dash-bank-expense');
         if (bankExpEl) bankExpEl.textContent = formatDualMoney(rec.bank_expense.khr, rec.bank_expense.usd);
 
+        const bankOutEl = document.getElementById('dash-bank-transfers-out');
+        if (bankOutEl) bankOutEl.textContent = formatDualMoney(rec.bank_transfers_out?.khr || 0, rec.bank_transfers_out?.usd || 0);
+
         const bankBalEl = document.getElementById('dash-bank-balance');
         if (bankBalEl) bankBalEl.textContent = formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd);
+
+        // Investment Fund Cards
+        const invCashEl = document.getElementById('dash-inv-from-cash');
+        if (invCashEl) invCashEl.textContent = formatDualMoney(rec.investment_from_cash?.khr || 0, rec.investment_from_cash?.usd || 0);
+
+        const invBankEl = document.getElementById('dash-inv-from-bank');
+        if (invBankEl) invBankEl.textContent = formatDualMoney(rec.investment_from_bank?.khr || 0, rec.investment_from_bank?.usd || 0);
+
+        const invBalEl = document.getElementById('dash-investment-balance');
+        if (invBalEl) invBalEl.textContent = formatDualMoney(rec.investment_balance?.khr || 0, rec.investment_balance?.usd || 0);
+
+        loadTransferHistory();
       }
 
       // Sidebar badges
@@ -11279,6 +11515,156 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       showToast('កំហុស៖ ' + err.message, true);
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  // --- FUND TRANSFERS TO INVESTMENT ACCOUNT ---
+
+  async function openTransferModal() {
+    const form = document.querySelector('#transfer-modal form');
+    if (form) form.reset();
+    const dateInp = document.getElementById('tf-date');
+    if (dateInp) {
+      const tzOffset = 7 * 60; // UTC+7
+      const now = new Date(Date.now() + tzOffset * 60000);
+      dateInp.value = now.toISOString().slice(0, 10);
+    }
+    const branchSelect = document.getElementById('tf-branch');
+    if (branchSelect && currentActiveBranch) {
+      branchSelect.value = currentActiveBranch;
+    }
+    openModal('transfer-modal');
+    setTimeout(() => {
+      const amt = document.getElementById('tf-amount');
+      if (amt) amt.focus();
+    }, 100);
+  }
+
+  async function submitTransfer(e) {
+    e.preventDefault();
+    const fromMethod = document.getElementById('tf-from')?.value || 'សាច់ប្រាក់សុទ្ធ';
+    const rawAmt = document.getElementById('tf-amount')?.value || '';
+    const currency = document.getElementById('tf-currency')?.value || 'KHR';
+    const dateVal = document.getElementById('tf-date')?.value || '';
+    const branchVal = document.getElementById('tf-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+    const descVal = document.getElementById('tf-desc')?.value || '';
+
+    const cleanNum = parseKhmerNumber(rawAmt.replace(/,/g, ''));
+    if (isNaN(cleanNum) || cleanNum <= 0) {
+      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់បង្វិលឱ្យបានត្រឹមត្រូវ!', true);
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-transfer');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-base">sync</span> កំពុងរក្សាទុក...';
+    }
+
+    try {
+      const adminUser = localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល';
+      const payload = {
+        type: 'transfer',
+        amount: cleanNum,
+        currency: currency,
+        category: 'បង្វិលចូលគណនីវិនិយោគទុន',
+        payment_method: fromMethod,
+        transfer_from: fromMethod,
+        transfer_to: 'គណនីវិនិយោគទុន',
+        date: dateVal,
+        branch: branchVal,
+        description: descVal || 'បង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន',
+        recorded_by: adminUser
+      };
+
+      const res = await fetch('/api/finance/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('✅ បានបង្វិលសាច់ប្រាក់ចូល «គណនីវិនិយោគទុន» ជោគជ័យ!');
+        closeModal('transfer-modal');
+        await loadFinanceStats();
+        await loadTransferHistory();
+      } else {
+        showToast(data.detail || data.message || 'កំហុសពេលរក្សាទុក!', true);
+      }
+    } catch(err) {
+      console.error('submitTransfer error:', err);
+      showToast('កំហុសប្រព័ន្ធ: ' + err.message, true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined text-base">check_circle</span> រក្សាទុកការបង្វិលប្រាក់';
+      }
+    }
+  }
+
+  async function loadTransferHistory() {
+    const container = document.getElementById('dash-transfer-history');
+    if (!container) return;
+    try {
+      const params = new URLSearchParams({ type: 'transfer', limit: '15' });
+      if (currentActiveBranch) params.append('branch', currentActiveBranch);
+      const res = await fetch('/api/finance/transactions?' + params.toString());
+      const data = await res.json();
+      const transfers = data.transactions || [];
+      renderTransferHistory(transfers);
+    } catch(e) {
+      console.warn('loadTransferHistory error:', e);
+    }
+  }
+
+  function renderTransferHistory(list) {
+    const tbody = document.getElementById('dash-transfer-tbody');
+    const countBadge = document.getElementById('dash-transfer-count');
+    if (countBadge) countBadge.textContent = (list ? list.length : 0) + ' ប្រតិបត្តិការ';
+    if (!tbody) return;
+
+    if (!list || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-xs text-gray-400">មិនទាន់មានប្រវត្តិបង្វិលសាច់ប្រាក់នៅឡើយទេ</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map(t => {
+      const isCash = (t.payment_method || t.transfer_from || '').includes('សាច់ប្រាក់');
+      const fromBadge = isCash
+        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">💵 សាច់ប្រាក់សុទ្ធ</span>'
+        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">📱 បាញ់តាមធនាគារ</span>';
+      const amtStr = t.currency === 'USD' ? '$' + Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : Number(t.amount).toLocaleString('en-US') + ' ៛';
+      return `<tr class="border-b border-gray-50 hover:bg-slate-50/60 transition">
+        <td class="py-2.5 px-3 font-mono text-xs text-gray-600">${t.date || ''} <span class="text-[10px] text-gray-400">${t.time || ''}</span></td>
+        <td class="py-2.5 px-3">${fromBadge}</td>
+        <td class="py-2.5 px-3">
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">🏦 គណនីវិនិយោគទុន</span>
+        </td>
+        <td class="py-2.5 px-3 font-mono font-bold text-indigo-700 text-xs sm:text-sm text-right">+ ${amtStr}</td>
+        <td class="py-2.5 px-3 text-xs text-gray-600 max-w-[200px] truncate" title="${escapeHtml(t.description || '')}">${escapeHtml(t.description || '-')}</td>
+        <td class="py-2.5 px-3 text-right">
+          <button onclick="deleteTransfer('${t._id}')" title="លុបការបង្វិលនេះ" class="p-1 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition">
+            <span class="material-symbols-outlined text-base">delete</span>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function deleteTransfer(id) {
+    if (!confirm('តើលោកអ្នកពិតជាចង់លុបប្រតិបត្តិការបង្វិលសាច់ប្រាក់នេះមែនទេ?')) return;
+    try {
+      const res = await fetch('/api/finance/transactions/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('បានលុបការបង្វិលប្រាក់ជោគជ័យ!');
+        await loadFinanceStats();
+        await loadTransferHistory();
+      } else {
+        showToast(data.detail || data.message || 'កំហុសពេលលុប!', true);
+      }
+    } catch(e) {
+      showToast('កំហុសប្រព័ន្ធ: ' + e.message, true);
     }
   }
 
@@ -12413,6 +12799,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     currentActiveTab = startTab;
 
     await checkAuthAndInitialize();
+    loadTransferHistory();
 
     if (startTab !== 'dashboard') {
       showTab(startTab, false);
