@@ -5484,7 +5484,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="material-symbols-outlined text-lg">account_balance_wallet</span>
             </span>
             <div>
-              <h3 class="font-bold text-sm sm:text-base text-white">សង្ខេបហិរញ្ញវត្ថុថ្ងៃនេះ (Financial Summary Today)</h3>
+              <h3 class="font-bold text-sm sm:text-base text-white">សង្ខេបហិរញ្ញវត្ថុខែនេះ (Financial Summary This Month)</h3>
               <p id="dash-finance-date" class="text-xs text-blue-300">កំពុងទាញទិន្នន័យ...</p>
             </div>
           </div>
@@ -5504,59 +5504,88 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div class="bg-white/5 border border-white/10 rounded-xl p-3">
             <p class="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
-              <span class="material-symbols-outlined text-xs">trending_up</span> ចំណូលថ្ងៃនេះ
+              <span class="material-symbols-outlined text-xs">trending_up</span> ចំណូលខែនេះ
             </p>
             <p id="dash-income-today" class="text-base sm:text-lg font-bold text-white mt-1">0 ៛</p>
           </div>
           <div class="bg-white/5 border border-white/10 rounded-xl p-3">
             <p class="text-[11px] text-rose-400 font-medium flex items-center gap-1">
-              <span class="material-symbols-outlined text-xs">trending_down</span> ចំណាយថ្ងៃនេះ
+              <span class="material-symbols-outlined text-xs">trending_down</span> ចំណាយខែនេះ
             </p>
             <p id="dash-expense-today" class="text-base sm:text-lg font-bold text-white mt-1">0 ៛</p>
           </div>
           <div class="bg-white/5 border border-white/10 rounded-xl p-3">
             <p class="text-[11px] text-blue-300 font-medium flex items-center gap-1">
-              <span class="material-symbols-outlined text-xs">balance</span> សមតុល្យសុទ្ធថ្ងៃនេះ
+              <span class="material-symbols-outlined text-xs">balance</span> សមតុល្យសុទ្ធខែនេះ
             </p>
             <p id="dash-net-today" class="text-base sm:text-lg font-bold text-emerald-300 mt-1">0 ៛</p>
           </div>
         </div>
       </div>
 
-      <!-- Recent panels (2 col) -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <!-- Recent Leaves -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="font-semibold text-gray-700 flex items-center gap-2">
-              <span class="material-symbols-outlined text-orange-500">event_busy</span>ច្បាប់ថ្មីៗ
-            </h2>
-            <button onclick="showTab('leaves')" class="text-xs text-blue-600 hover:underline flex items-center gap-1">
-              មើលទាំងអស់ <span class="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
+      <!-- Cash vs Bank Reconciliation (This Month) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
+        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-600">account_balance_wallet</span>
+            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)</h4>
           </div>
-          <div id="dash-leaves" class="divide-y divide-slate-50 text-sm max-h-64 overflow-y-auto">
-            <div class="p-4 text-gray-400 text-center">កំពុងទាញទិន្នន័យ...</div>
+          <span class="text-xs text-gray-500 font-medium" id="dash-recon-period">កំពុងទាញទិន្នន័យ...</span>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <!-- Cash in Hand Safe Box -->
+          <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ (Cash In Hand)
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់ / Drawer</span>
+            </div>
+            <div class="space-y-2 text-xs text-gray-700">
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span class="text-gray-600">ចំណូលសាច់ប្រាក់ (+)</span>
+                <span id="dash-cash-income" class="font-bold text-emerald-700 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span class="text-gray-600">ចំណាយសាច់ប្រាក់ (-)</span>
+                <span id="dash-cash-expense" class="font-bold text-rose-600 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between pt-2">
+                <span class="font-bold text-gray-800">សាច់ប្រាក់នៅសល់ជាក់ស្ដែង៖</span>
+                <span id="dash-cash-balance" class="text-sm font-black text-emerald-800 font-mono">0 ៛</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bank Account Box -->
+          <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> គណនីធនាគារ (ABA / Bank Transfer)
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
+            </div>
+            <div class="space-y-2 text-xs text-gray-700">
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
+                <span class="text-gray-600">ប្រាក់ផ្ទេរចូល (+)</span>
+                <span id="dash-bank-income" class="font-bold text-blue-700 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
+                <span class="text-gray-600">ប្រាក់ផ្ទេរចេញ (-)</span>
+                <span id="dash-bank-expense" class="font-bold text-rose-600 font-mono">0 ៛</span>
+              </div>
+              <div class="flex items-center justify-between pt-2">
+                <span class="font-bold text-gray-800">សមតុល្យធនាគារកើនឡើង៖</span>
+                <span id="dash-bank-balance" class="text-sm font-black text-blue-800 font-mono">0 ៛</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        <!-- Recent Loans -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="font-semibold text-gray-700 flex items-center gap-2">
-              <span class="material-symbols-outlined text-green-600">payments</span>ខ្ចីប្រាក់ថ្មីៗ
-            </h2>
-            <button onclick="showTab('loans')" class="text-xs text-blue-600 hover:underline flex items-center gap-1">
-              មើលទាំងអស់ <span class="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
-          </div>
-          <div id="dash-loans" class="divide-y divide-slate-50 text-sm max-h-64 overflow-y-auto">
-            <div class="p-4 text-gray-400 text-center">កំពុងទាញទិន្នន័យ...</div>
-          </div>
-        </div>
-
       </div>
+
+      <!-- Hidden legacy containers so renderDashLeaves / renderDashLoans don't fail -->
+      <div id="dash-leaves" class="hidden"></div>
+      <div id="dash-loans" class="hidden"></div>
     </div>
 
     <!-- ===== LEAVES TAB ===== -->
@@ -7935,6 +7964,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   function renderDashLeaves() {
     const el = document.getElementById('dash-leaves');
+    if (!el) return;
     const recent = leavesData.slice(0, 5);
     if (!recent.length) { el.innerHTML = '<div class="p-4 text-gray-400 text-center text-sm">គ្មានទិន្នន័យ</div>'; return; }
     el.innerHTML = recent.map(l => `
@@ -8103,6 +8133,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   function renderDashLoans() {
     const el = document.getElementById('dash-loans');
+    if (!el) return;
     const recent = loansData.slice(0, 5);
     if (!recent.length) { el.innerHTML = '<div class="p-4 text-gray-400 text-center text-sm">គ្មានទិន្នន័យ</div>'; return; }
     el.innerHTML = recent.map(l => `
@@ -9948,33 +9979,65 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const url = currentActiveBranch ? '/api/finance/stats?branch=' + encodeURIComponent(currentActiveBranch) : '/api/finance/stats';
       const res = await fetch(url);
       const data = await res.json();
-      if (!data || !data.today) return;
+      if (!data || !data.this_month) return;
+
+      const khmerMonths = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
+      const mIdx = (data.current_month ? data.current_month - 1 : new Date().getMonth());
+      const mName = khmerMonths[mIdx] || 'វិច្ឆិកា';
+      const yr = data.current_year || new Date().getFullYear();
+      const periodLabel = `ខែ ${mName} ឆ្នាំ ${yr}`;
 
       const dateEl = document.getElementById('dash-finance-date');
-      if (dateEl && data.today_date) {
-        dateEl.textContent = 'កាលបរិច្ឆេទថ្ងៃនេះ៖ ' + data.today_date;
+      if (dateEl) {
+        dateEl.textContent = 'ប្រចាំ' + periodLabel;
       }
 
+      // Top Cards: Show This Month's Income, Expense, Net Balance
       const incEl = document.getElementById('dash-income-today');
-      if (incEl) incEl.textContent = formatDualMoney(data.today.income_khr, data.today.income_usd);
+      if (incEl) incEl.textContent = formatDualMoney(data.this_month.income_khr, data.this_month.income_usd);
 
       const expEl = document.getElementById('dash-expense-today');
-      if (expEl) expEl.textContent = formatDualMoney(data.today.expense_khr, data.today.expense_usd);
+      if (expEl) expEl.textContent = formatDualMoney(data.this_month.expense_khr, data.this_month.expense_usd);
 
       const netEl = document.getElementById('dash-net-today');
       if (netEl) {
-        netEl.textContent = formatDualMoney(data.today.net_khr, data.today.net_usd);
-        if (data.today.net_khr >= 0 && data.today.net_usd >= 0) {
+        netEl.textContent = formatDualMoney(data.this_month.net_khr, data.this_month.net_usd);
+        if (data.this_month.net_khr >= 0 && data.this_month.net_usd >= 0) {
           netEl.className = 'text-base sm:text-lg font-bold text-emerald-300 mt-1';
         } else {
           netEl.className = 'text-base sm:text-lg font-bold text-rose-300 mt-1';
         }
       }
 
+      // Reconciliation card on Dashboard (This Month: Cash in hand vs Bank)
+      const reconPeriodEl = document.getElementById('dash-recon-period');
+      if (reconPeriodEl) reconPeriodEl.textContent = periodLabel;
+
+      const rec = data.this_month.reconciliation;
+      if (rec) {
+        const cashIncEl = document.getElementById('dash-cash-income');
+        if (cashIncEl) cashIncEl.textContent = formatDualMoney(rec.cash_income.khr, rec.cash_income.usd);
+
+        const cashExpEl = document.getElementById('dash-cash-expense');
+        if (cashExpEl) cashExpEl.textContent = formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd);
+
+        const cashBalEl = document.getElementById('dash-cash-balance');
+        if (cashBalEl) cashBalEl.textContent = formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd);
+
+        const bankIncEl = document.getElementById('dash-bank-income');
+        if (bankIncEl) bankIncEl.textContent = formatDualMoney(rec.bank_income.khr, rec.bank_income.usd);
+
+        const bankExpEl = document.getElementById('dash-bank-expense');
+        if (bankExpEl) bankExpEl.textContent = formatDualMoney(rec.bank_expense.khr, rec.bank_expense.usd);
+
+        const bankBalEl = document.getElementById('dash-bank-balance');
+        if (bankBalEl) bankBalEl.textContent = formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd);
+      }
+
       // Sidebar badges
       const incBadge = document.getElementById('badge-income-count');
       if (incBadge) {
-        const count = data.today.income_by_category ? data.today.income_by_category.reduce((s, c) => s + c.count, 0) : 0;
+        const count = data.today && data.today.income_by_category ? data.today.income_by_category.reduce((s, c) => s + c.count, 0) : 0;
         if (count > 0) {
           incBadge.textContent = count;
           incBadge.classList.remove('hidden');
@@ -9983,7 +10046,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       const expBadge = document.getElementById('badge-expense-count');
       if (expBadge) {
-        const count = data.today.expense_by_category ? data.today.expense_by_category.reduce((s, c) => s + c.count, 0) : 0;
+        const count = data.today && data.today.expense_by_category ? data.today.expense_by_category.reduce((s, c) => s + c.count, 0) : 0;
         if (count > 0) {
           expBadge.textContent = count;
           expBadge.classList.remove('hidden');
