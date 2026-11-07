@@ -89,6 +89,7 @@ class FinanceTransactionCreate(BaseModel):
     description: Optional[str] = ""
     recorded_by: Optional[str] = "រដ្ឋបាល"
     branch: Optional[str] = "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
+    service_items: Optional[List[Dict[str, Any]]] = None
 
 class FinanceTransactionUpdate(BaseModel):
     type: Optional[str] = None
@@ -103,6 +104,7 @@ class FinanceTransactionUpdate(BaseModel):
     description: Optional[str] = None
     recorded_by: Optional[str] = None
     branch: Optional[str] = None
+    service_items: Optional[List[Dict[str, Any]]] = None
 
 # ===== Pydantic Models =====
 class LeaveRequest(BaseModel):
@@ -2657,6 +2659,89 @@ async def api_get_transactions(
         }
     }
 
+# --- Finance Helpers: Khmer Numbers, Trips & Locations ---
+KHMER_NUM_MAP = {
+    '០': 0, '១': 1, '២': 2, '៣': 3, '៤': 4,
+    '៥': 5, '៦': 6, '៧': 7, '៨': 8, '៩': 9
+}
+
+def parse_khmer_or_arabic_int(s):
+    if not s:
+        return 0
+    res = ""
+    for ch in str(s).strip():
+        if ch in KHMER_NUM_MAP:
+            res += str(KHMER_NUM_MAP[ch])
+        elif ch.isdigit():
+            res += ch
+    try:
+        return int(res) if res else 0
+    except ValueError:
+        return 0
+
+def parse_khmer_or_arabic_number(s):
+    if not s:
+        return 0.0
+    res = ""
+    for ch in str(s).strip():
+        if ch in KHMER_NUM_MAP:
+            res += str(KHMER_NUM_MAP[ch])
+        elif ch.isdigit() or ch == '.':
+            res += ch
+    try:
+        return float(res) if res else 0.0
+    except ValueError:
+        return 0.0
+
+def extract_trips_and_locations(desc, is_sewage_income=True):
+    if not desc:
+        return [("សេវាទូទៅ", 1, 0.0)] if is_sewage_income else []
+
+    entries = []
+    text = str(desc).strip()
+
+    # Pattern 1: ទីតាំង[៖:] <loc> (<trips> ជើង [= <price> [៛|$|...]])
+    # Handles multiple on same line or separate lines
+    p1 = re.compile(r'ទីតាំង[៖:]\s*([^(\n]+?)\s*\(\s*([០-៩0-9]+)\s*ជើង(?:\s*=\s*([^\)]+?))?\s*\)')
+    matches1 = list(p1.finditer(text))
+    if matches1:
+        for m in matches1:
+            loc = m.group(1).strip()
+            trips = parse_khmer_or_arabic_int(m.group(2)) or 1
+            raw_price = m.group(3)
+            price = parse_khmer_or_arabic_number(raw_price) if raw_price else 0.0
+            if loc:
+                entries.append((loc, trips, price))
+        return entries
+
+    # Pattern 2: line-by-line fallback for older formats
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    for line in lines:
+        m2 = re.search(r'([^\d(\n]+?)\s*\(?\s*([០-៩0-9]+)\s*ជើង(?:\s*=\s*([^\)]+?))?\s*\)?', line)
+        if m2:
+            loc = m2.group(1).strip().strip(':').strip('៖').strip()
+            trips = parse_khmer_or_arabic_int(m2.group(2)) or 1
+            raw_price = m2.group(3)
+            price = parse_khmer_or_arabic_number(raw_price) if raw_price else 0.0
+            if loc:
+                entries.append((loc, trips, price))
+                continue
+
+        m3 = re.search(r'^([^\d០-៩]+?)\s*([០-៩0-9]+)$', line)
+        if m3:
+            loc = m3.group(1).strip()
+            trips = parse_khmer_or_arabic_int(m3.group(2)) or 1
+            if loc and len(loc) >= 2:
+                entries.append((loc, trips, 0.0))
+                continue
+
+    if not entries and is_sewage_income:
+        clean_desc = re.sub(r'[()\[\]]', '', text).strip()
+        loc = clean_desc[:25] if clean_desc else "សេវាទូទៅ"
+        entries.append((loc, 1, 0.0))
+
+    return entries
+
 @app.post("/api/finance/transactions")
 async def api_create_transaction(payload: FinanceTransactionCreate):
     cam_tz = timezone(timedelta(hours=7))
@@ -2677,6 +2762,12 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
     time_str = (payload.time or "").strip() or now.strftime("%H:%M")
     category = (payload.category or "").strip() or ("ចំណូលផ្សេងៗ" if t_type == "income" else "ចំណាយផ្សេងៗ")
 
+    service_items = payload.service_items
+    if not service_items:
+        is_service = "បូមលូ" in category or "សេវា" in category
+        extracted = extract_trips_and_locations(payload.description or "", is_sewage_income=is_service)
+        service_items = [{"location": loc, "trips": tr, "price": pr} for loc, tr, pr in extracted]
+
     doc = {
         "type": t_type,
         "amount": float(payload.amount),
@@ -2690,6 +2781,7 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
         "description": (payload.description or "").strip(),
         "recorded_by": (payload.recorded_by or "").strip() or "រដ្ឋបាល",
         "branch": (getattr(payload, "branch", None) or "ក្រុមហ៊ុនបូមលូ កំពង់ចាម").strip(),
+        "service_items": service_items or [],
         "created_at": now.isoformat(),
         "updated_at": now.isoformat()
     }
@@ -2733,6 +2825,11 @@ async def api_update_transaction(tx_id: str, payload: FinanceTransactionUpdate):
         update_data["recorded_by"] = payload.recorded_by.strip()
     if payload.branch is not None:
         update_data["branch"] = payload.branch.strip()
+    if payload.service_items is not None:
+        update_data["service_items"] = payload.service_items
+    elif payload.description is not None:
+        extracted = extract_trips_and_locations(payload.description, is_sewage_income=True)
+        update_data["service_items"] = [{"location": loc, "trips": tr, "price": pr} for loc, tr, pr in extracted]
 
     update_data["updated_at"] = datetime.now(timezone(timedelta(hours=7))).isoformat()
     r = finance_transactions_collection.update_one({"_id": ObjectId(tx_id)}, {"$set": update_data})
@@ -2748,63 +2845,6 @@ async def api_delete_transaction(tx_id: str):
     return {"success": True, "message": "បានលុបប្រតិបត្តិការជោគជ័យ!"}
 
 # --- Stats & Reports Helpers ---
-
-KHMER_NUM_MAP = {
-    '០': 0, '១': 1, '២': 2, '៣': 3, '៤': 4,
-    '៥': 5, '៦': 6, '៧': 7, '៨': 8, '៩': 9
-}
-
-def parse_khmer_or_arabic_int(s):
-    if not s:
-        return 0
-    res = ""
-    for ch in str(s).strip():
-        if ch in KHMER_NUM_MAP:
-            res += str(KHMER_NUM_MAP[ch])
-        elif ch.isdigit():
-            res += ch
-    try:
-        return int(res) if res else 0
-    except ValueError:
-        return 0
-
-def extract_trips_and_locations(desc, is_sewage_income=True):
-    if not desc:
-        return [("សេវាទូទៅ", 1)] if is_sewage_income else []
-    
-    entries = []
-    lines = [l.strip() for l in str(desc).splitlines() if l.strip()]
-    
-    for line in lines:
-        m1 = re.search(r'ទីតាំង[៖:]\s*([^(\n]+?)\s*\(\s*([០-៩0-9]+)\s*ជើង\s*\)', line)
-        if m1:
-            loc = m1.group(1).strip()
-            trips = parse_khmer_or_arabic_int(m1.group(2)) or 1
-            entries.append((loc, trips))
-            continue
-            
-        m2 = re.search(r'([^\d(\n]+?)\s*\(?\s*([០-៩0-9]+)\s*ជើង\s*\)?', line)
-        if m2:
-            loc = m2.group(1).strip().strip(':').strip('៖').strip()
-            trips = parse_khmer_or_arabic_int(m2.group(2)) or 1
-            if loc:
-                entries.append((loc, trips))
-                continue
-                
-        m3 = re.search(r'^([^\d០-៩]+?)\s*([០-៩0-9]+)$', line)
-        if m3:
-            loc = m3.group(1).strip()
-            trips = parse_khmer_or_arabic_int(m3.group(2)) or 1
-            if loc and len(loc) >= 2:
-                entries.append((loc, trips))
-                continue
-
-    if not entries and is_sewage_income:
-        clean_desc = re.sub(r'[()\[\]]', '', str(desc)).strip()
-        loc = clean_desc[:25] if clean_desc else "សេវាទូទៅ"
-        entries.append((loc, 1))
-        
-    return entries
 
 def calculate_finance_metrics(transactions):
     inc_khr = 0.0
@@ -2873,26 +2913,51 @@ def calculate_finance_metrics(transactions):
             inc_by_cat[cat]["count"] += 1
 
             is_service = "បូមលូ" in cat or "សេវា" in cat
-            trips_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
-            if trips_entries:
-                tx_total_trips = sum(tr for _, tr in trips_entries) or 1
+            raw_items = tx.get("service_items")
+            tx_items = []
+            if raw_items and isinstance(raw_items, list):
+                for it in raw_items:
+                    if isinstance(it, dict):
+                        loc = str(it.get("location") or "").strip()
+                        if loc:
+                            tr = parse_khmer_or_arabic_int(it.get("trips")) or 1
+                            pr = float(it.get("price", 0.0) or 0.0)
+                            tx_items.append((loc, tr, pr))
+
+            if not tx_items:
+                tx_items = extract_trips_and_locations(desc, is_sewage_income=is_service)
+
+            if tx_items:
+                tx_total_trips = sum(entry[1] for entry in tx_items) or 1
                 total_trips += tx_total_trips
-                for loc, tr in trips_entries:
-                    portion = (tr / tx_total_trips)
+                total_explicit_price = sum(entry[2] for entry in tx_items)
+
+                for entry in tx_items:
+                    loc = entry[0]
+                    tr = entry[1]
+                    pr = entry[2] if len(entry) > 2 else 0.0
+
                     if loc not in location_map:
                         location_map[loc] = {"location": loc, "trips": 0, "khr": 0.0, "usd": 0.0, "count": 0}
                     location_map[loc]["trips"] += tr
                     location_map[loc]["count"] += 1
-                    if curr == "USD":
-                        location_map[loc]["usd"] += amt * portion
+
+                    if total_explicit_price > 0 and pr > 0:
+                        allocated_rev = pr
                     else:
-                        location_map[loc]["khr"] += amt * portion
+                        portion = tr / tx_total_trips
+                        allocated_rev = amt * portion
+
+                    if curr == "USD":
+                        location_map[loc]["usd"] += allocated_rev
+                    else:
+                        location_map[loc]["khr"] += allocated_rev
 
             if staff not in staff_map:
                 staff_map[staff] = {"staff": staff, "income_khr": 0.0, "income_usd": 0.0, "expense_khr": 0.0, "expense_usd": 0.0, "trips": 0, "tx_count": 0}
             if curr == "USD": staff_map[staff]["income_usd"] += amt
             else: staff_map[staff]["income_khr"] += amt
-            staff_map[staff]["trips"] += sum(tr for _, tr in trips_entries) if is_service else 0
+            staff_map[staff]["trips"] += sum(entry[1] for entry in tx_items) if is_service else 0
             staff_map[staff]["tx_count"] += 1
 
         else:
@@ -3056,9 +3121,13 @@ async def api_get_monthly_report(year: Optional[Any] = None, month: Optional[Any
                 if curr == "USD": daily_map[day_num]["income_usd"] += amt
                 else: daily_map[day_num]["income_khr"] += amt
                 is_service = "បូមលូ" in cat or "សេវា" in cat
-                trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
-                if trip_entries:
-                    daily_map[day_num]["trips"] += sum(tr for _, tr in trip_entries)
+                raw_items = t.get("service_items")
+                if raw_items and isinstance(raw_items, list):
+                    daily_map[day_num]["trips"] += sum(parse_khmer_or_arabic_int(it.get("trips")) or 1 for it in raw_items if isinstance(it, dict))
+                else:
+                    trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                    if trip_entries:
+                        daily_map[day_num]["trips"] += sum(entry[1] for entry in trip_entries)
             else:
                 if curr == "USD": daily_map[day_num]["expense_usd"] += amt
                 else: daily_map[day_num]["expense_khr"] += amt
@@ -3124,9 +3193,13 @@ async def api_get_yearly_report(year: Optional[Any] = None, branch: Optional[str
                 if curr == "USD": monthly_map[m_num]["income_usd"] += amt
                 else: monthly_map[m_num]["income_khr"] += amt
                 is_service = "បូមលូ" in cat or "សេវា" in cat
-                trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
-                if trip_entries:
-                    monthly_map[m_num]["trips"] += sum(tr for _, tr in trip_entries)
+                raw_items = t.get("service_items")
+                if raw_items and isinstance(raw_items, list):
+                    monthly_map[m_num]["trips"] += sum(parse_khmer_or_arabic_int(it.get("trips")) or 1 for it in raw_items if isinstance(it, dict))
+                else:
+                    trip_entries = extract_trips_and_locations(desc, is_sewage_income=is_service)
+                    if trip_entries:
+                        monthly_map[m_num]["trips"] += sum(entry[1] for entry in trip_entries)
             else:
                 if curr == "USD": monthly_map[m_num]["expense_usd"] += amt
                 else: monthly_map[m_num]["expense_khr"] += amt
@@ -7324,7 +7397,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
           <div class="col-span-1">
             <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-            <select id="inc-form-currency" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            <select id="inc-form-currency" onchange="updateIncomeCurrencyBadge()" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400">
               <option value="KHR">៛ (រៀល)</option>
               <option value="USD">$ (ដុល្លារ)</option>
             </select>
@@ -7374,19 +7447,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- ទីតាំងផ្ដល់សេវា & ចំនួនជើង (Flexible & Responsive to all screens) -->
-        <div class="p-3 sm:p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2">
-          <div class="flex items-center justify-between gap-2">
+        <!-- ទីតាំងផ្ដល់សេវា, ចំនួនជើង & តម្លៃជាក់ស្ដែង (Smart Sub-entry + Auto-sum) -->
+        <div class="p-3 sm:p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
             <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5 whitespace-nowrap">
               <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
-              <span>ជ្រើសរើសទីតាំងផ្ដល់សេវា & ចំនួនជើង</span>
+              <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
             </label>
-            <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត</span>
+            <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
           </div>
 
-          <div class="flex flex-col sm:flex-row gap-2">
-            <!-- Location Combobox with Autocomplete & Memory -->
-            <div class="flex-1 min-w-0 relative">
+          <!-- Input fields row: Location (4 cols) | Trips (3 cols) | Price (3 cols) | Add Button (2 cols) -->
+          <div class="grid grid-cols-2 sm:grid-cols-12 gap-2">
+            <!-- Location Combobox -->
+            <div class="col-span-2 sm:col-span-4 relative">
               <input list="service-locations-list" id="inc-location-input" type="text"
                 placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
                 class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
@@ -7395,37 +7469,65 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </datalist>
             </div>
 
-            <!-- Trips Dropdown & Add Button Group -->
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <div class="flex-1 sm:flex-initial sm:w-36">
-                <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
-                  <option value="1">១ ជើង (1 trip)</option>
-                  <option value="2">២ ជើង (2 trips)</option>
-                  <option value="3">៣ ជើង (3 trips)</option>
-                  <option value="4">៤ ជើង (4 trips)</option>
-                  <option value="5">៥ ជើង (5 trips)</option>
-                  <option value="6">៦ ជើង (6 trips)</option>
-                  <option value="7">៧ ជើង (7 trips)</option>
-                  <option value="8">៨ ជើង (8 trips)</option>
-                  <option value="9">៩ ជើង (9 trips)</option>
-                  <option value="10">១០ ជើង (10 trips)</option>
-                  <option value="11">១១ ជើង (11 trips)</option>
-                  <option value="12">១២ ជើង (12 trips)</option>
-                  <option value="13">១៣ ជើង (13 trips)</option>
-                  <option value="14">១៤ ជើង (14 trips)</option>
-                  <option value="15">១៥ ជើង (15 trips)</option>
-                  <option value="16">១៦ ជើង (16 trips)</option>
-                  <option value="17">១៧ ជើង (17 trips)</option>
-                  <option value="18">១៨ ជើង (18 trips)</option>
-                  <option value="19">១៩ ជើង (19 trips)</option>
-                  <option value="20">២០ ជើង (20 trips)</option>
-                </select>
-              </div>
-              <button type="button" onclick="addServiceTripToNote()"
-                class="px-3.5 sm:px-4 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
-                <span class="material-symbols-outlined text-sm sm:text-base">add</span>
+            <!-- Trips Dropdown -->
+            <div class="col-span-1 sm:col-span-3">
+              <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+                <option value="1">១ ជើង (1 trip)</option>
+                <option value="2">២ ជើង (2 trips)</option>
+                <option value="3">៣ ជើង (3 trips)</option>
+                <option value="4">៤ ជើង (4 trips)</option>
+                <option value="5">៥ ជើង (5 trips)</option>
+                <option value="6">៦ ជើង (6 trips)</option>
+                <option value="7">៧ ជើង (7 trips)</option>
+                <option value="8">៨ ជើង (8 trips)</option>
+                <option value="9">៩ ជើង (9 trips)</option>
+                <option value="10">១០ ជើង (10 trips)</option>
+                <option value="11">១១ ជើង (11 trips)</option>
+                <option value="12">១២ ជើង (12 trips)</option>
+                <option value="13">១៣ ជើង (13 trips)</option>
+                <option value="14">១៤ ជើង (14 trips)</option>
+                <option value="15">១៥ ជើង (15 trips)</option>
+                <option value="16">១៦ ជើង (16 trips)</option>
+                <option value="17">១៧ ជើង (17 trips)</option>
+                <option value="18">១៨ ជើង (18 trips)</option>
+                <option value="19">១៩ ជើង (19 trips)</option>
+                <option value="20">២០ ជើង (20 trips)</option>
+              </select>
+            </div>
+
+            <!-- Price input with Currency symbol -->
+            <div class="col-span-1 sm:col-span-3 relative">
+              <input id="inc-price-input" type="text" inputmode="numeric"
+                placeholder="តម្លៃទីតាំងនេះ"
+                oninput="formatAmountInput(this)"
+                class="w-full border border-slate-200 rounded-xl pl-3 pr-7 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm font-mono" />
+              <span id="inc-price-currency-badge" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">៛</span>
+            </div>
+
+            <!-- Add Button -->
+            <div class="col-span-2 sm:col-span-2 flex items-stretch">
+              <button type="button" onclick="addServiceTripItem()"
+                class="w-full py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
+                <span class="material-symbols-outlined text-base">add</span>
                 <span>បញ្ចូល</span>
               </button>
+            </div>
+          </div>
+
+          <!-- Items List Container -->
+          <div id="inc-service-items-list" class="space-y-1.5 max-h-36 overflow-y-auto">
+            <!-- Dynamic item cards will be rendered here -->
+          </div>
+
+          <!-- Auto-sum Summary Bar -->
+          <div id="inc-items-summary" class="hidden flex items-center justify-between px-3 py-2 bg-blue-100/70 rounded-xl text-xs font-semibold text-blue-900 border border-blue-200/80">
+            <div class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm text-blue-700">functions</span>
+              <span>សរុប៖ <b id="inc-items-total-trips" class="font-bold text-blue-800">0</b> ជើង</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span>សរុបប្រាក់៖ <b id="inc-items-total-sum" class="font-bold text-emerald-700 font-mono">0 ៛</b></span>
+              <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-sync</span>
             </div>
           </div>
         </div>
@@ -9858,13 +9960,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     datalist.innerHTML = locs.map(l => `<option value="${escapeHtml(l)}">`).join('');
   }
 
-  function addServiceTripToNote() {
+  let currentIncomeServiceItems = [];
+
+  function getIncomeCurrency() {
+    const el = document.getElementById('inc-form-currency');
+    return el ? el.value : 'KHR';
+  }
+
+  function updateIncomeCurrencyBadge() {
+    const curr = getIncomeCurrency();
+    const badge = document.getElementById('inc-price-currency-badge');
+    const priceInp = document.getElementById('inc-price-input');
+    if (badge) {
+      badge.textContent = curr === 'USD' ? '$' : '៛';
+    }
+    if (priceInp) {
+      priceInp.placeholder = curr === 'USD' ? 'ឧ. 90.00' : 'ឧ. 360,000';
+    }
+    renderIncomeServiceItems();
+  }
+
+  function addServiceTripItem() {
     const locInput = document.getElementById('inc-location-input');
     const tripsSelect = document.getElementById('inc-trips-select');
-    const descEl = document.getElementById('inc-form-desc');
+    const priceInput = document.getElementById('inc-price-input');
+    const currency = getIncomeCurrency();
 
     const loc = (locInput ? locInput.value : '').trim();
-    const trips = tripsSelect ? tripsSelect.value : '1';
+    const trips = parseInt(tripsSelect ? tripsSelect.value : '1', 10) || 1;
+    const priceVal = priceInput ? parseFormattedAmount(priceInput.value) : 0;
 
     if (!loc) {
       showToast('សូមជ្រើសរើស ឬវាយបញ្ចូលទីតាំងផ្ដល់សេវាសិន!', true);
@@ -9874,22 +9998,125 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     saveServiceLocation(loc);
 
+    const newItem = {
+      id: Date.now() + Math.random().toString(36).substr(2, 5),
+      location: loc,
+      trips: trips,
+      price: priceVal
+    };
+
+    currentIncomeServiceItems.push(newItem);
+    renderIncomeServiceItems();
+
+    if (locInput) {
+      locInput.value = '';
+      locInput.focus();
+    }
+    if (priceInput) {
+      priceInput.value = '';
+    }
+    if (tripsSelect) {
+      tripsSelect.value = '1';
+    }
+
+    const priceFormatted = formatMoney(priceVal, currency);
+    showToast(`បានបញ្ចូល៖ ${loc} (${trips} ជើង = ${priceFormatted})`);
+  }
+
+  function removeIncomeServiceItem(id) {
+    currentIncomeServiceItems = currentIncomeServiceItems.filter(item => String(item.id) !== String(id));
+    renderIncomeServiceItems();
+  }
+
+  function renderIncomeServiceItems() {
+    const container = document.getElementById('inc-service-items-list');
+    const summaryBox = document.getElementById('inc-items-summary');
+    const totalTripsEl = document.getElementById('inc-items-total-trips');
+    const totalSumEl = document.getElementById('inc-items-total-sum');
+    const descEl = document.getElementById('inc-form-desc');
+    const amountInp = document.getElementById('inc-form-amount');
+    const currency = getIncomeCurrency();
+
+    if (!container) return;
+
+    if (currentIncomeServiceItems.length === 0) {
+      container.innerHTML = `
+        <div class="text-center py-2 px-3 border border-dashed border-blue-200 rounded-xl text-slate-400 text-xs">
+          មិនទាន់មានទីតាំងត្រូវបានបញ្ចូលនៅឡើយទេ (សូមរើសទីតាំង ចំនួនជើង និងតម្លៃ រួចចុច «+ បញ្ចូល»)
+        </div>
+      `;
+      if (summaryBox) summaryBox.classList.add('hidden');
+      return;
+    }
+
+    if (summaryBox) summaryBox.classList.remove('hidden');
+
     const khmerTripsMap = {
       '1': '១', '2': '២', '3': '៣', '4': '៤', '5': '៥',
       '6': '៦', '7': '៧', '8': '៨', '9': '៩', '10': '១០',
       '11': '១១', '12': '១២', '13': '១៣', '14': '១៤', '15': '១៥',
       '16': '១៦', '17': '១៧', '18': '១៨', '19': '១៩', '20': '២០'
     };
-    const khmerTripNum = khmerTripsMap[trips] || trips;
-    const newEntry = `ទីតាំង៖ ${loc} (${khmerTripNum} ជើង)`;
 
-    const currentDesc = descEl.value.trim();
-    descEl.value = currentDesc ? (currentDesc + String.fromCharCode(10) + newEntry) : newEntry;
+    let totalTrips = 0;
+    let totalSum = 0;
+    const descLines = [];
 
-    showToast(`បានបញ្ចូល៖ ${loc} (${khmerTripNum} ជើង)`);
-    if (locInput) {
-      locInput.value = '';
-      locInput.focus();
+    const itemsHtml = currentIncomeServiceItems.map(item => {
+      totalTrips += Number(item.trips) || 0;
+      const itemPrice = Number(item.price) || 0;
+      totalSum += itemPrice;
+
+      const avgPrice = item.trips > 0 ? Math.round(itemPrice / item.trips) : itemPrice;
+      const khmerNum = khmerTripsMap[String(item.trips)] || String(item.trips);
+      const formattedPrice = formatMoney(itemPrice, currency);
+      const formattedAvg = formatMoney(avgPrice, currency);
+
+      descLines.push(`ទីតាំង៖ ${item.location} (${khmerNum} ជើង = ${formattedPrice})`);
+
+      return `
+        <div class="flex items-center justify-between gap-2 p-2 sm:p-2.5 bg-white rounded-xl border border-blue-100 shadow-sm hover:border-blue-300 transition">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              ${khmerNum}
+            </div>
+            <div class="min-w-0">
+              <div class="font-bold text-xs sm:text-sm text-gray-800 truncate flex items-center gap-1">
+                <span class="material-symbols-outlined text-rose-500 text-sm">pin_drop</span>
+                <span>${escapeHtml(item.location)}</span>
+                <span class="text-[11px] font-normal text-slate-500">(${item.trips} ជើង)</span>
+              </div>
+              <div class="text-[10px] sm:text-[11px] text-slate-500 font-mono">
+                មធ្យម៖ <span class="font-semibold text-slate-700">${formattedAvg}/ជើង</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="text-right">
+              <span class="font-bold text-xs sm:text-sm font-mono text-emerald-700 block">${formattedPrice}</span>
+            </div>
+            <button type="button" onclick="removeIncomeServiceItem('${item.id}')"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-rose-400 hover:text-rose-700 hover:bg-rose-50 transition"
+              title="លុបចេញ">
+              <span class="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = itemsHtml;
+
+    if (totalTripsEl) totalTripsEl.textContent = totalTrips;
+    if (totalSumEl) totalSumEl.textContent = formatMoney(totalSum, currency);
+
+    if (descEl) {
+      descEl.value = descLines.join('\n');
+    }
+
+    if (totalSum > 0 && amountInp) {
+      amountInp.value = currency === 'USD' ? totalSum.toFixed(2) : totalSum.toLocaleString('en-US');
     }
   }
 
@@ -10494,6 +10721,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (locInp) locInp.value = '';
     const tripsSel = document.getElementById('inc-trips-select');
     if (tripsSel) tripsSel.value = '1';
+    const priceInp = document.getElementById('inc-price-input');
+    if (priceInp) priceInp.value = '';
+    currentIncomeServiceItems = [];
+    renderIncomeServiceItems();
+    updateIncomeCurrencyBadge();
     openModal('income-modal');
     setTimeout(() => {
       const amtInp = document.getElementById('inc-form-amount');
@@ -10539,7 +10771,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           reference_no: ref,
           description: desc,
           recorded_by: (localStorage.getItem('acbomlu_admin_user') || 'រដ្ឋបាល'),
-          branch: (document.getElementById('inc-form-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម')
+          branch: (document.getElementById('inc-form-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម'),
+          service_items: currentIncomeServiceItems
         })
       });
       const data = await res.json();
