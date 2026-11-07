@@ -7384,7 +7384,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <!-- Expense Modal -->
 <div id="expense-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm modal-overlay z-50 hidden flex items-center justify-center p-2.5 sm:p-4">
-  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+  <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
         <span class="material-symbols-outlined text-rose-600 text-xl">remove_circle</span> បញ្ចូលចំណាយថ្មី (Add Expense)
@@ -7393,67 +7393,89 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="material-symbols-outlined text-xl">close</span>
       </button>
     </div>
-    <form onsubmit="submitExpense(event)" class="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
-        <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
-        <input id="exp-form-time" type="hidden" value="" />
-      </div>
 
-      <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
-        <div class="col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (លេខខ្មែរ/ឡាតាំង)</label>
-          <input id="exp-form-amount" type="text" inputmode="numeric" required placeholder="ឧ. 1,000,000 ឬ ១,០០០,០០០"
-            oninput="formatAmountInput(this)"
-            class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono tracking-wide" />
+    <form onsubmit="submitExpense(event)" class="p-4 sm:p-6 overflow-y-auto flex-1 flex flex-col justify-between">
+      <!-- STEP 1: ផ្នែកទី ១ (កាលបរិច្ឆេទ & ចំនួនទឹកប្រាក់) -->
+      <div id="exp-step-1" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">កាលបរិច្ឆេទ *</label>
+          <input id="exp-form-date" type="date" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+          <input id="exp-form-time" type="hidden" value="" />
         </div>
-        <div class="col-span-1">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-          <select id="exp-form-currency" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400">
-            <option value="KHR">៛ (រៀល)</option>
-            <option value="USD">$ (ដុល្លារ)</option>
-          </select>
-        </div>
-      </div>
 
-      <div>
-        <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
-          <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទចំណាយ *</label>
-          <button type="button" onclick="openCatalogModal('expense')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
-            <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+        <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (លេខខ្មែរ/ឡាតាំង)</label>
+            <input id="exp-form-amount" type="text" inputmode="numeric" required placeholder="ឧ. 1,000,000 ឬ ១,០០០,០០០"
+              oninput="formatAmountInput(this)"
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-sm sm:text-base font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 font-mono tracking-wide" />
+          </div>
+          <div class="col-span-1">
+            <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
+            <select id="exp-form-currency" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400">
+              <option value="KHR">៛ (រៀល)</option>
+              <option value="USD">$ (ដុល្លារ)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex gap-2.5 sm:gap-3 pt-4 border-t border-slate-100 flex-shrink-0 bg-white">
+          <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
+          <button type="button" onclick="nextExpenseStep()" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+            <span>បន្តទៅមុខទៀត (Next)</span>
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
           </button>
         </div>
-        <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
-        </select>
       </div>
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
-        <select id="exp-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white">
-          <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
-          <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
-        </select>
-      </div>
+      <!-- STEP 2: ផ្នែកទី ២ (ព័ត៌មានលម្អិត & សាខា) -->
+      <div id="exp-step-2" class="space-y-3 sm:space-y-4 hidden">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+          <select id="exp-form-branch" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white">
+            <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
+            <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
+          </select>
+          <input id="exp-form-ref" type="hidden" value="" />
+        </div>
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
-        <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
-          <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
-          <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
-          <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
-          <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
-        </select>
-        <input id="exp-form-ref" type="hidden" value="" />
-      </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
+          <div>
+            <div class="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
+              <label class="text-xs font-semibold text-gray-700 whitespace-nowrap">កាតាឡុក / ប្រភេទចំណាយ *</label>
+              <button type="button" onclick="openCatalogModal('expense')" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 whitespace-nowrap">
+                <span class="material-symbols-outlined text-xs">add</span> បង្កើតកាតាឡុកថ្មី
+              </button>
+            </div>
+            <select id="exp-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
+            <select id="exp-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+              <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+              <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
+              <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
+              <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
+            </select>
+          </div>
+        </div>
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">ពិពណ៌នា / ចំណាំ</label>
-        <textarea id="exp-form-desc" rows="2" placeholder="ព័ត៌មានបន្ថែមអំពីការចំណាយនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
-      </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">ការពិពណ៌នា / ចំណាំ</label>
+          <textarea id="exp-form-desc" rows="3" placeholder="ព័ត៌មានបន្ថែមអំពីការចំណាយនេះ..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
+        </div>
 
-      <div class="flex gap-2.5 sm:gap-3 pt-2">
-        <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
-        <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95">រក្សាទុកចំណាយ</button>
+        <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
+          <button type="button" onclick="prevExpenseStep()" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            <span>ថយក្រោយ (Back)</span>
+          </button>
+          <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-base">check_circle</span>
+            <span>រក្សាទុកចំណាយ</span>
+          </button>
+        </div>
       </div>
     </form>
   </div>
@@ -9889,7 +9911,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       incSelect.value = defaultCat;
     }
     if (expSelect) {
-      expSelect.innerHTML = expCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      const defaultExpCat = 'ចំណាយរដ្ឋបាល និងផ្សេងៗ';
+      let hasDefault = expCats.some(c => c.name === defaultExpCat);
+      let optionsHtml = '';
+      if (!hasDefault && expCats.length === 0) {
+        optionsHtml += `<option value="${defaultExpCat}" selected>${defaultExpCat}</option>`;
+      }
+      optionsHtml += expCats.map(c => `<option value="${escapeHtml(c.name)}"${c.name === defaultExpCat ? ' selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+      expSelect.innerHTML = optionsHtml;
+      if (hasDefault) {
+        expSelect.value = defaultExpCat;
+      }
     }
 
     if (incFilterSelect) {
@@ -10623,37 +10655,106 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }).join('');
   }
 
+  let currentExpenseStep = 1;
+
+  function setExpenseStep(step) {
+    currentExpenseStep = step;
+    const step1 = document.getElementById('exp-step-1');
+    const step2 = document.getElementById('exp-step-2');
+
+    if (step === 1) {
+      if (step1) step1.classList.remove('hidden');
+      if (step2) step2.classList.add('hidden');
+    } else {
+      if (step1) step1.classList.add('hidden');
+      if (step2) step2.classList.remove('hidden');
+    }
+  }
+
+  function nextExpenseStep() {
+    const dateInput = document.getElementById('exp-form-date');
+    if (!dateInput || !dateInput.value) {
+      showToast('សូមជ្រើសរើសកាលបរិច្ឆេទជាមុនសិន!', true);
+      if (dateInput) dateInput.focus();
+      return;
+    }
+
+    const amtInput = document.getElementById('exp-form-amount');
+    const amount = parseFormattedAmount(amtInput ? amtInput.value : '');
+    if (!amount || amount <= 0) {
+      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០ ជាមុនសិន!', true);
+      if (amtInput) amtInput.focus();
+      return;
+    }
+
+    setExpenseStep(2);
+  }
+
+  function prevExpenseStep() {
+    setExpenseStep(1);
+    setTimeout(() => {
+      const amtInp = document.getElementById('exp-form-amount');
+      if (amtInp) amtInp.focus();
+    }, 100);
+  }
+
   async function openExpenseModal() {
     const form = document.querySelector('#expense-modal form');
     if (form) form.reset();
+    setExpenseStep(1);
     if (document.getElementById('exp-form-branch')) {
       document.getElementById('exp-form-branch').value = currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
     }
     document.getElementById('exp-form-date').value = getTodayString();
     document.getElementById('exp-form-time').value = getCurrentTimeString();
     document.getElementById('exp-form-currency').value = 'KHR';
+
     if (!financeCatalogs || financeCatalogs.length === 0) {
       await loadCatalogs();
     } else {
       populateCatalogDropdowns();
     }
+
+    const expCat = document.getElementById('exp-form-category');
+    if (expCat) {
+      const defaultExpCat = 'ចំណាយរដ្ឋបាល និងផ្សេងៗ';
+      const exists = Array.from(expCat.options).some(o => o.value === defaultExpCat);
+      if (exists) {
+        expCat.value = defaultExpCat;
+      }
+    }
+
+    const expMethod = document.getElementById('exp-form-method');
+    if (expMethod) {
+      expMethod.value = 'សាច់ប្រាក់សុទ្ធ';
+    }
+
     openModal('expense-modal');
+    setTimeout(() => {
+      const amtInp = document.getElementById('exp-form-amount');
+      if (amtInp) amtInp.focus();
+    }, 150);
   }
 
   async function submitExpense(e) {
     e.preventDefault();
+    if (currentExpenseStep === 1) {
+      nextExpenseStep();
+      return;
+    }
     const date = document.getElementById('exp-form-date').value;
     const time = document.getElementById('exp-form-time').value;
     const amount = parseFormattedAmount(document.getElementById('exp-form-amount').value);
     const currency = document.getElementById('exp-form-currency').value;
     const category = document.getElementById('exp-form-category').value;
     const method = document.getElementById('exp-form-method').value;
-    const ref = document.getElementById('exp-form-ref').value.trim();
+    const ref = document.getElementById('exp-form-ref') ? document.getElementById('exp-form-ref').value.trim() : '';
     const desc = document.getElementById('exp-form-desc').value.trim();
     const btn = document.getElementById('btn-save-expense');
 
     if (!amount || amount <= 0) {
       showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ដែលធំជាង ០!', true);
+      setExpenseStep(1);
       return;
     }
 
