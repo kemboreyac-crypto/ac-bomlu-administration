@@ -7221,12 +7221,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </button>
           </div>
           <select id="inc-form-category" required class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            <option value="ចំណូលពីសេវាបូមលូ" selected>ចំណូលពីសេវាបូមលូ</option>
           </select>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">មធ្យោបាយទូទាត់</label>
           <select id="inc-form-method" class="w-full border border-slate-200 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
-            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
+            <option value="សាច់ប្រាក់សុទ្ធ" selected>💵 សាច់ប្រាក់សុទ្ធ (Cash)</option>
             <option value="ABA / ធនាគារ">📱 ABA / ធនាគារ (Bank Transfer)</option>
             <option value="វីង / ទូរស័ព្ទ">📲 វីង / ទូរស័ព្ទ (Wing/Mobile)</option>
             <option value="ផ្សេងៗ">✨ ផ្សេងៗ</option>
@@ -7603,6 +7604,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       } else if (id === 'income-modal') {
         const b = document.getElementById('inc-form-branch');
         if (b) b.value = currentActiveBranch;
+        const incCat = document.getElementById('inc-form-category');
+        if (incCat && !incCat.value) incCat.value = 'ចំណូលពីសេវាបូមលូ';
+        const incMethod = document.getElementById('inc-form-method');
+        if (incMethod && !incMethod.value) incMethod.value = 'សាច់ប្រាក់សុទ្ធ';
       } else if (id === 'expense-modal') {
         const b = document.getElementById('exp-form-branch');
         if (b) b.value = currentActiveBranch;
@@ -9794,7 +9799,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const expCats = financeCatalogs.filter(c => c.type === 'expense' || c.type === 'both');
 
     if (incSelect) {
-      incSelect.innerHTML = incCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      const defaultCat = 'ចំណូលពីសេវាបូមលូ';
+      let hasDefault = incCats.some(c => c.name === defaultCat);
+      let optionsHtml = '';
+      if (!hasDefault) {
+        optionsHtml += `<option value="${defaultCat}" selected>${defaultCat}</option>`;
+      }
+      optionsHtml += incCats.map(c => `<option value="${escapeHtml(c.name)}"${c.name === defaultCat ? ' selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+      incSelect.innerHTML = optionsHtml;
+      incSelect.value = defaultCat;
     }
     if (expSelect) {
       expSelect.innerHTML = expCats.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
@@ -10232,6 +10245,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('inc-form-time').value = getCurrentTimeString();
     document.getElementById('inc-form-currency').value = 'KHR';
     populateCatalogDropdowns();
+
+    // Default category to "ចំណូលពីសេវាបូមលូ" and payment method to "សាច់ប្រាក់សុទ្ធ"
+    const incCat = document.getElementById('inc-form-category');
+    if (incCat) {
+      const defaultCat = 'ចំណូលពីសេវាបូមលូ';
+      const exists = Array.from(incCat.options).some(o => o.value === defaultCat);
+      if (!exists) {
+        incCat.insertAdjacentHTML('afterbegin', `<option value="${defaultCat}">${defaultCat}</option>`);
+      }
+      incCat.value = defaultCat;
+    }
+
+    const incMethod = document.getElementById('inc-form-method');
+    if (incMethod) {
+      incMethod.value = 'សាច់ប្រាក់សុទ្ធ';
+    }
+
     populateLocationDatalist();
     const locInp = document.getElementById('inc-location-input');
     if (locInp) locInp.value = '';
