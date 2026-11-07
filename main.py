@@ -7700,26 +7700,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <!-- Trips Dropdown -->
           <div class="col-span-1 sm:col-span-3">
             <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2.5 py-2 sm:py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
-              <option value="1">១ ជើង (1 trip)</option>
-              <option value="2">២ ជើង (2 trips)</option>
-              <option value="3">៣ ជើង (3 trips)</option>
-              <option value="4">៤ ជើង (4 trips)</option>
-              <option value="5">៥ ជើង (5 trips)</option>
-              <option value="6">៦ ជើង (6 trips)</option>
-              <option value="7">៧ ជើង (7 trips)</option>
-              <option value="8">៨ ជើង (8 trips)</option>
-              <option value="9">៩ ជើង (9 trips)</option>
-              <option value="10">១០ ជើង (10 trips)</option>
-              <option value="11">១១ ជើង (11 trips)</option>
-              <option value="12">១២ ជើង (12 trips)</option>
-              <option value="13">១៣ ជើង (13 trips)</option>
-              <option value="14">១៤ ជើង (14 trips)</option>
-              <option value="15">១៥ ជើង (15 trips)</option>
-              <option value="16">១៦ ជើង (16 trips)</option>
-              <option value="17">១៧ ជើង (17 trips)</option>
-              <option value="18">១៨ ជើង (18 trips)</option>
-              <option value="19">១៩ ជើង (19 trips)</option>
-              <option value="20">២០ ជើង (20 trips)</option>
+              <option value="1">១ ជើង</option>
+              <option value="2">២ ជើង</option>
+              <option value="3">៣ ជើង</option>
+              <option value="4">៤ ជើង</option>
+              <option value="5">៥ ជើង</option>
+              <option value="6">៦ ជើង</option>
+              <option value="7">៧ ជើង</option>
+              <option value="8">៨ ជើង</option>
+              <option value="9">៩ ជើង</option>
+              <option value="10">១០ ជើង</option>
+              <option value="11">១១ ជើង</option>
+              <option value="12">១២ ជើង</option>
+              <option value="13">១៣ ជើង</option>
+              <option value="14">១៤ ជើង</option>
+              <option value="15">១៥ ជើង</option>
+              <option value="16">១៦ ជើង</option>
+              <option value="17">១៧ ជើង</option>
+              <option value="18">១៨ ជើង</option>
+              <option value="19">១៩ ជើង</option>
+              <option value="20">២០ ជើង</option>
             </select>
           </div>
 
@@ -10644,7 +10644,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <div class="font-bold text-xs sm:text-sm text-gray-800 truncate flex items-center gap-1">
                 <span class="material-symbols-outlined text-rose-500 text-sm">pin_drop</span>
                 <span>${escapeHtml(item.location)}</span>
-                <span class="text-[11px] font-normal text-slate-500">(${item.trips} ជើង)</span>
+                <span class="text-[11px] font-normal text-slate-500">(${khmerNum} ជើង)</span>
               </div>
               <div class="text-[10px] sm:text-[11px] text-slate-500 font-mono">
                 មធ្យម៖ <span class="font-semibold text-slate-700">${formattedAvg}/ជើង</span>
