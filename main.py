@@ -1910,20 +1910,17 @@ async def get_manifest():
 @app.get("/sw.js")
 async def get_service_worker():
     sw_code = """
-const CACHE_NAME = 'acbomlu-admin-v2';
-const STATIC_ASSETS = ['/', '/manifest.json', '/static/ac_logo.jpg'];
+const CACHE_NAME = 'acbomlu-admin-v2.3';
+const STATIC_ASSETS = ['/manifest.json', '/static/ac_logo.jpg'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+      Promise.all(keys.map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -1933,12 +1930,26 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/') || event.request.method !== 'GET') {
     return;
   }
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
 });
 """
-    return Response(content=sw_code.strip(), media_type="application/javascript")
+    return Response(
+        content=sw_code.strip(),
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 @app.get("/api/stats")
 async def get_stats(branch: Optional[str] = None):
     q = {"branch": branch} if branch else {}
@@ -5161,16 +5172,20 @@ async def startup_event():
             with urllib.request.urlopen(req, timeout=5) as r:
                 print("Webhook Auto-Registered:", r.read().decode())
             
-            # Ensure all Latin slash commands are completely removed (Button-Only Policy: No Latin commands)
+            # Set Telegram Bot Commands to ONLY 2 options: leave & loan with clean Khmer descriptions
+            bot_cmd_list = [
+                {"command": "leave", "description": "📝 ស្នើសុំច្បាប់"},
+                {"command": "loan", "description": "💰 ស្នើកម្ចី"}
+            ]
             for sc in [None, {"type": "default"}, {"type": "all_group_chats"}, {"type": "all_chat_administrators"}, {"type": "all_private_chats"}]:
                 try:
-                    payload = json.dumps({"scope": sc}).encode("utf-8") if sc else b"{}"
-                    del_req = urllib.request.Request(
-                        f"https://api.telegram.org/bot{token}/deleteMyCommands",
+                    payload = json.dumps({"commands": bot_cmd_list, **({"scope": sc} if sc else {})}).encode("utf-8")
+                    cmd_req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{token}/setMyCommands",
                         data=payload,
                         headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
                     )
-                    with urllib.request.urlopen(del_req, timeout=5):
+                    with urllib.request.urlopen(cmd_req, timeout=5):
                         pass
                 except Exception:
                     pass
@@ -8521,7 +8536,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>`).join('');
     }
   }
-
   function renderDashLoans() {
     const el = document.getElementById('dash-loans');
     if (!el) return;
@@ -9752,10 +9766,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
+  const APP_VERSION = '2.3.0';
   function initPWA() {
-    // Register Service Worker
+    try {
+      const savedVersion = localStorage.getItem('acbomlu_app_version');
+      if (savedVersion !== APP_VERSION) {
+        localStorage.setItem('acbomlu_app_version', APP_VERSION);
+        if ('caches' in window) {
+          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+        }
+      }
+    } catch(e) {}
+
+    // Register Service Worker with auto-update
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW reg error:', err));
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        for (let r of regs) r.update();
+      });
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        reg.update();
+      }).catch(err => console.log('SW reg error:', err));
     }
 
     // Initial check to show or hide
@@ -9968,13 +9998,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  // ===== Refresh =====
-  async function refreshAll() {
+  // ===== Refresh (Manual & Live Auto-Refresh Rate) =====
+  let isRefreshing = false;
+  async function refreshAll(silent = false) {
+    if (isRefreshing) return;
+    isRefreshing = true;
+
     const btn = document.getElementById('refresh-btn')?.querySelector('span');
-    if (btn) btn.classList.add('animate-spin');
+    if (btn && !silent) btn.classList.add('animate-spin');
 
     const tasks = [loadStats(), loadFinanceStats()];
-    if (currentActiveTab === 'leaves') tasks.push(loadLeaves());
+    if (currentActiveTab === 'dashboard') {
+      tasks.push(loadLeaves(), loadLoans());
+    } else if (currentActiveTab === 'leaves') tasks.push(loadLeaves());
     else if (currentActiveTab === 'loans') tasks.push(loadLoans());
     else if (currentActiveTab === 'employees') tasks.push(loadEmployees());
     else if (currentActiveTab === 'income') tasks.push(loadIncome());
@@ -9989,11 +10025,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       await Promise.all(tasks);
     } catch (e) {
       console.warn('refreshAll error:', e);
+    } finally {
+      isRefreshing = false;
     }
 
-    if (btn) setTimeout(() => btn.classList.remove('animate-spin'), 500);
-    showToast('ទិន្នន័យស្រស់ហើយ!');
+    if (btn && !silent) {
+      setTimeout(() => btn.classList.remove('animate-spin'), 400);
+      showToast('ទិន្នន័យស្រស់ហើយ!');
+    }
   }
+
+  // Live Auto-Refresh Rate: Polling every 15 seconds to ensure UI stays responsive & in-sync
+  setInterval(() => {
+    if (!document.hidden && currentActiveTab) {
+      refreshAll(true);
+    }
+  }, 15000);
+
+  // Auto-refresh immediately when user switches back to browser tab
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshAll(true);
+    }
+  });
 
   // ======================================================
   // FINANCE & ACCOUNTING JAVASCRIPT
@@ -12373,7 +12427,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 # ===== Serve Dashboard =====
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
-    return HTML_TEMPLATE
+    return HTMLResponse(
+        content=HTML_TEMPLATE,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 # ===== Run =====
 if __name__ == "__main__":
