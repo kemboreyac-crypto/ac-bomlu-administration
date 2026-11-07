@@ -750,7 +750,7 @@ def sync_group_members_from_telegram() -> dict:
                     u = m.get("user", {})
                     if u.get("is_bot"):
                         continue
-                    title = m.get("custom_title") or ("ប្រធាន (Owner)" if m.get("status") == "creator" else "អ្នកគ្រប់គ្រង (Admin)")
+                    title = m.get("custom_title") or ("ប្រធាន" if m.get("status") == "creator" else "អ្នកគ្រប់គ្រង")
                     emp = sync_or_update_employee_from_telegram(u, position=title)
                     if emp:
                         synced_count += 1
@@ -855,8 +855,8 @@ def get_employee_self_service_report(emp_name: str) -> str:
             f"👤 <b>ព័ត៌មានផ្ទាល់ខ្លួន:</b> {emp_name}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📝 <b>ប្រវត្តិច្បាប់ឈប់សម្រាក:</b>\n"
-            f"• បានអនុញ្ញាតិ (Approved): <b>{approved_leave_days} ថ្ងៃ</b>{comp_info}\n"
-            f"• កំពុងរង់ចាំ (Pending): <b>{pending_leave_days} ថ្ងៃ</b>\n"
+            f"• បានអនុញ្ញាតិ: <b>{approved_leave_days} ថ្ងៃ</b>{comp_info}\n"
+            f"• កំពុងរង់ចាំ: <b>{pending_leave_days} ថ្ងៃ</b>\n"
             f"• សំណើសុំសរុប: <b>{total_leave_requests} លើក</b>\n\n"
             f"💰 <b>ប្រវត្តិខ្ចីប្រាក់ / បុរេប្រទាន:</b>\n"
             f"• ទឹកប្រាក់បានអនុញ្ញាតិ: <b>{approved_loan_amt:,} រៀល</b>{loan_paid_info}\n"
@@ -950,7 +950,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
             if not l:
                 return {"success": False, "message": "រកមិនឃើញទិន្នន័យច្បាប់នេះទេ"}
             if l.get("status") != "approved":
-                return {"success": False, "message": "អាចកត់ត្រាការសងបានតែលើច្បាប់ដែលរដ្ឋបាលបានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                return {"success": False, "message": "អាចកត់ត្រាការសងបានតែលើច្បាប់ដែលរដ្ឋបាលបានអនុញ្ញាតិ ប៉ុណ្ណោះ"}
                 
             target_emp_name = (l.get("employee_name") or "").strip()
             tot_days = float(l.get("days", 1.0))
@@ -1046,7 +1046,7 @@ def record_leave_compensation(leave_id: Optional[str] = None, employee_name: Opt
         
         note_line = f"\n📝 <b>ចំណាំ:</b> {note}" if note else ""
         tg_receipt = (
-            f"📋 <b>បច្ចុប្បន្នភាពការសងច្បាប់ (Leave Compensation)</b>\n"
+            f"📋 <b>បច្ចុប្បន្នភាពការសងច្បាប់</b>\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>បុគ្គលិក:</b> <b>{target_emp_name}</b>\n"
             f"⏱️ <b>បានសងលើកនេះ:</b> <b>{days_disp}</b>\n"
@@ -1297,7 +1297,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
             if not ln:
                 return {"success": False, "message": "រកមិនឃើញទិន្នន័យខ្ចីប្រាក់នេះទេ"}
             if ln.get("status") != "approved":
-                return {"success": False, "message": "អាចកត់ត្រាការកាត់/សងបានតែលើសំណើដែលរដ្ឋបាលបានអនុញ្ញាតិ (Approved) ប៉ុណ្ណោះ"}
+                return {"success": False, "message": "អាចកត់ត្រាការកាត់/សងបានតែលើសំណើដែលរដ្ឋបាលបានអនុញ្ញាតិ ប៉ុណ្ណោះ"}
                 
             target_emp_name = (ln.get("employee_name") or "").strip()
             tot_amt = int(ln.get("amount_khr", 0))
@@ -1393,7 +1393,7 @@ def record_loan_repayment(loan_id: Optional[str] = None, employee_name: Optional
         
         note_line = f"\n📝 <b>ចំណាំ:</b> {note}" if note else ""
         tg_receipt = (
-            f"🧾 <b>បង្កាន់ដៃកាត់ប្រាក់ខែ / សងប្រាក់កម្ចី (Loan Repayment)</b>\n"
+            f"🧾 <b>បង្កាន់ដៃកាត់ប្រាក់ខែ / សងប្រាក់កម្ចី</b>\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>បុគ្គលិក:</b> <b>{target_emp_name}</b>\n"
             f"💵 <b>បានកាត់/សងលើកនេះ:</b> <b>{amt_disp}</b>\n"
@@ -1993,7 +1993,7 @@ async def update_leave_status(leave_id: str, status: str):
                 f"🏢 <b>សាខា:</b> {branch}\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)",
+                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ",
                 target_chat_id=target_chat
             )
         elif status == "rejected":
@@ -2002,7 +2002,7 @@ async def update_leave_status(leave_id: str, status: str):
                 f"🏢 <b>សាខា:</b> {branch}\n"
                 f"👤 <b>បុគ្គលិក:</b> {name}\n"
                 f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)",
+                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ",
                 target_chat_id=target_chat
             )
     return {"message": f"Leave updated to {status}"}
@@ -2070,21 +2070,21 @@ async def update_loan_status(loan_id: str, status: str):
         if admin_chat:
             if status == "approved":
                 send_telegram_notify(
-                    f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់ (Admin)</b>\n\n"
+                    f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                     f"🏢 <b>សាខា:</b> {branch}\n"
                     f"👤 <b>បុគ្គលិក:</b> {name}\n"
                     f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                    f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved)",
+                    f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ",
                     target_chat_id=admin_chat,
                     fallback_to_default=False
                 )
             elif status == "rejected":
                 send_telegram_notify(
-                    f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់ (Admin)</b>\n\n"
+                    f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
                     f"🏢 <b>សាខា:</b> {branch}\n"
                     f"👤 <b>បុគ្គលិក:</b> {name}\n"
                     f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                    f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected)",
+                    f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ",
                     target_chat_id=admin_chat,
                     fallback_to_default=False
                 )
@@ -2182,7 +2182,7 @@ async def api_request_phone_telegram(branch: Optional[str] = None):
     msg = (
         "📢 <b>ជូនដំណឹងដល់បុគ្គលិក AC BOMLU ទាំងអស់៖</b>\n\n"
         "ដើម្បីឱ្យប្រព័ន្ធគ្រប់គ្រងមានលេខទូរស័ព្ទទំនាក់ទំនងរបស់អ្នក និងបង្ហាញលើ Dashboard ក្រុមហ៊ុន សូមបុគ្គលិកម្នាក់ៗចុចប៊ូតុងខាងក្រោម៖\n\n"
-        "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ (Share Phone) ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
+        "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
     )
     if branch:
         target_chat = get_chat_id_by_branch(branch)
@@ -2955,12 +2955,12 @@ def calculate_finance_metrics(transactions):
     }
 
     expense_structure = {
-        "fuel": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រេងឥន្ធនៈ (Fuel)"},
-        "maintenance": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ជួសជុល & គ្រឿងបន្លាស់ (Repairs)"},
-        "disposal": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ថ្លៃចាក់កាកសំណល់ (Dumping Fee)"},
-        "marketing": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សព្វផ្សាយ & ផ្លាក (Ads/Signs)"},
-        "salary": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រាក់បេសកកម្ម/ប្រាក់ខែ (Wages)"},
-        "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ចំណាយប្រតិបត្តិការផ្សេងៗ (Other)"}
+        "fuel": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រេងឥន្ធនៈ"},
+        "maintenance": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ជួសជុល & គ្រឿងបន្លាស់"},
+        "disposal": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ថ្លៃចាក់កាកសំណល់"},
+        "marketing": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ផ្សព្វផ្សាយ & ផ្លាក"},
+        "salary": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ប្រាក់បេសកកម្ម/ប្រាក់ខែ"},
+        "other": {"khr": 0.0, "usd": 0.0, "count": 0, "label": "ចំណាយប្រតិបត្តិការផ្សេងៗ"}
     }
 
     inv_from_cash_khr = 0.0
@@ -4540,7 +4540,7 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     if leave.get("status") in ["approved", "rejected"]:
-                        curr_status = "អនុញ្ញាតិ (Approved)" if leave.get("status") == "approved" else "មិនអនុញ្ញាតិ (Rejected)"
+                        curr_status = "អនុញ្ញាតិ (Approved)" if leave.get("status") == "approved" else "មិនអនុញ្ញាតិ"
                         if msg_id:
                             remove_telegram_inline_keyboard(chat_id_str, msg_id)
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -4577,8 +4577,8 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     v_id = leave.get("voice_id")
-                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if v_id else ""
-                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
+                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង 🔊</a>" if v_id else ""
+                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ ❌"
                     branch_line = f"🏢 <b>សាខា:</b> {leave.get('branch', '')}\n" if leave.get("branch") else ""
                     edit_text = (
                         f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
@@ -4593,7 +4593,7 @@ async def telegram_webhook(req: Request):
                     )
                     decision_kb = []
                     if v_id:
-                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{v_id}"}])
+                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក", "url": f"{get_base_url()}/voice-player/{v_id}"}])
                     edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": decision_kb})
                     
                 elif "loan" in action:
@@ -4604,7 +4604,7 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     if loan.get("status") in ["approved", "rejected"]:
-                        curr_status = "អនុញ្ញាតិ (Approved)" if loan.get("status") == "approved" else "មិនអនុញ្ញាតិ (Rejected)"
+                        curr_status = "អនុញ្ញាតិ (Approved)" if loan.get("status") == "approved" else "មិនអនុញ្ញាតិ"
                         if msg_id:
                             remove_telegram_inline_keyboard(chat_id_str, msg_id)
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -4641,8 +4641,8 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     v_id = loan.get("voice_id")
-                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង (Listen) 🔊</a>" if v_id else ""
-                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ (Approved) ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ (Rejected) ❌"
+                    voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង 🔊</a>" if v_id else ""
+                    result_text = "🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ ✅" if is_approve else "🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ ❌"
                     branch_line = f"🏢 <b>សាខា:</b> {loan.get('branch', '')}\n" if loan.get("branch") else ""
                     edit_text = (
                         f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
@@ -4657,7 +4657,7 @@ async def telegram_webhook(req: Request):
                     )
                     decision_kb = []
                     if v_id:
-                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក (Voice)", "url": f"{get_base_url()}/voice-player/{v_id}"}])
+                        decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក", "url": f"{get_base_url()}/voice-player/{v_id}"}])
                     edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=edit_text, reply_markup={"inline_keyboard": decision_kb})
 
                 ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -4806,7 +4806,7 @@ async def telegram_webhook(req: Request):
         if is_private_chat and (text.startswith("/start") or clean_cmd in ["/share_phone"]):
             contact_kb = {
                 "keyboard": [
-                    [{"text": "📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone)", "request_contact": True}],
+                    [{"text": "📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ", "request_contact": True}],
                     [{"text": "📝 ស្នើសុំច្បាប់"}, {"text": "💰 ស្នើកម្ចី"}]
                 ],
                 "resize_keyboard": True,
@@ -4817,7 +4817,7 @@ async def telegram_webhook(req: Request):
                 f"👋 <b>សួស្តី {sender_name}!</b>\n\n"
                 f"សូមស្វាគមន៍មកកាន់ប្រព័ន្ធរដ្ឋបាល <b>AC BOMLU Staff Control</b>!\n\n"
                 f"📱 <b>ដើម្បីភ្ជាប់លេខទូរស័ព្ទរបស់អ្នកជាមួយកាតបុគ្គលិកស្វ័យប្រវត្តិ៖</b>\n"
-                f"សូមចុចប៊ូតុង <b>[ 📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ (Share Phone) ]</b> ខាងក្រោមតែមួយដង នោះលេខទូរស័ព្ទរបស់អ្នកនឹងត្រូវកត់ត្រាចូលក្នុង Dashboard ដោយស្វ័យប្រវត្តិ។\n\n"
+                f"សូមចុចប៊ូតុង <b>[ 📱 ចែករំលែកលេខទូរស័ព្ទរបស់ខ្ញុំ ]</b> ខាងក្រោមតែមួយដង នោះលេខទូរស័ព្ទរបស់អ្នកនឹងត្រូវកត់ត្រាចូលក្នុង Dashboard ដោយស្វ័យប្រវត្តិ។\n\n"
                 f"ក្រៅពីនេះ អ្នកក៏អាចចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ឬ <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំបានគ្រប់ពេល។"
             )
             send_telegram_notify(welcome_private, reply_markup=contact_kb, target_chat_id=chat_id_str)
@@ -4833,7 +4833,7 @@ async def telegram_webhook(req: Request):
             msg = (
                 "📢 <b>ជូនដំណឹងដល់បុគ្គលិក AC BOMLU ទាំងអស់៖</b>\n\n"
                 "ដើម្បីឱ្យប្រព័ន្ធគ្រប់គ្រងមានលេខទូរស័ព្ទទំនាក់ទំនងរបស់អ្នក និងបង្ហាញលើ Dashboard ក្រុមហ៊ុន សូមបុគ្គលិកម្នាក់ៗចុចប៊ូតុងខាងក្រោម៖\n\n"
-                "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ (Share Phone) ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
+                "👉 ចុចប៊ូតុង <b>[ 📱 ចុចទីនេះដើម្បីបញ្ជូនលេខទូរស័ព្ទស្វ័យប្រវត្តិ ]</b> រួចចុច <b>[ ចែករំលែកលេខទូរស័ព្ទ ]</b> តែមួយដង នោះប្រព័ន្ធនឹងកត់ត្រាស្វ័យប្រវត្តិ។"
             )
             send_telegram_notify(msg, reply_markup=inline_btn, target_chat_id=chat_id_str)
             return {"ok": True}
@@ -4859,7 +4859,7 @@ async def telegram_webhook(req: Request):
         # Monthly Loan Deduction Report Command: Strictly Protected by Financial Privacy Policy
         if clean_cmd in ["/month_report", "/loan_report", "/month_loan", "/loan_detail", "/month_detail"]:
             privacy_msg = (
-                "🔒 <b>ការរក្សាការសម្ងាត់ទិន្នន័យហិរញ្ញវត្ថុ (Financial Privacy)</b>\n\n"
+                "🔒 <b>ការរក្សាការសម្ងាត់ទិន្នន័យហិរញ្ញវត្ថុ</b>\n\n"
                 "⚠️ របាយការណ៍ខ្ចីប្រាក់ និងទិន្នន័យហិរញ្ញវត្ថុ មិនត្រូវបានអនុញ្ញាតឱ្យបង្ហោះក្នុងក្រុម Telegram ឡើយ!\n"
                 "👉 សូមចូលទៅកាន់ <b>Admin Dashboard</b> ដើម្បីពិនិត្យរបាយការណ៍នេះដោយសុវត្ថិភាព។"
             )
@@ -4989,7 +4989,7 @@ async def telegram_webhook(req: Request):
         if clean_cmd in ["/connect", "/register_members", "/checkin", "/link"]:
             connect_btn = {
                 "inline_keyboard": [[
-                    {"text": "👤 ភ្ជាប់គណនីខ្ញុំ (Connect Profile)", "callback_data": "connect_me"}
+                    {"text": "👤 ភ្ជាប់គណនីខ្ញុំ", "callback_data": "connect_me"}
                 ]]
             }
             msg = (
@@ -5353,7 +5353,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div>
         <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1.5">
           <span class="material-symbols-outlined text-sm text-blue-600">person</span>
-          <span>ឈ្មោះគណនី (Username)</span>
+          <span>ឈ្មោះគណនី</span>
         </label>
         <input id="login-username" type="text" value="admin" required autocomplete="username"
           placeholder="ឧទាហរណ៍: admin ឬ រដ្ឋបាល"
@@ -5364,7 +5364,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
           <span class="flex items-center gap-1.5">
             <span class="material-symbols-outlined text-sm text-blue-600">lock</span>
-            <span>លេខសម្ងាត់ (Password)</span>
+            <span>លេខសម្ងាត់</span>
           </span>
           <span class="text-[11px] text-gray-400 font-normal">សុវត្ថិភាពខ្ពស់</span>
         </label>
@@ -5392,7 +5392,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button type="button" onclick="handleAdminLogin(event)" id="login-submit-btn"
         class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/25 transition transform active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer">
         <span class="material-symbols-outlined text-lg">login</span>
-        <span id="login-btn-text">ចូលប្រើប្រព័ន្ធ (Log In)</span>
+        <span id="login-btn-text">ចូលប្រើប្រព័ន្ធ</span>
       </button>
     </form>
 
@@ -5506,7 +5506,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       showLoginAlert('មានបញ្ហាក្នុងការតភ្ជាប់: ' + e.message, true);
     } finally {
       if (submitBtn) submitBtn.disabled = false;
-      if (btnText) btnText.textContent = 'ចូលប្រើប្រព័ន្ធ (Log In)';
+      if (btnText) btnText.textContent = 'ចូលប្រើប្រព័ន្ធ';
     }
     return false;
   }
@@ -5522,7 +5522,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="material-symbols-outlined text-3xl" id="install-modal-icon">desktop_windows</span>
     </div>
     
-    <h3 class="text-base sm:text-lg font-bold text-gray-800 mb-1" id="install-modal-title">ដំឡើងកម្មវិធីលើឧបករណ៍ (Install App)</h3>
+    <h3 class="text-base sm:text-lg font-bold text-gray-800 mb-1" id="install-modal-title">ដំឡើងកម្មវិធីលើឧបករណ៍</h3>
     <p class="text-xs text-gray-500 mb-4" id="install-modal-subtitle">ដំឡើងដើម្បីបើកប្រើប្រាស់ដូច App ពិតប្រាកដ ដោយមិនបាច់វាយឈ្មោះវេបសាយ</p>
     
     <!-- Desktop Guide Section -->
@@ -5530,7 +5530,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/60 mb-2">
         <p class="font-bold text-blue-900 flex items-center gap-1.5">
           <span class="material-symbols-outlined text-base text-blue-600">laptop_chromebook</span>
-          <span>ការណែនាំដំឡើងលើកុំព្យូទ័រ (Desktop / Windows / Mac):</span>
+          <span>ការណែនាំដំឡើងលើកុំព្យូទ័រ៖</span>
         </p>
       </div>
 
@@ -5546,7 +5546,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
         <div>
           <span class="font-bold text-gray-800">វិធីទី ២ (តាម Menu ជ្រុងស្ដាំ)៖</span>
-          <p class="text-[11px] text-gray-600 mt-0.5">ចុចលើសញ្ញាចុចបី <b>(⋮)</b> នៅជ្រុងស្ដាំខាងលើបង្អស់នៃ Browser ➡️ ជ្រើសរើស <b>«Save and share»</b> ឬ <b>«Cast, save, and share»</b> ➡️ ចុច <b>«Install AC BOMLU...»</b> (ឬ Create shortcut... ធីក Open as window)។</p>
+          <p class="text-[11px] text-gray-600 mt-0.5">ចុចលើសញ្ញាចុចបី <b>(⋮)</b> នៅជ្រុងស្ដាំខាងលើបង្អស់នៃ Browser ➡️ ជ្រើសរើស <b>«Save and share»</b> ➡️ ចុច <b>«ដំឡើង AC BOMLU...»</b> (ឬ បង្កើតផ្លូវកាត់ និងធីក បើកជាផ្ទាំងកម្មវិធី)។</p>
         </div>
       </div>
     </div>
@@ -5556,17 +5556,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200/60 mb-2">
         <p class="font-bold text-emerald-900 flex items-center gap-1.5">
           <span class="material-symbols-outlined text-base text-emerald-600">smartphone</span>
-          <span>ការណែនាំដំឡើងលើទូរស័ព្ទ (Mobile / Tablet):</span>
+          <span>ការណែនាំដំឡើងលើទូរស័ព្ទ៖</span>
         </p>
       </div>
 
       <div class="flex items-start gap-2.5">
         <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
-        <span><b>iOS (iPhone/iPad):</b> ចុចប៊ូតុង <b>Share (ចែករំលែក ⬆️)</b> ខាងក្រោម ➡️ អូសចុះជ្រើសរើស <b>«Add to Home Screen» (➕ បន្ថែមទៅអេក្រង់ដើម)</b> ➡️ ចុច <b>Add</b></span>
+        <span><b>ប្រព័ន្ធ iOS:</b> ចុចប៊ូតុង <b>ចែករំលែក (⬆️)</b> ខាងក្រោម ➡️ អូសចុះជ្រើសរើស <b>«បន្ថែមទៅអេក្រង់ដើម (➕)»</b> ➡️ ចុច <b>បន្ថែម</b></span>
       </div>
       <div class="flex items-start gap-2.5">
         <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
-        <span><b>Android (Chrome):</b> ចុចសញ្ញាចុចបី <b>(⋮)</b> ជ្រុងស្ដាំ ➡️ ជ្រើសរើស <b>«Install app»</b> ឬ <b>«Add to Home screen»</b></span>
+        <span><b>ប្រព័ន្ធ Android:</b> ចុចសញ្ញាចុចបី <b>(⋮)</b> ជ្រុងស្ដាំ ➡️ ជ្រើសរើស <b>«ដំឡើងកម្មវិធី»</b> ឬ <b>«បន្ថែមទៅអេក្រង់ដើម»</b></span>
       </div>
     </div>
     
@@ -5574,11 +5574,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="flex flex-col sm:flex-row gap-2">
       <button id="btn-trigger-native-install" onclick="triggerDirectPWAInstall()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5 active:scale-95">
         <span class="material-symbols-outlined text-base">download</span>
-        <span id="btn-trigger-install-text">ចុចដំឡើងឥឡូវនេះ (Install)</span>
+        <span id="btn-trigger-install-text">ចុចដំឡើងឥឡូវនេះ</span>
       </button>
       <button onclick="confirmInstalledOnDevice()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
         <span class="material-symbols-outlined text-sm">check_circle</span>
-        <span>ខ្ញុំបានដំឡើងរួចរាល់ (Installed)</span>
+        <span>ខ្ញុំបានដំឡើងរួចរាល់</span>
       </button>
       <button onclick="closeInstallModal()" class="px-3 py-2.5 bg-slate-100 text-gray-600 font-semibold rounded-xl text-xs hover:bg-slate-200 transition">
         បិទ
@@ -5601,12 +5601,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Logo -->
   <div class="h-16 flex items-center justify-between px-5 border-b border-blue-800">
-    <div onclick="goToHomepage()" class="flex items-center gap-3 cursor-pointer hover:opacity-90 transition group" title="ចុចដើម្បីទៅកាន់ទំព័រដើម (Homepage)">
+    <div onclick="goToHomepage()" class="flex items-center gap-3 cursor-pointer hover:opacity-90 transition group" title="ចុចដើម្បីទៅកាន់ទំព័រដើម">
       <img src="/static/ac_logo.jpg" alt="AC Logo"
         class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0 group-hover:scale-105 transition" />
       <div class="leading-tight">
         <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
-        <p class="text-sm font-bold group-hover:text-blue-200 transition">HR Dashboard</p>
+        <p class="text-sm font-bold group-hover:text-blue-200 transition">ផ្ទាំងគ្រប់គ្រងរដ្ឋបាល</p>
       </div>
     </div>
     <!-- Mobile close button -->
@@ -5752,11 +5752,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <!-- Backward & Forward Navigation (Hidden as requested) -->
       <div style="display: none !important;" class="hidden items-center gap-0.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80 flex-shrink-0 shadow-inner">
-        <button onclick="navGoBack()" id="btn-nav-back" title="ថយក្រោយទៅ UI មុន (Back)" aria-label="Back"
+        <button onclick="navGoBack()" id="btn-nav-back" title="ថយក្រោយ" aria-label="Back"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-700 hover:text-blue-600 hover:bg-white transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none">
           <span class="material-symbols-outlined text-xl">arrow_back</span>
         </button>
-        <button onclick="navGoForward()" id="btn-nav-forward" title="ទៅមុខ (Forward)" aria-label="Forward"
+        <button onclick="navGoForward()" id="btn-nav-forward" title="ទៅមុខ" aria-label="Forward"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-700 hover:text-blue-600 hover:bg-white transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none">
           <span class="material-symbols-outlined text-xl">arrow_forward</span>
         </button>
@@ -5800,17 +5800,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="hidden md:flex flex-col text-right leading-none">
           <span id="top-admin-name" class="text-xs font-bold text-gray-800">Admin</span>
           <span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5 justify-end mt-0.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ដំណើរការ
           </span>
         </div>
-        <button onclick="handleAdminLogout()" title="ចាកចេញ (Log Out)"
-          class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-red-50 text-gray-500 hover:text-red-600 transition flex-shrink-0" aria-label="Log Out">
+        <button onclick="handleAdminLogout()" title="ចាកចេញ"
+          class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-red-50 text-gray-500 hover:text-red-600 transition flex-shrink-0" aria-label="ចាកចេញ">
           <span class="material-symbols-outlined text-lg">logout</span>
         </button>
       </div>
 
       <!-- Avatar -->
-      <div onclick="goToHomepage()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition flex-shrink-0" title="ទៅកាន់ទំព័រដើម (Homepage)">
+      <div onclick="goToHomepage()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition flex-shrink-0" title="ទៅកាន់ទំព័រដើម">
         <img src="/static/ac_logo.jpg" alt="AC" class="w-full h-full object-cover" />
       </div>
     </div>
@@ -5870,7 +5870,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="material-symbols-outlined text-lg">account_balance_wallet</span>
             </span>
             <div>
-              <h3 class="font-bold text-sm sm:text-base text-white">សង្ខេបហិរញ្ញវត្ថុខែនេះ (Financial Summary This Month)</h3>
+              <h3 class="font-bold text-sm sm:text-base text-white">សង្ខេបហិរញ្ញវត្ថុខែនេះ</h3>
               <p id="dash-finance-date" class="text-xs text-blue-300">កំពុងទាញទិន្នន័យ...</p>
             </div>
           </div>
@@ -5917,7 +5917,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined text-indigo-600">account_balance_wallet</span>
-            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ & គណនីវិនិយោគទុន (Cash, Bank & Investment Fund)</h4>
+            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ & គណនីវិនិយោគទុន</h4>
           </div>
           <div class="flex items-center gap-2.5">
             <button onclick="openTransferModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition active:scale-95">
@@ -5931,9 +5931,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-emerald-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ (Cash In Hand)
+                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ
               </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់ / Drawer</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់</span>
             </div>
             <div class="space-y-2 text-xs text-gray-700">
               <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
@@ -5959,9 +5959,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ (Bank Transfer)
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ
               </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">គណនីធនាគារ</span>
             </div>
             <div class="space-y-2 text-xs text-gray-700">
               <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
@@ -5987,7 +5987,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-purple-50/40 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-indigo-950 font-bold text-sm">
-                <span class="material-symbols-outlined text-indigo-600">account_balance</span> គណនីវិនិយោគទុន (Investment Fund)
+                <span class="material-symbols-outlined text-indigo-600">account_balance</span> គណនីវិនិយោគទុន
               </span>
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-900">ទុនវិនិយោគបន្ត</span>
             </div>
@@ -6017,7 +6017,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="flex items-center justify-between py-3">
             <div class="flex items-center gap-2">
               <span class="material-symbols-outlined text-indigo-600 text-sm">history</span>
-              <h5 class="font-bold text-gray-700 text-xs sm:text-sm">ប្រវត្តិបង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន (Transfer History)</h5>
+              <h5 class="font-bold text-gray-700 text-xs sm:text-sm">ប្រវត្តិបង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន</h5>
             </div>
             <span id="dash-transfer-count" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">0 ប្រតិបត្តិការ</span>
           </div>
@@ -6158,7 +6158,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </button>
           <button onclick="openModal('bulk-emp-modal')"
             class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 shadow-sm transition">
-            <span class="material-symbols-outlined text-base">playlist_add</span> 📋 បញ្ចូលច្រើន (Bulk)
+            <span class="material-symbols-outlined text-base">playlist_add</span> 📋 បញ្ចូលច្រើន
           </button>
           <button onclick="openModal('emp-modal')"
             class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition">
@@ -6194,7 +6194,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="material-symbols-outlined text-2xl">shield_person</span>
               </div>
               <div>
-                <h3 class="font-bold text-white">គណនី Admin & សុវត្ថិភាព (Admin Account & Security)</h3>
+                <h3 class="font-bold text-white">គណនី Admin & សុវត្ថិភាព</h3>
                 <p class="text-xs text-blue-200">គ្រប់គ្រងឈ្មោះគណនី និងលេខសម្ងាត់សម្រាប់ចូលប្រើប្រព័ន្ធ</p>
               </div>
             </div>
@@ -6207,28 +6207,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <!-- Username -->
               <div>
-                <label class="block text-xs font-bold text-gray-700 mb-1">ឈ្មោះគណនី Admin (Username)</label>
+                <label class="block text-xs font-bold text-gray-700 mb-1">ឈ្មោះគណនី Admin</label>
                 <input id="setting-admin-username" type="text" required placeholder="admin"
                   class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium transition" />
               </div>
 
               <!-- Current Password -->
               <div>
-                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់បច្ចុប្បន្ន (Current Password)</label>
+                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់បច្ចុប្បន្ន</label>
                 <input id="setting-admin-current-pw" type="password" required placeholder="បញ្ចូលលេខសម្ងាត់បច្ចុប្បន្ន..."
                   class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
               </div>
 
               <!-- New Password -->
               <div>
-                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់ថ្មី (New Password)</label>
+                <label class="block text-xs font-bold text-gray-700 mb-1">លេខសម្ងាត់ថ្មី</label>
                 <input id="setting-admin-new-pw" type="password" placeholder="ទុកទំនេរប្រសិនបើមិនចង់ប្តូរលេខសម្ងាត់..."
                   class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
               </div>
 
               <!-- Confirm New Password -->
               <div>
-                <label class="block text-xs font-bold text-gray-700 mb-1">បញ្ជាក់លេខសម្ងាត់ថ្មី (Confirm Password)</label>
+                <label class="block text-xs font-bold text-gray-700 mb-1">បញ្ជាក់លេខសម្ងាត់ថ្មី</label>
                 <input id="setting-admin-confirm-pw" type="password" placeholder="វាយលេខសម្ងាត់ថ្មីម្តងទៀត..."
                   class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono transition" />
               </div>
@@ -6267,7 +6267,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="flex items-center gap-2">
                   <span>Telegram Bot Token</span>
                   <span id="token-status-badge" class="hidden text-xs px-2 py-0.5 rounded-md font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 items-center gap-1">
-                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ (Masked)
+                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ
                   </span>
                 </span>
                 <span class="text-xs text-gray-400 font-normal">ទទួលបានពី @BotFather</span>
@@ -6282,7 +6282,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
               <p class="text-xs text-emerald-600 mt-1 flex items-center gap-1 font-medium">
                 <span class="material-symbols-outlined text-sm">shield</span>
-                Token របស់អ្នកត្រូវបានលាក់ដោយស្វ័យប្រវត្តិ (Masked) — គ្មាននរណាម្នាក់អាចលួចមើលបានឡើយ
+                Token របស់អ្នកត្រូវបានលាក់ដោយស្វ័យប្រវត្តិ — គ្មាននរណាម្នាក់អាចលួចមើលបានឡើយ
               </p>
             </div>
 
@@ -6320,12 +6320,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <button type="button" onclick="testTelegramBot()" id="btn-test-bot"
                 class="btn-secondary flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-blue-200 transition">
                 <span class="material-symbols-outlined text-lg" id="test-bot-icon">send</span>
-                <span>សាកល្បងផ្ញើសារ (Test Bot)</span>
+                <span>សាកល្បងផ្ញើសារ</span>
               </button>
               <button type="button" onclick="sendMorningBriefing()" id="btn-morning-briefing"
                 class="bg-amber-50 hover:bg-amber-100 text-amber-700 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-amber-200 transition">
                 <span class="material-symbols-outlined text-lg" id="briefing-icon">wb_sunny</span>
-                <span>ផ្ញើរបាយការណ៍ពេលព្រឹក (Morning Briefing)</span>
+                <span>ផ្ញើរបាយការណ៍ពេលព្រឹក</span>
               </button>
             </div>
           </form>
@@ -6355,7 +6355,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="flex items-center gap-2">
                   <span>Google Gemini API Key</span>
                   <span id="gemini-status-badge" class="hidden text-xs px-2 py-0.5 rounded-md font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 items-center gap-1">
-                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ (Masked)
+                    <span class="material-symbols-outlined text-xs">lock</span> បានការពារ
                   </span>
                 </span>
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-xs text-purple-600 hover:underline flex items-center gap-1 font-medium">
@@ -6377,7 +6377,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Gemini Model Choice -->
             <div>
               <label class="block text-sm font-semibold text-gray-700 mb-1">
-                <span>ម៉ូដែល AI (AI Model)</span>
+                <span>ម៉ូដែល AI</span>
               </label>
               <select id="setting-gemini-model" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium transition bg-white">
                 <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite Latest (Ultra Fast - ណែនាំ)</option>
@@ -6398,7 +6398,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <button type="button" onclick="testGeminiAI()" id="btn-test-gemini"
                 class="bg-purple-50 hover:bg-purple-100 text-purple-700 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-purple-200 transition">
                 <span class="material-symbols-outlined text-lg" id="test-gemini-icon">psychology</span>
-                <span>សាកល្បង Gemini AI (Test AI)</span>
+                <span>សាកល្បង Gemini AI</span>
               </button>
             </div>
           </div>
@@ -6471,7 +6471,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="material-symbols-outlined text-2xl">domain</span>
               </div>
               <div>
-                <h3 class="font-bold text-white">គ្រប់គ្រងសាខា & Telegram Groups (Multi-Branch)</h3>
+                <h3 class="font-bold text-white">គ្រប់គ្រងសាខា & Telegram Groups</h3>
                 <p class="text-xs text-blue-200">បែងចែកគ្រុប Telegram និងទិន្នន័យដោយឡែកពីគ្នា ១០០% រវាងសាខា</p>
               </div>
             </div>
@@ -6484,7 +6484,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200/60 text-xs text-blue-800 flex items-start gap-2.5 leading-relaxed">
               <span class="material-symbols-outlined text-blue-600 text-base flex-shrink-0 mt-0.5">verified_user</span>
               <div>
-                <b>គោលការណ៍រក្សាការសម្ងាត់សាខា (Strict Group Isolation)៖</b><br/>
+                <b>គោលការណ៍រក្សាការសម្ងាត់សាខា៖</b><br/>
                 • បុគ្គលិកសាខា <b>កំពង់ចាម</b> ឃើញ និងស្នើសុំតែក្នុង Telegram Group កំពង់ចាម ប៉ុណ្ណោះ។<br/>
                 • បុគ្គលិកសាខា <b>ត្បូងឃ្មុំ</b> ឃើញ និងស្នើសុំតែក្នុង Telegram Group ត្បូងឃ្មុំ ប៉ុណ្ណោះ មិនអាចលេចធ្លាយទៅវិញទៅមកឡើយ!<br/>
                 • លោកអ្នកគ្រាន់តែ Add Bot ចូលក្នុងគ្រុបត្បូងឃ្មុំ Bot នឹង Auto-Link ឬបញ្ចូល Chat ID ខាងក្រោម។
@@ -6562,7 +6562,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span class="material-symbols-outlined text-2xl">cloud_download</span>
               </div>
               <div>
-                <h3 class="font-bold text-white">ទាញយកទិន្នន័យបម្រុងទុក (Full Database Backup)</h3>
+                <h3 class="font-bold text-white">ទាញយកទិន្នន័យបម្រុងទុក</h3>
                 <p class="text-xs text-emerald-100">រក្សាទុកទិន្នន័យបុគ្គលិក កម្ចី ច្បាប់ និងប្រតិបត្តិការហិរញ្ញវត្ថុទាំងអស់ចូលកុំព្យូទ័រ</p>
               </div>
             </div>
@@ -6841,7 +6841,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <span class="material-symbols-outlined text-emerald-600 text-2xl">trending_up</span> ការគ្រប់គ្រងចំណូល (Income)
+            <span class="material-symbols-outlined text-emerald-600 text-2xl">trending_up</span> ការគ្រប់គ្រងចំណូល
           </h2>
           <p class="text-xs text-gray-500 mt-0.5">កត់ត្រា និងតាមដានរាល់ប្រតិបត្តិការចំណូលប្រចាំថ្ងៃរបស់ក្រុមហ៊ុន AC Bomlu</p>
         </div>
@@ -6931,7 +6931,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <span class="material-symbols-outlined text-rose-600 text-2xl">trending_down</span> ការគ្រប់គ្រងចំណាយ (Expense)
+            <span class="material-symbols-outlined text-rose-600 text-2xl">trending_down</span> ការគ្រប់គ្រងចំណាយ
           </h2>
           <p class="text-xs text-gray-500 mt-0.5">កត់ត្រា និងតាមដានរាល់ការចំណាយប្រចាំថ្ងៃរបស់ក្រុមហ៊ុន AC Bomlu</p>
         </div>
@@ -7021,7 +7021,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <span class="material-symbols-outlined text-amber-500 text-2xl">category</span> កាតាឡុក និងប្រភេទប្រតិបត្តិការ (Catalogs)
+            <span class="material-symbols-outlined text-amber-500 text-2xl">category</span> កាតាឡុក និងប្រភេទប្រតិបត្តិការ
           </h2>
           <p class="text-xs text-gray-500 mt-0.5">កំណត់ និងគ្រប់គ្រងប្រភេទចំណូល និងចំណាយ ដើម្បីងាយស្រួលធ្វើរបាយការណ៍ហិរញ្ញវត្ថុ</p>
         </div>
@@ -7048,7 +7048,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <span class="material-symbols-outlined text-blue-600 text-2xl">analytics</span> របាយការណ៍ហិរញ្ញវត្ថុ (Financial Reports)
+            <span class="material-symbols-outlined text-blue-600 text-2xl">analytics</span> របាយការណ៍ហិរញ្ញវត្ថុ
           </h2>
           <p class="text-xs text-gray-500 mt-0.5">របាយការណ៍ចំណូល ចំណាយ និងប្រាក់ចំណេញសុទ្ធ ប្រចាំថ្ងៃ ប្រចាំខែ និងប្រចាំឆ្នាំ</p>
         </div>
@@ -7096,18 +7096,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div id="rep-ctrl-monthly" class="hidden flex items-center gap-2 flex-wrap w-full sm:w-auto">
           <label class="text-xs text-gray-500 font-medium">ជ្រើសរើសខែ៖</label>
           <select id="rep-finance-month" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="1">ខែមករា (Jan)</option>
-            <option value="2">ខែកុម្ភៈ (Feb)</option>
-            <option value="3">ខែមីនា (Mar)</option>
-            <option value="4">ខែមេសា (Apr)</option>
-            <option value="5">ខែឧសភា (May)</option>
-            <option value="6">ខែមិថុនា (Jun)</option>
-            <option value="7">ខែកក្កដា (Jul)</option>
-            <option value="8">ខែសីហា (Aug)</option>
-            <option value="9">ខែកញ្ញា (Sep)</option>
-            <option value="10">ខែតុលា (Oct)</option>
-            <option value="11">ខែវិច្ឆិកា (Nov)</option>
-            <option value="12">ខែធ្នូ (Dec)</option>
+            <option value="1">ខែមករា</option>
+            <option value="2">ខែកុម្ភៈ</option>
+            <option value="3">ខែមីនា</option>
+            <option value="4">ខែមេសា</option>
+            <option value="5">ខែឧសភា</option>
+            <option value="6">ខែមិថុនា</option>
+            <option value="7">ខែកក្កដា</option>
+            <option value="8">ខែសីហា</option>
+            <option value="9">ខែកញ្ញា</option>
+            <option value="10">ខែតុលា</option>
+            <option value="11">ខែវិច្ឆិកា</option>
+            <option value="12">ខែធ្នូ</option>
           </select>
           <select id="rep-finance-year-m" onchange="loadFinanceReports()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
           </select>
@@ -7130,28 +7130,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Row 1: Core Financial Performance -->
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
           <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> សរុបចំណូល (Income)</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> សរុបចំណូល</span>
             <span class="material-symbols-outlined text-emerald-500 text-sm">trending_up</span>
           </p>
           <p id="rep-summary-income" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
         </div>
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
           <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span> សរុបចំណាយ (Expense)</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span> សរុបចំណាយ</span>
             <span class="material-symbols-outlined text-rose-500 text-sm">trending_down</span>
           </p>
           <p id="rep-summary-expense" class="text-base sm:text-xl font-bold text-rose-600 mt-1.5">0 ៛</p>
         </div>
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
           <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span> ចំណេញ/ខាតសុទ្ធ (Net Profit)</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span> ចំណេញ/ខាតសុទ្ធ</span>
             <span class="material-symbols-outlined text-blue-500 text-sm">account_balance_wallet</span>
           </p>
           <p id="rep-summary-net" class="text-base sm:text-xl font-bold text-emerald-600 mt-1.5">0 ៛</p>
         </div>
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 transition hover:shadow-md">
           <p class="text-xs text-gray-500 font-medium flex items-center justify-between">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> ប្រតិបត្តិការ (Records)</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> ប្រតិបត្តិការ</span>
             <span class="material-symbols-outlined text-amber-500 text-sm">receipt_long</span>
           </p>
           <p id="rep-summary-count" class="text-base sm:text-xl font-bold text-gray-800 mt-1.5">0</p>
@@ -7207,7 +7207,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 no-print">
       <div class="flex items-center gap-2">
         <span class="material-symbols-outlined text-blue-600">verified</span>
-        <h3 class="font-bold text-gray-800 text-sm sm:text-base">ទម្រង់របាយការណ៍ផ្លូវការសម្រាប់ថ្នាក់ដឹកនាំ (Executive Report)</h3>
+        <h3 class="font-bold text-gray-800 text-sm sm:text-base">ទម្រង់របាយការណ៍ផ្លូវការសម្រាប់ថ្នាក់ដឹកនាំ</h3>
       </div>
       <div class="flex items-center gap-2">
         <button onclick="printExecutiveReportDoc()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow transition">
@@ -7394,7 +7394,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
     <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-emerald-50">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
-        <span class="material-symbols-outlined text-emerald-600">playlist_add</span> បញ្ចូលឈ្មោះបុគ្គលិកច្រើននាក់ (Bulk Import)
+        <span class="material-symbols-outlined text-emerald-600">playlist_add</span> បញ្ចូលឈ្មោះបុគ្គលិកច្រើននាក់
       </h3>
       <button onclick="closeModal('bulk-emp-modal')" class="text-gray-400 hover:text-gray-600">
         <span class="material-symbols-outlined">close</span>
@@ -7477,7 +7477,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
     <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-amber-50">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
-        <span class="material-symbols-outlined text-amber-600">event_repeat</span> កត់ត្រាការសងច្បាប់ (Leave Compensation)
+        <span class="material-symbols-outlined text-amber-600">event_repeat</span> កត់ត្រាការសងច្បាប់
       </h3>
       <button onclick="closeModal('compensate-modal')" class="text-gray-400 hover:text-gray-600">
         <span class="material-symbols-outlined">close</span>
@@ -7625,7 +7625,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
-        <span class="material-symbols-outlined text-emerald-600 text-xl">add_circle</span> បញ្ចូលចំណូលថ្មី (Add Income)
+        <span class="material-symbols-outlined text-emerald-600 text-xl">add_circle</span> បញ្ចូលចំណូលថ្មី
       </h3>
       <button onclick="closeModal('income-modal')" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition">
         <span class="material-symbols-outlined text-xl">close</span>
@@ -7680,7 +7680,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             បោះបង់
           </button>
           <button type="button" onclick="nextIncomeStep()" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
-            <span>បន្តទៅមុខទៀត (Next)</span>
+            <span>បន្តទៅមុខទៀត</span>
             <span class="material-symbols-outlined text-base">arrow_forward</span>
           </button>
         </div>
@@ -7777,7 +7777,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="flex items-center gap-1.5">
               <span>សរុបប្រាក់៖ <b id="inc-items-total-sum" class="font-bold text-emerald-700 font-mono">0 ៛</b></span>
-              <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-sync</span>
+              <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">ស្វ័យប្រវត្តិ</span>
             </div>
           </div>
         </div>
@@ -7806,7 +7806,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
           <button type="button" onclick="prevIncomeStep()" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5">
             <span class="material-symbols-outlined text-base">arrow_back</span>
-            <span>ថយក្រោយ (Back)</span>
+            <span>ថយក្រោយ</span>
           </button>
           <button type="submit" id="btn-save-income" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
             <span class="material-symbols-outlined text-base">check_circle</span>
@@ -7823,7 +7823,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex-shrink-0 bg-white">
       <h3 class="font-bold text-gray-800 flex items-center gap-2 text-sm sm:text-base">
-        <span class="material-symbols-outlined text-rose-600 text-xl">remove_circle</span> បញ្ចូលចំណាយថ្មី (Add Expense)
+        <span class="material-symbols-outlined text-rose-600 text-xl">remove_circle</span> បញ្ចូលចំណាយថ្មី
       </h3>
       <button onclick="closeModal('expense-modal')" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition">
         <span class="material-symbols-outlined text-xl">close</span>
@@ -7858,7 +7858,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="flex gap-2.5 sm:gap-3 pt-4 border-t border-slate-100 flex-shrink-0 bg-white">
           <button type="button" onclick="closeModal('expense-modal')" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition">បោះបង់</button>
           <button type="button" onclick="nextExpenseStep()" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
-            <span>បន្តទៅមុខទៀត (Next)</span>
+            <span>បន្តទៅមុខទៀត</span>
             <span class="material-symbols-outlined text-base">arrow_forward</span>
           </button>
         </div>
@@ -7903,7 +7903,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="flex gap-2.5 sm:gap-3 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
           <button type="button" onclick="prevExpenseStep()" class="btn-secondary flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5">
             <span class="material-symbols-outlined text-base">arrow_back</span>
-            <span>ថយក្រោយ (Back)</span>
+            <span>ថយក្រោយ</span>
           </button>
           <button type="submit" id="btn-save-expense" class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow transition active:scale-95 flex items-center justify-center gap-1.5">
             <span class="material-symbols-outlined text-base">check_circle</span>
@@ -7937,9 +7937,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">ប្រភេទ</label>
           <select id="cat-form-type" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="income">🟢 ចំណូល (Income)</option>
-            <option value="expense">🔴 ចំណាយ (Expense)</option>
-            <option value="both">⚪ ទាំងពីរ (Both)</option>
+            <option value="income">🟢 ចំណូល</option>
+            <option value="expense">🔴 ចំណាយ</option>
+            <option value="both">⚪ ទាំងពីរ</option>
           </select>
         </div>
         <div>
@@ -7996,7 +7996,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
       <h3 class="font-bold text-gray-800 flex items-center gap-2">
-        <span class="material-symbols-outlined text-blue-600 text-xl">edit_note</span> កែប្រែប្រតិបត្តិការ (Edit Transaction)
+        <span class="material-symbols-outlined text-blue-600 text-xl">edit_note</span> កែប្រែប្រតិបត្តិការ
       </h3>
       <button onclick="closeModal('edit-tx-modal')" class="text-gray-400 hover:text-gray-600">
         <span class="material-symbols-outlined">close</span>
@@ -8008,8 +8008,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">ប្រភេទប្រតិបត្តិការ</label>
           <select id="edit-tx-type" onchange="updateEditCategoriesDropdown()" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="income">🟢 ចំណូល (Income)</option>
-            <option value="expense">🔴 ចំណាយ (Expense)</option>
+            <option value="income">🟢 ចំណូល</option>
+            <option value="expense">🔴 ចំណាយ</option>
           </select>
         </div>
         <div>
@@ -8104,16 +8104,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
-            <span class="material-symbols-outlined text-amber-600 text-xs">arrow_upward</span> ផ្ទេរចេញពី (From) *
+            <span class="material-symbols-outlined text-amber-600 text-xs">arrow_upward</span> ផ្ទេរចេញពី *
           </label>
           <select id="tf-from" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ (Cash In Hand)</option>
-            <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ (Operating Bank)</option>
+            <option value="សាច់ប្រាក់សុទ្ធ">💵 សាច់ប្រាក់សុទ្ធ</option>
+            <option value="បាញ់តាមធនាគារ">📱 បាញ់តាមធនាគារ</option>
           </select>
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
-            <span class="material-symbols-outlined text-indigo-600 text-xs">arrow_downward</span> ផ្ទេរទៅកាន់ (To)
+            <span class="material-symbols-outlined text-indigo-600 text-xs">arrow_downward</span> ផ្ទេរទៅកាន់
           </label>
           <div class="w-full border border-indigo-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold bg-indigo-50/60 text-indigo-900 flex items-center gap-1.5">
             <span class="material-symbols-outlined text-sm text-indigo-600">account_balance</span> 🏦 គណនីវិនិយោគទុន
@@ -8155,7 +8155,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <!-- Note / Description -->
       <div>
-        <label class="block text-xs font-bold text-gray-700 mb-1">កំណត់ចំណាំ / បរិយាយ (Notes)</label>
+        <label class="block text-xs font-bold text-gray-700 mb-1">កំណត់ចំណាំ / បរិយាយ</label>
         <textarea id="tf-desc" rows="2" placeholder="ឧ. បង្វិលសាច់ប្រាក់ចំណេញបំណាច់ខែចូលគណនីវិនិយោគទុនបន្ត..." class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"></textarea>
       </div>
 
@@ -9572,7 +9572,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-      showToast('បានចម្លង (Copied)!');
+      showToast('បានចម្លងរួចរាល់!');
     }).catch(() => {
       showToast('មិនអាចចម្លងបានទេ', true);
     });
@@ -10259,16 +10259,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (secDesktop) secDesktop.classList.add('hidden');
         if (secMobile) secMobile.classList.remove('hidden');
         if (icon) icon.textContent = 'smartphone';
-        if (title) title.textContent = 'ដំឡើងលើទូរស័ព្ទ (Install on Mobile)';
-        if (sub) sub.textContent = 'ដំឡើងលើ Home Screen ដើម្បីបើកប្រើបានលឿន';
-        if (btnText) btnText.textContent = 'ដំឡើងលើទូរស័ព្ទ (Install)';
+        if (title) title.textContent = 'ដំឡើងលើទូរស័ព្ទ';
+        if (sub) sub.textContent = 'ដំឡើងលើអេក្រង់ដើម ដើម្បីបើកប្រើបានលឿន';
+        if (btnText) btnText.textContent = 'ដំឡើងលើទូរស័ព្ទ';
       } else {
         if (secDesktop) secDesktop.classList.remove('hidden');
         if (secMobile) secMobile.classList.add('hidden');
         if (icon) icon.textContent = 'desktop_windows';
-        if (title) title.textContent = 'ដំឡើងកម្មវិធីលើ Desktop (Install on PC)';
-        if (sub) sub.textContent = 'បើកប្រើប្រាស់ជាកម្មវិធីដាច់ដោយឡែកលើកុំព្យូទ័រ (Standalone App)';
-        if (btnText) btnText.textContent = 'ចុចដំឡើងលើ Desktop (Install)';
+        if (title) title.textContent = 'ដំឡើងកម្មវិធីលើកុំព្យូទ័រ';
+        if (sub) sub.textContent = 'បើកប្រើប្រាស់ជាកម្មវិធីដាច់ដោយឡែកលើកុំព្យូទ័រ';
+        if (btnText) btnText.textContent = 'ចុចដំឡើងលើកុំព្យូទ័រ';
       }
       modal.classList.remove('hidden');
       modal.classList.add('flex');
@@ -10351,7 +10351,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   async function handleAdminLogout() {
-    if (!confirm('តើលោកអ្នកពិតជាចង់ចាកចេញពីប្រព័ន្ធគ្រប់គ្រង (Log Out) មែនទេ?')) return;
+    if (!confirm('តើលោកអ្នកពិតជាចង់ចាកចេញពីប្រព័ន្ធគ្រប់គ្រងមែនទេ?')) return;
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch(e) {}
@@ -12234,13 +12234,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const expRatio = summary.expense_ratio_pct || 0;
 
     let ratioBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    let ratioStatusText = 'ចំណេញខ្ពស់ (Healthy Profit Margin)';
+    let ratioStatusText = 'ចំណេញខ្ពស់';
     if (expRatio > 60) {
       ratioBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
-      ratioStatusText = 'ចំណាយខ្ពស់គួរត្រួតពិនិត្យ (High Cost)';
+      ratioStatusText = 'ចំណាយខ្ពស់គួរត្រួតពិនិត្យ';
     } else if (expRatio > 35) {
       ratioBadgeClass = 'bg-amber-100 text-amber-800 border-amber-200';
-      ratioStatusText = 'កម្រិតមធ្យម (Moderate Cost)';
+      ratioStatusText = 'កម្រិតមធ្យម';
     }
 
     return `
@@ -12249,7 +12249,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined text-blue-600">account_balance_wallet</span>
-            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)</h4>
+            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ</h4>
           </div>
           <span class="text-xs text-gray-500 font-medium">${escapeHtml(periodTitle)}</span>
         </div>
@@ -12258,9 +12258,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-emerald-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ (Cash In Hand)
+                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ
               </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់ / Drawer</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់</span>
             </div>
             <div class="space-y-2 text-xs text-gray-700">
               <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
@@ -12282,9 +12282,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-3">
               <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ (Bank Transfer)
+                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ
               </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">KHQR / Transfer</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">គណនីធនាគារ</span>
             </div>
             <div class="space-y-2 text-xs text-gray-700">
               <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
@@ -12309,7 +12309,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-blue-50/30 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined text-indigo-600">location_on</span>
-            <h4 class="font-bold text-gray-800 text-sm">វិភាគទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Locations & Trips Leaderboard)</h4>
+            <h4 class="font-bold text-gray-800 text-sm">វិភាគទីតាំងផ្ដល់សេវា & ចំនួនជើង</h4>
           </div>
           <div class="flex items-center gap-2 sm:gap-3 text-xs">
             <span class="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
@@ -12393,7 +12393,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="px-5 py-3.5 bg-rose-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2">
               <span class="material-symbols-outlined text-rose-600">pie_chart</span>
-              <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ (Operating Cost Structure)</h4>
+              <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ</h4>
             </div>
             <span class="text-xs font-bold px-2.5 py-0.5 rounded-full border ${ratioBadgeClass}">
               សមាមាត្រចំណាយ៖ ${expRatio}% (${ratioStatusText})
@@ -12617,7 +12617,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
               <tr>
                 <th class="px-5 py-3">កាលបរិច្ឆេទ</th>
-                <th class="px-5 py-3 text-center">ចំនួនជើង (Trips)</th>
+                <th class="px-5 py-3 text-center">ចំនួនជើង</th>
                 <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
                 <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
                 <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
@@ -12684,7 +12684,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-medium">
               <tr>
                 <th class="px-5 py-3">ខែ</th>
-                <th class="px-5 py-3 text-center">ចំនួនជើង (Trips)</th>
+                <th class="px-5 py-3 text-center">ចំនួនជើង</th>
                 <th class="px-5 py-3 text-right">ចំណូលរៀល (៛)</th>
                 <th class="px-5 py-3 text-right">ចំណូលដុល្លារ ($)</th>
                 <th class="px-5 py-3 text-right">ចំណាយរៀល (៛)</th>
@@ -12915,19 +12915,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- 3. Executive KPI Summary Grid -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណូល (Income)</p>
+            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណូល</p>
             <p class="text-sm sm:text-base font-bold text-emerald-700 font-mono mt-1">${formatDualMoney(summary.income_khr, summary.income_usd)}</p>
           </div>
           <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណាយ (Expense)</p>
+            <p class="text-[11px] text-gray-500 font-medium">សរុបចំណាយ</p>
             <p class="text-sm sm:text-base font-bold text-rose-700 font-mono mt-1">${formatDualMoney(summary.expense_khr, summary.expense_usd)}</p>
           </div>
           <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-            <p class="text-[11px] text-gray-500 font-medium">ចំណេញ/ខាតសុទ្ធ (Net)</p>
+            <p class="text-[11px] text-gray-500 font-medium">ចំណេញ/ខាតសុទ្ធ</p>
             <p class="text-sm sm:text-base font-bold ${summary.net_khr >= 0 ? 'text-emerald-700' : 'text-rose-700'} font-mono mt-1">${formatDualMoney(summary.net_khr, summary.net_usd)}</p>
           </div>
           <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-            <p class="text-[11px] text-gray-500 font-medium">សរុបជើងសេវា (Trips)</p>
+            <p class="text-[11px] text-gray-500 font-medium">សរុបជើងសេវា</p>
             <p class="text-sm sm:text-base font-bold text-blue-700 font-mono mt-1">${summary.total_trips || 0} ជើង</p>
           </div>
         </div>
@@ -12935,7 +12935,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- 4. Cash vs Bank Reconciliation Table -->
         <div class="mb-6">
           <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-blue-700 rounded-sm"></span> ១. ការផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ (Cash & Bank Reconciliation)
+            <span class="w-1.5 h-3.5 bg-blue-700 rounded-sm"></span> ១. ការផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ
           </h3>
           <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
             <thead class="bg-slate-100 font-semibold text-gray-700">
@@ -12948,7 +12948,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </thead>
             <tbody class="divide-y divide-slate-100 text-gray-800 font-mono">
               <tr>
-                <td class="p-2.5 font-sans font-medium">សាច់ប្រាក់សុទ្ធក្នុងដៃ (Cash In Hand / Safe)</td>
+                <td class="p-2.5 font-sans font-medium">សាច់ប្រាក់សុទ្ធក្នុងដៃ</td>
                 <td class="p-2.5 text-right text-emerald-700 font-bold">${formatDualMoney(rec.cash_income.khr, rec.cash_income.usd)}</td>
                 <td class="p-2.5 text-right text-rose-600 font-bold">${formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd)}</td>
                 <td class="p-2.5 text-right font-black text-emerald-800 bg-emerald-50/50">${formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd)}</td>
@@ -12966,7 +12966,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- 5. Locations & Trips Breakdown Table -->
         <div class="mb-6">
           <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-indigo-700 rounded-sm"></span> ២. តារាងលម្អិតទីតាំងផ្ដល់សេវា & ចំនួនជើង (Service Locations & Trips)
+            <span class="w-1.5 h-3.5 bg-indigo-700 rounded-sm"></span> ២. តារាងលម្អិតទីតាំងផ្ដល់សេវា & ចំនួនជើង
           </h3>
           <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
             <thead class="bg-slate-100 font-semibold text-gray-700">
@@ -12995,7 +12995,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- 6. Operating Expenses Breakdown Table -->
         <div class="mb-6">
           <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-rose-700 rounded-sm"></span> ៣. រចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ (Operating Cost Breakdown)
+            <span class="w-1.5 h-3.5 bg-rose-700 rounded-sm"></span> ៣. រចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ
           </h3>
           <table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
             <thead class="bg-slate-100 font-semibold text-gray-700">
@@ -13057,7 +13057,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
               </div>
               <p class="text-xs font-bold text-blue-900 border-t border-dashed border-gray-400 pt-1.5 w-44">
-                លោក កឹម បូរី (Kem Borey)
+                លោក កឹម បូរី
               </p>
               <p class="text-[10px] text-gray-500">នាយកប្រតិបត្តិ / ម្ចាស់ក្រុមហ៊ុន</p>
             </div>
