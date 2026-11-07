@@ -5522,7 +5522,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (typeof refreshAll === 'function') {
           await refreshAll();
         } else if (typeof loadStats === 'function') {
-          await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats()]);
+          await Promise.all([
+            loadStats(), 
+            loadLeaves(), 
+            loadLoans(), 
+            loadFinanceStats(),
+            typeof loadSystemEmployees === 'function' ? loadSystemEmployees() : Promise.resolve()
+          ]);
         }
       } else {
         showLoginAlert(data.detail || 'ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ!', true);
@@ -7243,27 +7249,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <form onsubmit="submitLeave(event)" class="p-6 space-y-4">
       <div>
-        <label class="block text-sm text-gray-600 mb-1">ឈ្មោះបុគ្គលិក</label>
-        <input id="leave-name" type="text" required placeholder="ឈ្មោះ..."
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+        <div class="flex items-center justify-between gap-1 mb-1">
+          <label class="block text-xs sm:text-sm font-semibold text-gray-700">ឈ្មោះបុគ្គលិក *</label>
+          <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">បុគ្គលិកក្នុងប្រព័ន្ធ</span>
+        </div>
+        <select id="leave-name" required onchange="onLeaveEmployeeChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm">
+          <option value="" disabled selected>-- ជ្រើសរើសឈ្មោះបុគ្គលិក --</option>
+        </select>
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">សាខាក្រុមហ៊ុន</label>
-        <select id="leave-branch" required
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white">
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="leave-branch" required onchange="onLeaveBranchChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white shadow-sm">
           <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
           <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
         </select>
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">មូលហេតុ</label>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">មូលហេតុ *</label>
         <input id="leave-reason" type="text" required placeholder="មូលហេតុ..."
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">ចំនួនថ្ងៃ</label>
-        <input id="leave-days" type="number" min="1" value="1" required
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">ចំនួនថ្ងៃ *</label>
+        <input id="leave-days" type="number" min="0.5" step="0.5" value="1" required
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
       </div>
       <div class="flex gap-3 pt-2">
         <button type="button" onclick="closeModal('leave-modal')"
@@ -7288,27 +7299,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <form onsubmit="submitLoan(event)" class="p-6 space-y-4">
       <div>
-        <label class="block text-sm text-gray-600 mb-1">ឈ្មោះបុគ្គលិក</label>
-        <input id="loan-name" type="text" required placeholder="ឈ្មោះ..."
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+        <div class="flex items-center justify-between gap-1 mb-1">
+          <label class="block text-xs sm:text-sm font-semibold text-gray-700">ឈ្មោះបុគ្គលិក *</label>
+          <span class="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">បុគ្គលិកក្នុងប្រព័ន្ធ</span>
+        </div>
+        <select id="loan-name" required onchange="onLoanEmployeeChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm">
+          <option value="" disabled selected>-- ជ្រើសរើសឈ្មោះបុគ្គលិក --</option>
+        </select>
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">សាខាក្រុមហ៊ុន</label>
-        <select id="loan-branch" required
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-white">
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">សាខាក្រុមហ៊ុន</label>
+        <select id="loan-branch" required onchange="onLoanBranchChanged()"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition bg-white shadow-sm">
           <option value="ក្រុមហ៊ុនបូមលូ កំពង់ចាម">ក្រុមហ៊ុនបូមលូ កំពង់ចាម</option>
           <option value="ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ">ក្រុមហ៊ុនបូមលូ ត្បូងឃ្មុំ</option>
         </select>
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">ចំនួនទឹកប្រាក់ (រៀល)</label>
-        <input id="loan-amount" type="number" min="1000" required placeholder="ចំនួន..."
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ (រៀល) *</label>
+        <input id="loan-amount" type="text" inputmode="numeric" required placeholder="ឧ. 100,000 ឬ ១០០,០០០"
+          oninput="formatAmountInput(this)"
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 transition font-mono tracking-wide" />
       </div>
       <div>
-        <label class="block text-sm text-gray-600 mb-1">គោលបំណង</label>
+        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">គោលបំណង</label>
         <input id="loan-purpose" type="text" placeholder="គោលបំណង..."
-          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+          class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition" />
       </div>
       <div class="flex gap-3 pt-2">
         <button type="button" onclick="closeModal('loan-modal')"
@@ -8198,21 +8215,117 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }, 2500);
   }
 
+  // ===== SYSTEM EMPLOYEES & DROPDOWN SYNC =====
+  let systemEmployeesList = [];
+
+  async function loadSystemEmployees(force = false) {
+    if (systemEmployeesList.length > 0 && !force) {
+      return systemEmployeesList;
+    }
+    try {
+      const res = await fetch('/api/employees');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          systemEmployeesList = data;
+          cachedEmployees = data;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading system employees:', e);
+    }
+    return systemEmployeesList;
+  }
+
+  function populateEmployeeSelect(selectId, filterBranch = null) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const prevVal = sel.value;
+
+    let emps = systemEmployeesList;
+    if (filterBranch && filterBranch !== 'ទាំងអស់' && filterBranch !== 'All') {
+      const filtered = emps.filter(e => e.branch === filterBranch);
+      emps = filtered.length > 0 ? filtered : emps;
+    }
+
+    if (!emps || emps.length === 0) {
+      sel.innerHTML = '<option value="" disabled selected>-- មិនទាន់មានបុគ្គលិកក្នុងប្រព័ន្ធ --</option>';
+      return;
+    }
+
+    const sorted = [...emps].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'km'));
+
+    let html = '<option value="" disabled selected>-- ជ្រើសរើសឈ្មោះបុគ្គលិក --</option>';
+    sorted.forEach(emp => {
+      const branchShort = emp.branch ? ` (${emp.branch.replace('ក្រុមហ៊ុនបូមលូ ', '')})` : '';
+      const pos = emp.position ? ` - ${emp.position}` : '';
+      html += `<option value="${escapeHtml(emp.name)}" data-branch="${escapeHtml(emp.branch || '')}">👤 ${escapeHtml(emp.name)}${branchShort}${pos}</option>`;
+    });
+
+    sel.innerHTML = html;
+    if (prevVal && sorted.some(e => e.name === prevVal)) {
+      sel.value = prevVal;
+    }
+  }
+
+  function onLeaveEmployeeChanged() {
+    const sel = document.getElementById('leave-name');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const branch = opt ? opt.getAttribute('data-branch') : null;
+    if (branch) {
+      const bSel = document.getElementById('leave-branch');
+      if (bSel && bSel.value !== branch) bSel.value = branch;
+    }
+  }
+
+  function onLeaveBranchChanged() {
+    const branch = document.getElementById('leave-branch')?.value;
+    populateEmployeeSelect('leave-name', branch);
+  }
+
+  function onLoanEmployeeChanged() {
+    const sel = document.getElementById('loan-name');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const branch = opt ? opt.getAttribute('data-branch') : null;
+    if (branch) {
+      const bSel = document.getElementById('loan-branch');
+      if (bSel && bSel.value !== branch) bSel.value = branch;
+    }
+  }
+
+  function onLoanBranchChanged() {
+    const branch = document.getElementById('loan-branch')?.value;
+    populateEmployeeSelect('loan-name', branch);
+  }
+
   // ===== Modal (with phone back button awareness) =====
   function openModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('hidden');
 
+    // Populate employee dropdown for leave and loan
+    if (id === 'leave-modal') {
+      const b = document.getElementById('leave-branch');
+      if (b && currentActiveBranch) b.value = currentActiveBranch;
+      const targetBranch = (b ? b.value : currentActiveBranch) || null;
+      loadSystemEmployees().then(() => {
+        populateEmployeeSelect('leave-name', targetBranch);
+      });
+    } else if (id === 'loan-modal') {
+      const b = document.getElementById('loan-branch');
+      if (b && currentActiveBranch) b.value = currentActiveBranch;
+      const targetBranch = (b ? b.value : currentActiveBranch) || null;
+      loadSystemEmployees().then(() => {
+        populateEmployeeSelect('loan-name', targetBranch);
+      });
+    }
+
     // Pre-select active branch if user has chosen a specific branch
     if (currentActiveBranch) {
-      if (id === 'leave-modal') {
-        const b = document.getElementById('leave-branch');
-        if (b) b.value = currentActiveBranch;
-      } else if (id === 'loan-modal') {
-        const b = document.getElementById('loan-branch');
-        if (b) b.value = currentActiveBranch;
-      } else if (id === 'emp-modal') {
+      if (id === 'emp-modal') {
         const b = document.getElementById('emp-branch');
         if (b) b.value = currentActiveBranch;
       } else if (id === 'bulk-emp-modal') {
@@ -8631,17 +8744,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   async function submitLeave(e) {
     e.preventDefault();
+    const empName = (document.getElementById('leave-name')?.value || '').trim();
+    if (!empName) {
+      showToast('សូមជ្រើសរើសឈ្មោះបុគ្គលិក!', true);
+      const sel = document.getElementById('leave-name');
+      if (sel) sel.focus();
+      return;
+    }
+    if (systemEmployeesList.length > 0 && !systemEmployeesList.some(e => e.name === empName)) {
+      showToast('ឈ្មោះបុគ្គលិកនេះមិនមានក្នុងប្រព័ន្ធឡើយ! សូមជ្រើសរើសពីបញ្ជី!', true);
+      return;
+    }
+    const daysVal = parseFloat(document.getElementById('leave-days')?.value || '1');
+    if (!daysVal || daysVal <= 0) {
+      showToast('សូមបញ្ចូលចំនួនថ្ងៃដែលធំជាង ០!', true);
+      return;
+    }
+
     const payload = {
-      employee_name: document.getElementById('leave-name').value,
+      employee_name: empName,
       branch: document.getElementById('leave-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
-      reason: document.getElementById('leave-reason').value,
-      days: parseInt(document.getElementById('leave-days').value)
+      reason: document.getElementById('leave-reason')?.value || '',
+      days: daysVal
     };
-    await fetch('/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    closeModal('leave-modal');
-    e.target.reset();
-    showToast('បានបន្ថែមសំណើច្បាប់!');
-    await loadLeaves(); await loadStats();
+    try {
+      const res = await fetch('/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok) {
+        closeModal('leave-modal');
+        e.target.reset();
+        showToast('បានបន្ថែមសំណើសុំច្បាប់ជោគជ័យ!');
+        await loadLeaves();
+        await loadStats();
+      } else {
+        showToast('បរាជ័យក្នុងការបន្ថែមសំណើសុំច្បាប់!', true);
+      }
+    } catch(err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    }
   }
 
   // ===== LOAD LOANS =====
@@ -8799,17 +8938,46 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   async function submitLoan(e) {
     e.preventDefault();
+    const empName = (document.getElementById('loan-name')?.value || '').trim();
+    if (!empName) {
+      showToast('សូមជ្រើសរើសឈ្មោះបុគ្គលិក!', true);
+      const sel = document.getElementById('loan-name');
+      if (sel) sel.focus();
+      return;
+    }
+    if (systemEmployeesList.length > 0 && !systemEmployeesList.some(e => e.name === empName)) {
+      showToast('ឈ្មោះបុគ្គលិកនេះមិនមានក្នុងប្រព័ន្ធឡើយ! សូមជ្រើសរើសពីបញ្ជី!', true);
+      return;
+    }
+    const rawAmt = document.getElementById('loan-amount')?.value || '0';
+    const amt = parseFormattedAmount(rawAmt);
+    if (!amt || amt <= 0) {
+      showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ខ្ចីដែលធំជាង ០!', true);
+      const aInp = document.getElementById('loan-amount');
+      if (aInp) aInp.focus();
+      return;
+    }
+
     const payload = {
-      employee_name: document.getElementById('loan-name').value,
+      employee_name: empName,
       branch: document.getElementById('loan-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម',
-      amount_khr: parseInt(document.getElementById('loan-amount').value),
-      purpose: document.getElementById('loan-purpose').value
+      amount_khr: amt,
+      purpose: document.getElementById('loan-purpose')?.value || ''
     };
-    await fetch('/api/loan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    closeModal('loan-modal');
-    e.target.reset();
-    showToast('បានបន្ថែមសំណើខ្ចីប្រាក់!');
-    await loadLoans(); await loadStats();
+    try {
+      const res = await fetch('/api/loan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok) {
+        closeModal('loan-modal');
+        e.target.reset();
+        showToast('បានបន្ថែមសំណើខ្ចីប្រាក់ជោគជ័យ!');
+        await loadLoans();
+        await loadStats();
+      } else {
+        showToast('បរាជ័យក្នុងការបន្ថែមសំណើខ្ចីប្រាក់!', true);
+      }
+    } catch(err) {
+      showToast('កំហុស៖ ' + err.message, true);
+    }
   }
 
   // ===== LOAD EMPLOYEES =====
@@ -8820,6 +8988,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const r = await fetch(url);
       const data = await r.json();
       cachedEmployees = Array.isArray(data) ? data : [];
+      systemEmployeesList = cachedEmployees;
       const grid = document.getElementById('employees-grid');
       if (!cachedEmployees.length) {
         grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400">គ្មានបុគ្គលិក — ចុច "Sync ពី Telegram" ឬ "បន្ថែម" ដើម្បីចាប់ផ្តើម</div>'; return;
@@ -10115,7 +10284,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (topAdminName) topAdminName.textContent = data.username || 'Admin';
         const settingAdminUser = document.getElementById('setting-admin-username');
         if (settingAdminUser) settingAdminUser.value = data.username || 'admin';
-        await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs()]);
+        await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs(), loadSystemEmployees()]);
       } else {
         localStorage.removeItem('acbomlu_admin_token');
         if (loginScreen) loginScreen.classList.remove('hidden');
@@ -10124,7 +10293,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       console.error('Auth verification error:', e);
       // In case of temporary network glitch, allow dashboard if local token exists
       if (loginScreen) loginScreen.classList.add('hidden');
-      await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs()]);
+      await Promise.all([loadStats(), loadLeaves(), loadLoans(), loadFinanceStats(), loadCatalogs(), loadSystemEmployees()]);
     }
   }
 
