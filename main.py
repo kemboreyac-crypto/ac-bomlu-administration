@@ -10766,7 +10766,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     if (descEl) {
-      descEl.value = descLines.join('\n');
+      descEl.value = descLines.join('\\n');
     }
 
     const formCurr = document.getElementById('inc-form-currency');
@@ -11501,8 +11501,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (khrItems.length > 0 && usdItems.length > 0) {
       const sumKHR = khrItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
       const sumUSD = usdItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
-      const khrDesc = khrItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'KHR')})`).join('\n') + (desc ? '\n' + desc : '');
-      const usdDesc = usdItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'USD')})`).join('\n') + (desc ? '\n' + desc : '');
+      const khrDesc = khrItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'KHR')})`).join('\\n') + (desc ? '\\n' + desc : '');
+      const usdDesc = usdItems.map(i => `ទីតាំង៖ ${i.location} (${i.trips} ជើង = ${formatMoney(i.price, 'USD')})`).join('\\n') + (desc ? '\\n' + desc : '');
 
       btn.disabled = true;
       try {
