@@ -2862,7 +2862,7 @@ async def api_create_transaction(payload: FinanceTransactionCreate):
     
     t_type = (payload.type or "income").strip().lower()
     if t_type not in ["income", "expense", "transfer"]:
-        raise HTTPException(status_code=400, detail="ប្រភេទប្រតិបត្តិការត្រូវតែជា ចំណូល (income), ចំណាយ (expense) ឬ បង្វិលប្រាក់ (transfer)!")
+        raise HTTPException(status_code=400, detail="ប្រភេទប្រតិបត្តិការត្រូវតែជា ចំណូល, ចំណាយ ឬ បង្វិលប្រាក់!")
     
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="ចំនួនទឹកប្រាក់ត្រូវតែធំជាង ០!")
@@ -3897,12 +3897,12 @@ async def play_voice_page(voice_id: str):
       <a href="/api/voice/{voice_id}" download="voice_{voice_id}.ogg"
          class="inline-flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl shadow-lg transition-all text-sm">
         <span class="material-symbols-outlined text-lg">download</span>
-        <span>ទាញយកឯកសារសំឡេង (Download Voice)</span>
+        <span>ទាញយកឯកសារសំឡេង</span>
       </a>
       <a href="https://admin.acbomlu.com"
          class="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white font-medium rounded-xl transition-all text-xs">
         <span class="material-symbols-outlined text-base">dashboard</span>
-        <span>ចូលកាន់ផ្ទាំងគ្រប់គ្រងរដ្ឋបាល (Web Dashboard)</span>
+        <span>ចូលកាន់ផ្ទាំងគ្រប់គ្រងរដ្ឋបាល</span>
       </a>
     </div>
     
@@ -4580,7 +4580,7 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     if leave.get("status") in ["approved", "rejected"]:
-                        curr_status = "អនុញ្ញាតិ (Approved)" if leave.get("status") == "approved" else "មិនអនុញ្ញាតិ"
+                        curr_status = "អនុញ្ញាត" if leave.get("status") == "approved" else "មិនអនុញ្ញាត"
                         if msg_id:
                             remove_telegram_inline_keyboard(chat_id_str, msg_id)
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -4644,7 +4644,7 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     if loan.get("status") in ["approved", "rejected"]:
-                        curr_status = "អនុញ្ញាតិ (Approved)" if loan.get("status") == "approved" else "មិនអនុញ្ញាតិ"
+                        curr_status = "អនុញ្ញាត" if loan.get("status") == "approved" else "មិនអនុញ្ញាត"
                         if msg_id:
                             remove_telegram_inline_keyboard(chat_id_str, msg_id)
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -6431,7 +6431,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                   <span id="gemini-eye-icon" class="material-symbols-outlined text-xl">visibility</span>
                 </button>
               </div>
-              <p class="text-xs text-gray-400 mt-1">API Key នេះប្រើសម្រាប់ឱ្យ Bot យល់សារភាសាខ្មែរធម្មជាតិ និងសារសំឡេង (Voice) ដោយស្វ័យប្រវត្តិ។</p>
+              <p class="text-xs text-gray-400 mt-1">API Key នេះប្រើសម្រាប់ឱ្យ Bot យល់សារភាសាខ្មែរធម្មជាតិ និងសារសំឡេងដោយស្វ័យប្រវត្តិ។</p>
             </div>
 
             <!-- Gemini Model Choice -->
@@ -6966,12 +6966,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
-                <th class="px-2 py-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-1.5 py-2 text-right whitespace-nowrap w-14">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="income-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -7055,12 +7055,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-3 py-2 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ចំណាំ</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
-                <th class="px-2 py-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-1.5 py-2 text-right whitespace-nowrap w-14">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="expense-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -8364,49 +8364,74 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   // Universal Location & Trips Formatter: Ex: មេមុត: 01 , ដា: 03 , សួង: 01
   function formatTransactionDesc(tx) {
     if (!tx) return '—';
+    const locMap = new Map();
+
     if (Array.isArray(tx.service_items) && tx.service_items.length > 0) {
-      const items = tx.service_items
-        .filter(it => it && it.location)
-        .map(it => {
-          const tr = parseInt(it.trips, 10) || 1;
-          const trStr = tr < 10 ? ('0' + tr) : String(tr);
-          return it.location.trim() + ': ' + trStr;
-        });
-      if (items.length > 0) return items.join(' , ');
-    }
-    const desc = typeof tx === 'string' ? tx : (tx.description || '');
-    if (!desc) return '—';
-
-    // If already in 'Loc: 01 , Loc: 02' format, return as is
-    if (desc.includes(':') && !desc.includes('ទីតាំង៖') && !desc.includes('ជើង =')) {
-      return desc;
-    }
-
-    const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
-    const locRegex = new RegExp('ទីតាំង៖[ \\t]*([^(: \\r\\n]+)', 'g');
-    const tripRegex = new RegExp('([0-9]+|[០-៩]+)[ \\t]*ជើង');
-    const matches = Array.from(desc.matchAll(locRegex));
-    if (matches.length > 0) {
-      const parsed = [];
-      for (const m of matches) {
-        const loc = m[1].trim();
-        const trMatch = desc.slice(m.index).match(tripRegex);
-        let tr = 1;
-        if (trMatch) {
-          tr = 0;
-          for (const ch of trMatch[1]) {
-            if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
-            else if (ch >= '0' && ch <= '9') tr = tr * 10 + parseInt(ch, 10);
-          }
-          if (!tr) tr = 1;
-        }
-        const trStr = tr < 10 ? ('0' + tr) : String(tr);
-        if (loc) parsed.push(loc + ': ' + trStr);
+      for (const it of tx.service_items) {
+        if (!it || !it.location) continue;
+        const loc = String(it.location).trim();
+        const tr = parseInt(it.trips, 10) || 1;
+        locMap.set(loc, (locMap.get(loc) || 0) + tr);
       }
-      if (parsed.length > 0) return parsed.join(' , ');
     }
 
-    return desc;
+    if (locMap.size === 0) {
+      const desc = typeof tx === 'string' ? tx : (tx.description || '');
+      if (!desc) return '—';
+
+      const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
+      const locRegex = new RegExp('ទីតាំង៖[ \\t]*([^(: \\r\\n]+)', 'g');
+      const tripRegex = new RegExp('([0-9]+|[០-៩]+)[ \\t]*ជើង');
+      const matches = Array.from(desc.matchAll(locRegex));
+      if (matches.length > 0) {
+        for (const m of matches) {
+          const loc = m[1].trim();
+          const trMatch = desc.slice(m.index).match(tripRegex);
+          let tr = 1;
+          if (trMatch) {
+            tr = 0;
+            for (const ch of trMatch[1]) {
+              if (khmerToArabic[ch] !== undefined) tr = tr * 10 + khmerToArabic[ch];
+              else if (ch >= '0' && ch <= '9') tr = tr * 10 + parseInt(ch, 10);
+            }
+            if (!tr) tr = 1;
+          }
+          if (loc) {
+            locMap.set(loc, (locMap.get(loc) || 0) + tr);
+          }
+        }
+      } else if (desc.includes(':') && !desc.includes('ជើង =')) {
+        const parts = desc.split(new RegExp('[,\\n]'));
+        let matched = false;
+        for (const pt of parts) {
+          const p = pt.trim();
+          const cIdx = p.indexOf(':');
+          if (cIdx !== -1) {
+            const loc = p.slice(0, cIdx).trim();
+            const rest = p.slice(cIdx + 1).trim();
+            const tr = parseInt(rest, 10) || 1;
+            if (loc && loc.length < 40) {
+              locMap.set(loc, (locMap.get(loc) || 0) + tr);
+              matched = true;
+            }
+          }
+        }
+        if (!matched) return desc;
+      } else {
+        return desc;
+      }
+    }
+
+    if (locMap.size > 0) {
+      const res = [];
+      for (const [loc, tr] of locMap.entries()) {
+        const trStr = tr < 10 ? ('0' + tr) : String(tr);
+        res.push(`${loc}: ${trStr}`);
+      }
+      return res.join(' , ');
+    }
+
+    return typeof tx === 'string' ? tx : (tx.description || '—');
   }
 
   // ===== State =====
@@ -10873,15 +10898,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       formCurr.value = currency;
     }
 
-    const newItem = {
-      id: Date.now() + Math.random().toString(36).substr(2, 5),
-      location: loc,
-      trips: trips,
-      price: priceVal,
-      currency: currency
-    };
-
-    currentIncomeServiceItems.push(newItem);
+    const existingIndex = currentIncomeServiceItems.findIndex(i => (i.location || '').trim().toLowerCase() === loc.toLowerCase() && (i.currency || 'KHR') === currency);
+    if (existingIndex !== -1) {
+      currentIncomeServiceItems[existingIndex].trips = (parseInt(currentIncomeServiceItems[existingIndex].trips, 10) || 1) + trips;
+      currentIncomeServiceItems[existingIndex].price = (Number(currentIncomeServiceItems[existingIndex].price) || 0) + priceVal;
+    } else {
+      const newItem = {
+        id: Date.now() + Math.random().toString(36).substr(2, 5),
+        location: loc,
+        trips: trips,
+        price: priceVal,
+        currency: currency
+      };
+      currentIncomeServiceItems.push(newItem);
+    }
     renderIncomeServiceItems();
 
     if (locInput) {
@@ -10958,6 +10988,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
       const formattedPrice = formatMoney(itemPrice, itemCurr);
       const formattedAvg = formatMoney(avgPrice, itemCurr);
+      const khmerNum = khmerTripsMap[String(item.trips)] || String(item.trips);
 
       descLines.push(`${item.location}: ${trStr}`);
 
@@ -11507,27 +11538,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span class="material-symbols-outlined text-xs">storefront</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-3 py-2 min-w-[130px] max-w-[220px]">
-            <div class="text-xs text-gray-900 font-bold whitespace-pre-line break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
+          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">
+            <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm font-mono">
             + ${amtStr}
           </td>
-          <td class="px-2 py-2 whitespace-nowrap text-right">
+          <td class="px-1.5 py-2 whitespace-nowrap text-right">
             <div class="inline-flex items-center gap-0.5">
               <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
                 <span class="material-symbols-outlined text-base">edit</span>
@@ -11714,10 +11745,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const locInp = document.getElementById('inc-location-input');
       const pendingLoc = (locInp?.value || '').trim();
       if (pendingLoc) {
-        showToast('លោកអ្នកបានវាយទីតាំងហើយ សូមចុចប៊ូតុង «+ បញ្ចូល» សិនមុននឹងរក្សាទុក!', true);
-      } else {
-        showToast('ករណីចំណូលសេវាបូមលូ៖ ភ្លេចបញ្ចូលទីតាំង! សូមជ្រើសរើសទីតាំងរួចចុច «+ បញ្ចូល» សិន!', true);
+        addServiceTripItem();
       }
+    }
+
+    if (isSewageCategory && currentIncomeServiceItems.length === 0) {
+      const locInp = document.getElementById('inc-location-input');
+      showToast('ករណីចំណូលសេវាបូមលូ៖ ភ្លេចបញ្ចូលទីតាំង! សូមជ្រើសរើសទីតាំងរួចចុច «+ បញ្ចូល» សិន!', true);
       flashRedSaveButton('btn-save-income', 'ភ្លេចបញ្ចូលទីតាំង!');
       if (locInp) {
         locInp.classList.add('border-rose-500', 'ring-2', 'ring-rose-400');
@@ -11981,27 +12015,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
               <span class="material-symbols-outlined text-xs">shopping_cart</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-3 py-2 min-w-[130px] max-w-[220px]">
-            <div class="text-xs text-gray-900 font-medium whitespace-pre-line break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
+          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">
+            <div class="text-xs text-gray-900 font-medium whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
             <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm">
+          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm font-mono">
             - ${amtStr}
           </td>
-          <td class="px-2 py-2 whitespace-nowrap text-right">
+          <td class="px-1.5 py-2 whitespace-nowrap text-right">
             <div class="inline-flex items-center gap-0.5">
               <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
                 <span class="material-symbols-outlined text-base">edit</span>
@@ -13192,14 +13226,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     if (type === 'daily') {
       csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំថ្ងៃ,${formatDateDisplay(data.date)}\n`;
-      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
-      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n`;
-      csv += `សាច់ប្រាក់ក្នុងដៃ (KHR),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (KHR),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
+      csv += `សរុបចំណូល (៛),${summary.income_khr},សរុបចំណូល ($),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (៛),${summary.expense_khr},សរុបចំណាយ ($),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (៛),${summary.net_khr},ចំណេញសុទ្ធ ($),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (៛),${summary.arpt ? summary.arpt.khr : 0}\n`;
+      csv += `សាច់ប្រាក់ក្នុងដៃ (៛),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (៛),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
 
       csv += `--- តារាងទីតាំងផ្ដល់សេវា ---\n`;
-      csv += `ទីតាំង,ចំនួនជើង,ចំណូល KHR,ចំណូល USD\n`;
+      csv += `ទីតាំង,ចំនួនជើង,ចំណូល (៛),ចំណូល ($)\n`;
       (summary.locations || []).forEach(l => {
         csv += `"${l.location}",${l.trips},${l.khr},${l.usd}\n`;
       });
@@ -13212,33 +13246,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       });
     } else if (type === 'monthly') {
       csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំខែ,ខែ ${data.month_name} ឆ្នាំ ${data.year}\n`;
-      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
-      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n`;
-      csv += `សាច់ប្រាក់ក្នុងដៃ (KHR),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (KHR),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
+      csv += `សរុបចំណូល (៛),${summary.income_khr},សរុបចំណូល ($),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (៛),${summary.expense_khr},សរុបចំណាយ ($),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (៛),${summary.net_khr},ចំណេញសុទ្ធ ($),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (៛),${summary.arpt ? summary.arpt.khr : 0}\n`;
+      csv += `សាច់ប្រាក់ក្នុងដៃ (៛),${summary.reconciliation ? summary.reconciliation.cash_balance.khr : 0},សមតុល្យធនាគារ (៛),${summary.reconciliation ? summary.reconciliation.bank_balance.khr : 0}\n\n`;
 
       csv += `--- តារាងទីតាំងផ្ដល់សេវា ---\n`;
-      csv += `ទីតាំង,ចំនួនជើង,ចំណូល KHR,ចំណូល USD\n`;
+      csv += `ទីតាំង,ចំនួនជើង,ចំណូល (៛),ចំណូល ($)\n`;
       (summary.locations || []).forEach(l => {
         csv += `"${l.location}",${l.trips},${l.khr},${l.usd}\n`;
       });
       csv += `\n`;
 
       csv += `--- តារាងលម្អិតតាមថ្ងៃ ---\n`;
-      csv += `កាលបរិច្ឆេទ,ចំនួនជើង,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      csv += `កាលបរិច្ឆេទ,ចំនួនជើង,ចំណូល (៛),ចំណូល ($),ចំណាយ (៛),ចំណាយ ($),សមតុល្យសុទ្ធ (៛),សមតុល្យសុទ្ធ ($),ចំនួនប្រតិបត្តិការ\n`;
       data.daily_breakdown.forEach(d => {
         csv += `"${formatDateDisplay(d.date)}",${d.trips||0},${d.income_khr},${d.income_usd},${d.expense_khr},${d.expense_usd},${d.net_khr},${d.net_usd},${d.count}\n`;
       });
     } else if (type === 'yearly') {
       csv += `របាយការណ៍ហិរញ្ញវត្ថុ និងប្រតិបត្តិការប្រចាំឆ្នាំ,ឆ្នាំ ${data.year}\n`;
-      csv += `សរុបចំណូល (KHR),${summary.income_khr},សរុបចំណូល (USD),${summary.income_usd}\n`;
-      csv += `សរុបចំណាយ (KHR),${summary.expense_khr},សរុបចំណាយ (USD),${summary.expense_usd}\n`;
-      csv += `ចំណេញសុទ្ធ (KHR),${summary.net_khr},ចំណេញសុទ្ធ (USD),${summary.net_usd}\n`;
-      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (KHR),${summary.arpt ? summary.arpt.khr : 0}\n\n`;
+      csv += `សរុបចំណូល (៛),${summary.income_khr},សរុបចំណូល ($),${summary.income_usd}\n`;
+      csv += `សរុបចំណាយ (៛),${summary.expense_khr},សរុបចំណាយ ($),${summary.expense_usd}\n`;
+      csv += `ចំណេញសុទ្ធ (៛),${summary.net_khr},ចំណេញសុទ្ធ ($),${summary.net_usd}\n`;
+      csv += `សរុបជើងផ្ដល់សេវា,${summary.total_trips || 0},ចំណូលមធ្យមក្នុង១ជើង (៛),${summary.arpt ? summary.arpt.khr : 0}\n\n`;
 
       csv += `--- តារាងលម្អិត ១២ ខែ ---\n`;
-      csv += `ខែ,ចំនួនជើង,ចំណូល KHR,ចំណូល USD,ចំណាយ KHR,ចំណាយ USD,សមតុល្យសុទ្ធ KHR,សមតុល្យសុទ្ធ USD,ចំនួនប្រតិបត្តិការ\n`;
+      csv += `ខែ,ចំនួនជើង,ចំណូល (៛),ចំណូល ($),ចំណាយ (៛),ចំណាយ ($),សមតុល្យសុទ្ធ (៛),សមតុល្យសុទ្ធ ($),ចំនួនប្រតិបត្តិការ\n`;
       data.monthly_breakdown.forEach(m => {
         csv += `"ខែ${m.month_name}",${m.trips||0},${m.income_khr},${m.income_usd},${m.expense_khr},${m.expense_usd},${m.net_khr},${m.net_usd},${m.count}\n`;
       });
