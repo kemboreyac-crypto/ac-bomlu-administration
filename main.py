@@ -7789,7 +7789,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
               <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
             </label>
-            <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
+            <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំទីតាំង & គណនាសរុប</span>
           </div>
 
           <!-- Input fields row: Location (3 cols) | Trips (2 cols) | Price (3 cols) | Currency (2 cols) | Add Button (2 cols) -->
@@ -7798,8 +7798,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="col-span-12 sm:col-span-3 relative">
               <input list="service-locations-list" id="inc-location-input" type="text" autocomplete="off"
                 placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
-                oninput="handleLocationInputSuggestion('inc')"
-                onchange="handleLocationInputSuggestion('inc')"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inc-price-input')?.focus();}"
                 class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
               <datalist id="service-locations-list"></datalist>
@@ -7807,7 +7805,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Trips Dropdown (2 cols on desktop, 4 cols on mobile) -->
             <div class="col-span-4 sm:col-span-2">
-              <select id="inc-trips-select" onchange="handleTripsSelectChange('inc')" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+              <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
                 <option value="1">១ ជើង</option>
                 <option value="2">២ ជើង</option>
                 <option value="3">៣ ជើង</option>
@@ -7860,11 +7858,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- Suggestion Pill if known price -->
-          <div id="inc-price-suggestion-pill" class="hidden text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 flex items-center justify-between">
-            <span id="inc-price-suggestion-text">💡 តម្លៃណែនាំ៖ 100 $ / ជើង</span>
-            <button type="button" onclick="applySuggestedPrice('inc')" class="text-blue-600 underline font-bold hover:text-blue-800 text-[10px]">ប្រើតម្លៃនេះ</button>
-          </div>
+
 
           <!-- Items List Container -->
           <div id="inc-service-items-list" class="space-y-1.5 max-h-32 overflow-y-auto">
@@ -8128,7 +8122,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
             <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
           </label>
-          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
+          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំទីតាំង & គណនាសរុប</span>
         </div>
 
         <!-- Input fields row: Location (3 cols) | Trips (2 cols) | Price (3 cols) | Currency (2 cols) | Add Button (2 cols) -->
@@ -8137,15 +8131,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="col-span-12 sm:col-span-3 relative">
             <input list="service-locations-list" id="edit-location-input" type="text" autocomplete="off"
               placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
-              oninput="handleLocationInputSuggestion('edit')"
-              onchange="handleLocationInputSuggestion('edit')"
               onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('edit-price-input')?.focus();}"
               class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
           </div>
 
           <!-- Trips Dropdown (2 cols on desktop, 4 cols on mobile) -->
           <div class="col-span-4 sm:col-span-2">
-            <select id="edit-trips-select" onchange="handleTripsSelectChange('edit')" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+            <select id="edit-trips-select" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
               <option value="1">១ ជើង</option>
               <option value="2">២ ជើង</option>
               <option value="3">៣ ជើង</option>
@@ -8198,11 +8190,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Suggestion Pill if known price -->
-        <div id="edit-price-suggestion-pill" class="hidden text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 flex items-center justify-between">
-          <span id="edit-price-suggestion-text">💡 តម្លៃណែនាំ៖ 100 $ / ជើង</span>
-          <button type="button" onclick="applySuggestedPrice('edit')" class="text-blue-600 underline font-bold hover:text-blue-800 text-[10px]">ប្រើតម្លៃនេះ</button>
-        </div>
+
 
         <!-- Items List Container -->
         <div id="edit-service-items-list" class="space-y-1.5 max-h-36 overflow-y-auto">
@@ -11009,76 +10997,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   function handleLocationInputSuggestion(mode) {
-    const locInp = document.getElementById(mode === 'edit' ? 'edit-location-input' : 'inc-location-input');
-    const tripsSel = document.getElementById(mode === 'edit' ? 'edit-trips-select' : 'inc-trips-select');
-    const priceInp = document.getElementById(mode === 'edit' ? 'edit-price-input' : 'inc-price-input');
-    const currSel = document.getElementById(mode === 'edit' ? 'edit-item-currency' : 'inc-item-currency');
-    const pill = document.getElementById(mode === 'edit' ? 'edit-price-suggestion-pill' : 'inc-price-suggestion-pill');
-    const pillText = document.getElementById(mode === 'edit' ? 'edit-price-suggestion-text' : 'inc-price-suggestion-text');
-
-    if (!locInp || !priceInp) return;
-    const loc = (locInp.value || '').trim();
-    if (!loc) {
-      if (pill) pill.classList.add('hidden');
-      return;
-    }
-
-    const lookup = getLocationPriceLookup();
-    let matched = lookup[loc];
-    if (!matched) {
-      const foundKey = Object.keys(lookup).find(k => k.toLowerCase() === loc.toLowerCase());
-      if (foundKey) matched = lookup[foundKey];
-    }
-
-    if (matched && matched.price > 0) {
-      const trips = parseInt(tripsSel?.value || '1', 10) || 1;
-      const currency = matched.currency || 'KHR';
-      
-      if (currSel && currSel.value !== currency) {
-        currSel.value = currency;
-        if (mode === 'inc') onItemCurrencyChange();
-        else if (mode === 'edit') onEditItemCurrencyChange();
-      }
-
-      const totalPrice = matched.price * trips;
-      priceInp.value = currency === 'USD' ? totalPrice.toFixed(2) : totalPrice.toLocaleString('en-US');
-
-      if (pill && pillText) {
-        const formattedUnit = formatMoney(matched.price, currency);
-        pillText.innerHTML = `💡 តម្លៃណែនាំ៖ <b>${formattedUnit}</b> / ជើង`;
-        pill.classList.remove('hidden');
-      }
-    } else {
-      if (pill) pill.classList.add('hidden');
-    }
+    // Disabled as requested: User enters exact price manually without auto-fill
+    return;
   }
 
   function handleTripsSelectChange(mode) {
-    const locInp = document.getElementById(mode === 'edit' ? 'edit-location-input' : 'inc-location-input');
-    const tripsSel = document.getElementById(mode === 'edit' ? 'edit-trips-select' : 'inc-trips-select');
-    const priceInp = document.getElementById(mode === 'edit' ? 'edit-price-input' : 'inc-price-input');
-    const currSel = document.getElementById(mode === 'edit' ? 'edit-item-currency' : 'inc-item-currency');
-
-    if (!locInp || !priceInp || !tripsSel) return;
-    const loc = (locInp.value || '').trim();
-    if (!loc) return;
-
-    const lookup = getLocationPriceLookup();
-    let matched = lookup[loc];
-    if (!matched) {
-      const foundKey = Object.keys(lookup).find(k => k.toLowerCase() === loc.toLowerCase());
-      if (foundKey) matched = lookup[foundKey];
-    }
-    if (matched && matched.price > 0) {
-      const trips = parseInt(tripsSel.value || '1', 10) || 1;
-      const currency = currSel?.value || matched.currency || 'KHR';
-      const totalPrice = matched.price * trips;
-      priceInp.value = currency === 'USD' ? totalPrice.toFixed(2) : totalPrice.toLocaleString('en-US');
-    }
+    // Disabled as requested: User enters exact price manually without auto-fill
+    return;
   }
 
   function applySuggestedPrice(mode) {
-    handleLocationInputSuggestion(mode);
+    return;
   }
 
   function getSavedServiceLocations() {
