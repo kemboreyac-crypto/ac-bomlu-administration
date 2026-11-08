@@ -13727,152 +13727,120 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- 3. Operating Cost Structure & Staff Contribution with Creative Graph -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Expense Structure with Creative SVG Donut Graph (2 Cols) -->
-        <div class="lg:col-span-2 bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div class="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-rose-50/60 via-amber-50/40 to-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-            <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-xl bg-rose-600/10 text-rose-600 flex items-center justify-center">
-                <span class="material-symbols-outlined text-lg">donut_small</span>
-              </div>
-              <div>
-                <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ</h4>
-                <p class="text-[11px] text-gray-400">គំនូសតាងរូបភាព (Chart Illustration) បង្ហាញសមាមាត្រចំណាយតាមប្រភេទ</p>
-              </div>
+      <!-- 3. Operating Cost Structure with Creative Donut Graph (Full Width) -->
+      <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div class="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-rose-50/60 via-amber-50/40 to-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-xl bg-rose-600/10 text-rose-600 flex items-center justify-center">
+              <span class="material-symbols-outlined text-lg">donut_small</span>
             </div>
-            <span class="text-xs font-bold px-3 py-1 rounded-full border ${ratioBadgeClass} shadow-xs">
-              សមាមាត្រចំណាយ៖ ${expRatio}% (${ratioStatusText})
-            </span>
-          </div>
-
-          <!-- Main Donut + Progress Bars Layout -->
-          <div class="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-            
-            <!-- Left: Creative SVG Donut Illustration (5 Cols) -->
-            <div class="lg:col-span-5 flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-b from-slate-50/80 to-rose-50/20 border border-slate-100">
-              <div class="relative w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center">
-                ${donutSVG}
-
-                <!-- Center Summary Text -->
-                <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-2">
-                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">សមាមាត្រចំណាយ</span>
-                  <span class="text-2xl sm:text-3xl font-black text-gray-800 font-mono tracking-tight my-0.5">${expRatio}%</span>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${ratioBadgeClass}">
-                    ${ratioStatusText}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Total Expense Badge -->
-              <div class="mt-3 text-center">
-                <span class="text-[11px] text-gray-500 font-medium">ចំណាយប្រតិបត្តិការសរុប៖</span>
-                <p class="text-xs sm:text-sm font-black text-rose-600 font-mono mt-0.5">${formatDualMoney(totExpKhr, totExpUsd)}</p>
-              </div>
-            </div>
-
-            <!-- Right: Category List with Visual Proportional Progress Bars (7 Cols) -->
-            <div class="lg:col-span-7 space-y-2.5">
-              ${activeCats.length ? activeCats.map(k => {
-                const item = expStruct[k];
-                const approx = catApprovals[k];
-                const pct = totalExpApprox > 0 ? (approx / totalExpApprox * 100).toFixed(1) : '0';
-                const cfg = expColors[k] || expColors.other;
-                const iconsMap = {
-                  fuel: 'local_gas_station',
-                  maintenance: 'build',
-                  disposal: 'delete_sweep',
-                  marketing: 'campaign',
-                  salary: 'badge',
-                  other: 'receipt'
-                };
-                const icon = iconsMap[k] || 'payments';
-                return `
-                  <div class="p-3 sm:p-3.5 rounded-2xl border ${cfg.border} ${cfg.bg} hover:shadow-xs transition">
-                    <div class="flex items-center justify-between mb-1.5">
-                      <span class="flex items-center gap-2 text-xs font-bold text-gray-800">
-                        <span class="p-1 rounded-lg ${cfg.iconBg} ${cfg.iconText} material-symbols-outlined text-sm">${icon}</span>
-                        ${escapeHtml(item.label)}
-                      </span>
-                      <div class="flex items-center gap-2 font-mono">
-                        <span class="text-[10px] text-gray-400">${item.count} ប្រតិបត្តិការ</span>
-                        <span class="text-xs font-black ${cfg.text}">${formatDualMoney(item.khr, item.usd)}</span>
-                      </div>
-                    </div>
-                    <!-- Progress Bar -->
-                    <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
-                      <div class="h-full ${cfg.fill} rounded-full" style="width: ${pct}%"></div>
-                    </div>
-                    <div class="flex justify-between items-center text-[10px] text-gray-400 font-mono mt-1">
-                      <span>${approx > 0 ? '~ ' + Math.round(approx).toLocaleString() + ' ៛' : ''}</span>
-                      <span class="font-bold ${cfg.text}">${pct}% នៃចំណាយ</span>
-                    </div>
-                  </div>
-                `;
-              }).join('') : `
-                <div class="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-center">
-                  <span class="material-symbols-outlined text-3xl text-emerald-500 mb-1">verified</span>
-                  <p class="text-xs font-bold text-emerald-800">មិនមានចំណាយប្រតិបត្តិការក្នុងចន្លោះពេលនេះឡើយ</p>
-                  <p class="text-[11px] text-emerald-600 mt-0.5">អាជីវកម្មទទួលបានប្រាក់ចំណេញសុទ្ធ 100%</p>
-                </div>
-              `}
-
-              <!-- Empty / Inactive Categories in Compact Grid -->
-              ${emptyCats.length ? `
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                  ${emptyCats.map(k => {
-                    const item = expStruct[k];
-                    const iconsMap = {
-                      fuel: 'local_gas_station',
-                      maintenance: 'build',
-                      disposal: 'delete_sweep',
-                      marketing: 'campaign',
-                      salary: 'badge',
-                      other: 'receipt'
-                    };
-                    const icon = iconsMap[k] || 'payments';
-                    return `
-                      <div class="p-2 sm:p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs">
-                        <span class="flex items-center gap-1.5 text-gray-400 text-[11px] truncate">
-                          <span class="material-symbols-outlined text-xs text-gray-400">${icon}</span>
-                          ${escapeHtml(item.label)}
-                        </span>
-                        <span class="font-mono text-gray-300 text-[10px] font-bold">0 ៛</span>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              ` : ''}
+            <div>
+              <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ</h4>
+              <p class="text-[11px] text-gray-400">គំនូសតាងរូបភាព (Chart Illustration) បង្ហាញសមាមាត្រចំណាយតាមប្រភេទ</p>
             </div>
           </div>
+          <span class="text-xs font-bold px-3 py-1 rounded-full border ${ratioBadgeClass} shadow-xs">
+            សមាមាត្រចំណាយ៖ ${expRatio}% (${ratioStatusText})
+          </span>
         </div>
 
-        <!-- Staff Contribution Card (1 Col) -->
-        <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden flex flex-col">
-          <div class="px-5 py-3.5 bg-blue-50/40 border-b border-slate-100 flex items-center justify-between">
-            <h4 class="font-bold text-gray-800 text-sm flex items-center gap-2">
-              <span class="material-symbols-outlined text-blue-600">group</span> ការបំពេញការងារតាមបុគ្គលិក
-            </h4>
-            <span class="text-[11px] text-gray-500 font-mono">${staffList.length} នាក់</span>
-          </div>
-          <div class="p-4 space-y-3 flex-1 overflow-y-auto max-h-[380px]">
-            ${staffList.length ? staffList.map(s => `
-              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 transition">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-xs text-gray-800 flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-blue-500 text-base">person</span>
-                    ${escapeHtml(s.staff)}
-                  </span>
-                  <span class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full font-mono">
-                    ${s.trips} ជើង
-                  </span>
-                </div>
-                <div class="flex items-center justify-between text-[11px] text-gray-600 font-mono">
-                  <span>ចំណូលកត់ត្រា៖</span>
-                  <span class="font-bold text-emerald-600">${formatDualMoney(s.income_khr, s.income_usd)}</span>
-                </div>
+        <!-- Main Donut + Progress Bars Layout (Full Width) -->
+        <div class="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          
+          <!-- Left: Creative SVG Donut Illustration (4 Cols on Desktop) -->
+          <div class="lg:col-span-4 flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-b from-slate-50/80 to-rose-50/20 border border-slate-100">
+            <div class="relative w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center">
+              ${donutSVG}
+
+              <!-- Center Summary Text -->
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-2">
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">សមាមាត្រចំណាយ</span>
+                <span class="text-2xl sm:text-3xl font-black text-gray-800 font-mono tracking-tight my-0.5">${expRatio}%</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${ratioBadgeClass}">
+                  ${ratioStatusText}
+                </span>
               </div>
-            `).join('') : '<p class="text-center py-6 text-xs text-gray-400">មិនមានទិន្នន័យបុគ្គលិក</p>'}
+            </div>
+
+            <!-- Total Expense Badge -->
+            <div class="mt-3 text-center">
+              <span class="text-[11px] text-gray-500 font-medium">ចំណាយប្រតិបត្តិការសរុប៖</span>
+              <p class="text-xs sm:text-sm font-black text-rose-600 font-mono mt-0.5">${formatDualMoney(totExpKhr, totExpUsd)}</p>
+            </div>
+          </div>
+
+          <!-- Right: Category List with Visual Proportional Progress Bars (8 Cols on Desktop) -->
+          <div class="lg:col-span-8 space-y-3">
+            ${activeCats.length ? activeCats.map(k => {
+              const item = expStruct[k];
+              const approx = catApprovals[k];
+              const pct = totalExpApprox > 0 ? (approx / totalExpApprox * 100).toFixed(1) : '0';
+              const cfg = expColors[k] || expColors.other;
+              const iconsMap = {
+                fuel: 'local_gas_station',
+                maintenance: 'build',
+                disposal: 'delete_sweep',
+                marketing: 'campaign',
+                salary: 'badge',
+                other: 'receipt'
+              };
+              const icon = iconsMap[k] || 'payments';
+              return `
+                <div class="p-3.5 rounded-2xl border ${cfg.border} ${cfg.bg} hover:shadow-xs transition">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="flex items-center gap-2 text-xs font-bold text-gray-800">
+                      <span class="p-1 rounded-lg ${cfg.iconBg} ${cfg.iconText} material-symbols-outlined text-sm">${icon}</span>
+                      ${escapeHtml(item.label)}
+                    </span>
+                    <div class="flex items-center gap-2 font-mono">
+                      <span class="text-[10px] text-gray-400">${item.count} ប្រតិបត្តិការ</span>
+                      <span class="text-xs font-black ${cfg.text}">${formatDualMoney(item.khr, item.usd)}</span>
+                    </div>
+                  </div>
+                  <!-- Progress Bar -->
+                  <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                    <div class="h-full ${cfg.fill} rounded-full" style="width: ${pct}%"></div>
+                  </div>
+                  <div class="flex justify-between items-center text-[10px] text-gray-400 font-mono mt-1">
+                    <span>${approx > 0 ? '~ ' + Math.round(approx).toLocaleString() + ' ៛' : ''}</span>
+                    <span class="font-bold ${cfg.text}">${pct}% នៃចំណាយ</span>
+                  </div>
+                </div>
+              `;
+            }).join('') : `
+              <div class="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-center">
+                <span class="material-symbols-outlined text-3xl text-emerald-500 mb-1">verified</span>
+                <p class="text-xs font-bold text-emerald-800">មិនមានចំណាយប្រតិបត្តិការក្នុងចន្លោះពេលនេះឡើយ</p>
+                <p class="text-[11px] text-emerald-600 mt-0.5">អាជីវកម្មទទួលបានប្រាក់ចំណេញសុទ្ធ 100%</p>
+              </div>
+            `}
+
+            <!-- Empty / Inactive Categories in Compact Grid (4 cols on wide screen) -->
+            ${emptyCats.length ? `
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                ${emptyCats.map(k => {
+                  const item = expStruct[k];
+                  const iconsMap = {
+                    fuel: 'local_gas_station',
+                    maintenance: 'build',
+                    disposal: 'delete_sweep',
+                    marketing: 'campaign',
+                    salary: 'badge',
+                    other: 'receipt'
+                  };
+                  const icon = iconsMap[k] || 'payments';
+                  return `
+                    <div class="p-2 sm:p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs">
+                      <span class="flex items-center gap-1.5 text-gray-400 text-[11px] truncate">
+                        <span class="material-symbols-outlined text-xs text-gray-400">${icon}</span>
+                        ${escapeHtml(item.label)}
+                      </span>
+                      <span class="font-mono text-gray-300 text-[10px] font-bold">0 ៛</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>
