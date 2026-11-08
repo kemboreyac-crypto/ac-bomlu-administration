@@ -7796,8 +7796,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
             <!-- Location Combobox (3 cols on desktop, 12 cols on mobile) -->
             <div class="col-span-12 sm:col-span-3 relative">
-              <input list="service-locations-list" id="inc-location-input" type="text"
+              <input list="service-locations-list" id="inc-location-input" type="text" autocomplete="off"
                 placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
+                oninput="handleLocationInputSuggestion('inc')"
+                onchange="handleLocationInputSuggestion('inc')"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inc-price-input')?.focus();}"
                 class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
               <datalist id="service-locations-list"></datalist>
@@ -7805,7 +7807,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Trips Dropdown (2 cols on desktop, 4 cols on mobile) -->
             <div class="col-span-4 sm:col-span-2">
-              <select id="inc-trips-select" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+              <select id="inc-trips-select" onchange="handleTripsSelectChange('inc')" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
                 <option value="1">១ ជើង</option>
                 <option value="2">២ ជើង</option>
                 <option value="3">៣ ជើង</option>
@@ -7831,7 +7833,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Price input (3 cols on desktop, 5 cols on mobile) -->
             <div class="col-span-5 sm:col-span-3">
-              <input id="inc-price-input" type="text" inputmode="numeric"
+              <input id="inc-price-input" type="text" inputmode="numeric" autocomplete="off"
                 placeholder="ឧ. 360,000"
                 oninput="formatAmountInput(this)"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();addServiceTripItem();}"
@@ -7856,6 +7858,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <span>បញ្ចូល</span>
               </button>
             </div>
+          </div>
+
+          <!-- Suggestion Pill if known price -->
+          <div id="inc-price-suggestion-pill" class="hidden text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 flex items-center justify-between">
+            <span id="inc-price-suggestion-text">💡 តម្លៃណែនាំ៖ 100 $ / ជើង</span>
+            <button type="button" onclick="applySuggestedPrice('inc')" class="text-blue-600 underline font-bold hover:text-blue-800 text-[10px]">ប្រើតម្លៃនេះ</button>
           </div>
 
           <!-- Items List Container -->
@@ -8108,21 +8116,127 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">កាតាឡុក / ប្រភេទ</label>
-          <select id="edit-tx-category" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select id="edit-tx-category" onchange="handleEditCategoryChange()" required class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
           </select>
+        </div>
+      </div>
+
+      <!-- Service Location, Trips & Real Price Builder (Like Step 2 of Income Modal) -->
+      <div id="edit-service-location-section" class="p-3 sm:p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 rounded-2xl border border-blue-100 space-y-2">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <label class="text-xs font-bold text-blue-900 flex items-center gap-1.5 whitespace-nowrap">
+            <span class="material-symbols-outlined text-blue-600 text-base">near_me</span>
+            <span>ជ្រើសរើសទីតាំង, ចំនួនជើង & តម្លៃជាក់ស្ដែង</span>
+          </label>
+          <span class="text-[10px] text-blue-600 font-semibold bg-white px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">ចងចាំស្វ័យប្រវត្ត & គណនាសរុប</span>
+        </div>
+
+        <!-- Input fields row: Location (3 cols) | Trips (2 cols) | Price (3 cols) | Currency (2 cols) | Add Button (2 cols) -->
+        <div class="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
+          <!-- Location Combobox (3 cols on desktop, 12 cols on mobile) -->
+          <div class="col-span-12 sm:col-span-3 relative">
+            <input list="service-locations-list" id="edit-location-input" type="text" autocomplete="off"
+              placeholder="វាយបញ្ចូល ឬរើសទីតាំង..."
+              oninput="handleLocationInputSuggestion('edit')"
+              onchange="handleLocationInputSuggestion('edit')"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('edit-price-input')?.focus();}"
+              class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
+          </div>
+
+          <!-- Trips Dropdown (2 cols on desktop, 4 cols on mobile) -->
+          <div class="col-span-4 sm:col-span-2">
+            <select id="edit-trips-select" onchange="handleTripsSelectChange('edit')" class="w-full border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm">
+              <option value="1">១ ជើង</option>
+              <option value="2">២ ជើង</option>
+              <option value="3">៣ ជើង</option>
+              <option value="4">៤ ជើង</option>
+              <option value="5">៥ ជើង</option>
+              <option value="6">៦ ជើង</option>
+              <option value="7">៧ ជើង</option>
+              <option value="8">៨ ជើង</option>
+              <option value="9">៩ ជើង</option>
+              <option value="10">១០ ជើង</option>
+              <option value="11">១១ ជើង</option>
+              <option value="12">១២ ជើង</option>
+              <option value="13">១៣ ជើង</option>
+              <option value="14">១៤ ជើង</option>
+              <option value="15">១៥ ជើង</option>
+              <option value="16">១៦ ជើង</option>
+              <option value="17">១៧ ជើង</option>
+              <option value="18">១៨ ជើង</option>
+              <option value="19">១៩ ជើង</option>
+              <option value="20">២០ ជើង</option>
+            </select>
+          </div>
+
+          <!-- Price input (3 cols on desktop, 5 cols on mobile) -->
+          <div class="col-span-5 sm:col-span-3">
+            <input id="edit-price-input" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="ឧ. 360,000"
+              oninput="formatAmountInput(this)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();addEditServiceTripItem();}"
+              class="w-full border border-slate-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm font-mono text-right" />
+          </div>
+
+          <!-- Currency Select (2 cols on desktop, 3 cols on mobile) -->
+          <div class="col-span-3 sm:col-span-2">
+            <select id="edit-item-currency" onchange="onEditItemCurrencyChange()"
+              title="ជ្រើសរើសរូបិយប័ណ្ណ (៛ ឬ $)"
+              class="w-full border-2 border-blue-400 bg-blue-50/70 hover:bg-blue-100/70 rounded-xl px-2 py-2 text-xs sm:text-sm font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-center cursor-pointer">
+              <option value="KHR" selected>៛</option>
+              <option value="USD">$</option>
+            </select>
+          </div>
+
+          <!-- Add Button (2 cols on desktop, 12 cols on mobile) -->
+          <div class="col-span-12 sm:col-span-2">
+            <button type="button" onclick="addEditServiceTripItem()" id="btn-edit-add-location"
+              class="w-full py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold transition shadow-sm flex items-center justify-center gap-1 active:scale-95 whitespace-nowrap">
+              <span class="material-symbols-outlined text-base">add</span>
+              <span>បញ្ចូល</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Suggestion Pill if known price -->
+        <div id="edit-price-suggestion-pill" class="hidden text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 flex items-center justify-between">
+          <span id="edit-price-suggestion-text">💡 តម្លៃណែនាំ៖ 100 $ / ជើង</span>
+          <button type="button" onclick="applySuggestedPrice('edit')" class="text-blue-600 underline font-bold hover:text-blue-800 text-[10px]">ប្រើតម្លៃនេះ</button>
+        </div>
+
+        <!-- Items List Container -->
+        <div id="edit-service-items-list" class="space-y-1.5 max-h-36 overflow-y-auto">
+          <!-- Dynamic item cards will be rendered here -->
+        </div>
+
+        <!-- Auto-sum Summary Bar -->
+        <div id="edit-items-summary" class="hidden flex items-center justify-between px-3 py-1.5 bg-blue-100/70 rounded-xl text-xs font-semibold text-blue-900 border border-blue-200/80">
+          <div class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm text-blue-700">functions</span>
+            <span>សរុប៖ <b id="edit-items-total-trips" class="font-bold text-blue-800">0</b> ជើង</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span>សរុបប្រាក់៖ <b id="edit-items-total-sum" class="font-bold text-emerald-700 font-mono">0 ៛</b></span>
+            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">ស្វ័យប្រវត្តិ</span>
+          </div>
         </div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="sm:col-span-2">
-          <label class="block text-xs font-semibold text-gray-700 mb-1">ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
-          <input id="edit-tx-amount" type="text" inputmode="numeric" required
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <label id="edit-tx-amount-label" class="block text-xs font-semibold text-gray-700">ចំនួនទឹកប្រាក់សរុប * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)</label>
+            <span id="edit-amount-auto-badge" class="hidden text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-[12px]">sync</span> គណនាស្វ័យប្រវត្ត
+            </span>
+          </div>
+          <input id="edit-tx-amount" type="text" inputmode="numeric" required autocomplete="off"
             oninput="formatAmountInput(this)"
             class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono tracking-wide" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">រូបិយប័ណ្ណ</label>
-          <select id="edit-tx-currency" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select id="edit-tx-currency" onchange="onEditFormCurrencyChange()" class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
             <option value="KHR">៛ (រៀល)</option>
             <option value="USD">$ (ដុល្លារ)</option>
           </select>
@@ -8471,7 +8585,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   // ===== State =====
-  let currentActiveBranch = localStorage.getItem('ac_active_branch') || '';
+  let currentActiveBranch = '';
+  try { currentActiveBranch = localStorage.getItem('ac_active_branch') || ''; } catch(e) {}
   let leavesData = [], loansData = [], currentLeaveFilter = 'all', currentLoanFilter = 'all', currentIncomeStep = 1, currentExpenseStep = 1;
   const avatarColors = ['bg-blue-500','bg-purple-500','bg-green-500','bg-orange-500','bg-pink-500','bg-teal-500'];
 
@@ -8659,7 +8774,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
     // Push modal state into browser history so pressing phone back button closes the modal!
-    window.history.pushState({ modal: id, tab: currentActiveTab }, '', window.location.pathname);
+    try {
+      window.history.pushState({ modal: id, tab: currentActiveTab }, '', window.location.pathname);
+    } catch(e) {}
   }
 
   function closeModal(id) {
@@ -10825,10 +10942,144 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   // Service Locations Persistent Memory & Combobox Management
   const DEFAULT_SERVICE_LOCATIONS = [
-    'ភ្នំពេញ', 'សៀមរាប', 'បាត់ដំបង', 'កំពង់ចាម', 'កំពង់សោម (ព្រះសីហនុ)',
-    'កំពង់ស្ពឺ', 'កណ្តាល', 'តាកែវ', 'ពោធិ៍សាត់', 'បន្ទាយមានជ័យ',
-    'ស្វាយរៀង', 'ព្រៃវែង', 'កំពត', 'កែប', 'កោះកុង', 'ក្រចេះ'
+    'កំពង់ចាម', 'ក្រុងកំពង់ចាម', 'ស្ទឹងត្រង់', 'ឆ្លូង', 'ដា', 'មេមត់', 'មេមុត',
+    'ផ្លាកសំរោង', 'ជីតាំង', 'កណ្ដុរជ្រុំ', 'ថ្នល់ទទឹង', 'ជីហែ', 'ចំការលើ',
+    'ក្រូចឆ្មារ', 'អូររាំងឪ', 'ផ្សារស្ទឹង', 'ព្រៃទទឹង', 'ស្គន់', 'បាធាយ',
+    'ភ្នំពេញ', 'សៀមរាប', 'បាត់ដំបង', 'កណ្តាល', 'តាកែវ', 'ពោធិ៍សាត់', 'ក្រចេះ'
   ];
+
+  // Baseline standard pricing per single trip (1 ជើង)
+  const DEFAULT_LOCATION_PRICING = {
+    'ដា': { price: 100, currency: 'USD' },
+    'ផ្សារស្ទឹង': { price: 70, currency: 'USD' },
+    'ឆ្លូង': { price: 50, currency: 'USD' },
+    'ផ្លាកសំរោង': { price: 350000, currency: 'KHR' },
+    'ជីតាំង': { price: 350000, currency: 'KHR' },
+    'កណ្ដុរជ្រុំ': { price: 240000, currency: 'KHR' },
+    'ស្ទឹងត្រង់': { price: 208000, currency: 'KHR' },
+    'ថ្នល់ទទឹង': { price: 170000, currency: 'KHR' },
+    'ក្រុងកំពង់ចាម': { price: 120000, currency: 'KHR' },
+    'កំពង់ចាម': { price: 136000, currency: 'KHR' },
+    'ជីហែ': { price: 102000, currency: 'KHR' },
+    'ចំការលើ': { price: 250000, currency: 'KHR' },
+    'ក្រូចឆ្មារ': { price: 200000, currency: 'KHR' },
+    'អូររាំងឪ': { price: 220000, currency: 'KHR' },
+    'មេមត់': { price: 70000, currency: 'KHR' },
+    'មេមុត': { price: 70000, currency: 'KHR' }
+  };
+
+  function getLocationPriceLookup() {
+    let lookup = { ...DEFAULT_LOCATION_PRICING };
+    try {
+      const stored = localStorage.getItem('acbomlu_location_prices_v2');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          lookup = { ...lookup, ...parsed };
+        }
+      }
+    } catch(e) {}
+    if (typeof incomeTransactions !== 'undefined' && Array.isArray(incomeTransactions)) {
+      for (const tx of incomeTransactions) {
+        if (tx && tx.service_items && Array.isArray(tx.service_items)) {
+          for (const it of tx.service_items) {
+            const loc = (it.location || '').trim();
+            const tr = Number(it.trips) || 1;
+            const pr = Number(it.price) || 0;
+            const curr = it.currency || tx.currency || 'KHR';
+            if (loc && pr > 0) {
+              const unitPrice = tr > 0 ? (curr === 'USD' ? +(pr / tr).toFixed(2) : Math.round(pr / tr)) : pr;
+              lookup[loc] = { price: unitPrice, currency: curr };
+            }
+          }
+        }
+      }
+    }
+    return lookup;
+  }
+
+  function saveLocationPrice(location, unitPrice, currency) {
+    location = (location || '').trim();
+    if (!location || !unitPrice || unitPrice <= 0) return;
+    try {
+      const lookup = getLocationPriceLookup();
+      lookup[location] = { price: Number(unitPrice), currency: currency || 'KHR' };
+      localStorage.setItem('acbomlu_location_prices_v2', JSON.stringify(lookup));
+    } catch(e) {}
+  }
+
+  function handleLocationInputSuggestion(mode) {
+    const locInp = document.getElementById(mode === 'edit' ? 'edit-location-input' : 'inc-location-input');
+    const tripsSel = document.getElementById(mode === 'edit' ? 'edit-trips-select' : 'inc-trips-select');
+    const priceInp = document.getElementById(mode === 'edit' ? 'edit-price-input' : 'inc-price-input');
+    const currSel = document.getElementById(mode === 'edit' ? 'edit-item-currency' : 'inc-item-currency');
+    const pill = document.getElementById(mode === 'edit' ? 'edit-price-suggestion-pill' : 'inc-price-suggestion-pill');
+    const pillText = document.getElementById(mode === 'edit' ? 'edit-price-suggestion-text' : 'inc-price-suggestion-text');
+
+    if (!locInp || !priceInp) return;
+    const loc = (locInp.value || '').trim();
+    if (!loc) {
+      if (pill) pill.classList.add('hidden');
+      return;
+    }
+
+    const lookup = getLocationPriceLookup();
+    let matched = lookup[loc];
+    if (!matched) {
+      const foundKey = Object.keys(lookup).find(k => k.toLowerCase() === loc.toLowerCase());
+      if (foundKey) matched = lookup[foundKey];
+    }
+
+    if (matched && matched.price > 0) {
+      const trips = parseInt(tripsSel?.value || '1', 10) || 1;
+      const currency = matched.currency || 'KHR';
+      
+      if (currSel && currSel.value !== currency) {
+        currSel.value = currency;
+        if (mode === 'inc') onItemCurrencyChange();
+        else if (mode === 'edit') onEditItemCurrencyChange();
+      }
+
+      const totalPrice = matched.price * trips;
+      priceInp.value = currency === 'USD' ? totalPrice.toFixed(2) : totalPrice.toLocaleString('en-US');
+
+      if (pill && pillText) {
+        const formattedUnit = formatMoney(matched.price, currency);
+        pillText.innerHTML = `💡 តម្លៃណែនាំ៖ <b>${formattedUnit}</b> / ជើង`;
+        pill.classList.remove('hidden');
+      }
+    } else {
+      if (pill) pill.classList.add('hidden');
+    }
+  }
+
+  function handleTripsSelectChange(mode) {
+    const locInp = document.getElementById(mode === 'edit' ? 'edit-location-input' : 'inc-location-input');
+    const tripsSel = document.getElementById(mode === 'edit' ? 'edit-trips-select' : 'inc-trips-select');
+    const priceInp = document.getElementById(mode === 'edit' ? 'edit-price-input' : 'inc-price-input');
+    const currSel = document.getElementById(mode === 'edit' ? 'edit-item-currency' : 'inc-item-currency');
+
+    if (!locInp || !priceInp || !tripsSel) return;
+    const loc = (locInp.value || '').trim();
+    if (!loc) return;
+
+    const lookup = getLocationPriceLookup();
+    let matched = lookup[loc];
+    if (!matched) {
+      const foundKey = Object.keys(lookup).find(k => k.toLowerCase() === loc.toLowerCase());
+      if (foundKey) matched = lookup[foundKey];
+    }
+    if (matched && matched.price > 0) {
+      const trips = parseInt(tripsSel.value || '1', 10) || 1;
+      const currency = currSel?.value || matched.currency || 'KHR';
+      const totalPrice = matched.price * trips;
+      priceInp.value = currency === 'USD' ? totalPrice.toFixed(2) : totalPrice.toLocaleString('en-US');
+    }
+  }
+
+  function applySuggestedPrice(mode) {
+    handleLocationInputSuggestion(mode);
+  }
 
   function getSavedServiceLocations() {
     try {
@@ -10927,6 +11178,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     saveServiceLocation(loc);
+    if (priceVal > 0 && trips > 0) {
+      saveLocationPrice(loc, priceVal / trips, currency);
+    }
 
     // Do not overwrite form currency if mixed items exist
     const formCurr = document.getElementById('inc-form-currency');
@@ -10960,6 +11214,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (tripsSelect) {
       tripsSelect.value = '1';
     }
+    const pill = document.getElementById('inc-price-suggestion-pill');
+    if (pill) pill.classList.add('hidden');
 
     const priceFormatted = formatMoney(priceVal, currency);
     showToast(`បានបញ្ចូល៖ ${loc} (${trips} ជើង = ${priceFormatted})`);
@@ -11095,6 +11351,312 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         amountInp.readOnly = true;
         if (formCurr) formCurr.value = 'KHR';
       }
+    }
+  }
+
+  // ===== Edit Transaction Service Location & Items State =====
+  let currentEditServiceItems = [];
+
+  function onEditItemCurrencyChange() {
+    const itemCurr = document.getElementById('edit-item-currency')?.value || 'KHR';
+    const formCurr = document.getElementById('edit-tx-currency');
+    if (formCurr && currentEditServiceItems.length === 0) {
+      formCurr.value = itemCurr;
+    }
+    const priceInp = document.getElementById('edit-price-input');
+    if (priceInp) {
+      priceInp.placeholder = itemCurr === 'USD' ? 'ឧ. 90.00' : 'ឧ. 360,000';
+    }
+  }
+
+  function onEditFormCurrencyChange() {
+    const formCurr = document.getElementById('edit-tx-currency')?.value || 'KHR';
+    const itemCurr = document.getElementById('edit-item-currency');
+    if (itemCurr && currentEditServiceItems.length === 0) {
+      itemCurr.value = formCurr;
+    }
+  }
+
+  function handleEditCategoryChange() {
+    const type = document.getElementById('edit-tx-type')?.value || 'income';
+    const cat = document.getElementById('edit-tx-category')?.value || '';
+    const isSewage = (type === 'income' && (cat.includes('បូមលូ') || cat.includes('សេវា') || currentEditServiceItems.length > 0));
+    const locSection = document.getElementById('edit-service-location-section');
+    const amtInp = document.getElementById('edit-tx-amount');
+    const amtLabel = document.getElementById('edit-tx-amount-label');
+    const amtBadge = document.getElementById('edit-amount-auto-badge');
+
+    if (isSewage) {
+      if (locSection) locSection.classList.remove('hidden');
+      if (amtInp) {
+        amtInp.readOnly = true;
+        amtInp.classList.add('bg-emerald-50/60', 'cursor-not-allowed');
+      }
+      if (amtLabel) amtLabel.textContent = 'ចំនួនទឹកប្រាក់សរុប * (គណនាស្វ័យប្រវត្ត)';
+      if (amtBadge) amtBadge.classList.remove('hidden');
+      renderEditServiceItems();
+    } else {
+      if (locSection) locSection.classList.add('hidden');
+      if (amtInp) {
+        amtInp.readOnly = false;
+        amtInp.classList.remove('bg-emerald-50/60', 'cursor-not-allowed');
+      }
+      if (amtLabel) amtLabel.textContent = 'ចំនួនទឹកប្រាក់ * (វាយបានទាំងលេខខ្មែរ និងឡាតាំង)';
+      if (amtBadge) amtBadge.classList.add('hidden');
+    }
+  }
+
+  function parseServiceItemsFromDesc(desc, totalAmount = 0, currency = 'KHR') {
+    if (!desc || typeof desc !== 'string') return [];
+    const items = [];
+    const lookup = getLocationPriceLookup();
+
+    if (desc.includes(':') && !desc.includes('ជើង =')) {
+      const parts = desc.split(new RegExp('[,\\n]'));
+      for (const pt of parts) {
+        const p = pt.trim();
+        const cIdx = p.indexOf(':');
+        if (cIdx !== -1) {
+          const loc = p.slice(0, cIdx).trim();
+          const rest = p.slice(cIdx + 1).trim();
+          const tr = parseInt(rest, 10) || 1;
+          if (loc && loc.length < 50) {
+            const matched = lookup[loc] || Object.entries(lookup).find(([k]) => k.toLowerCase() === loc.toLowerCase())?.[1];
+            const unitPrice = (matched && matched.currency === currency) ? matched.price : 0;
+            items.push({
+              id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+              location: loc,
+              trips: tr,
+              price: unitPrice * tr,
+              currency: currency
+            });
+          }
+        }
+      }
+    } else if (desc.includes('(') && desc.includes(')')) {
+      const regex = new RegExp('([^,\\n()]+)\\s*\\(([^)]+)\\)', 'g');
+      let m;
+      while ((m = regex.exec(desc)) !== null) {
+        let loc = m[1].replace(new RegExp('ទីតាំង[:៖]?\\s*', 'g'), '').trim();
+        const details = m[2];
+        const trMatch = details.match(new RegExp('(\\d+|[០-៩]+)\\s*ជើង'));
+        let tr = 1;
+        if (trMatch) {
+          const khmerToArabic = {'០':0,'១':1,'២':2,'៣':3,'៤':4,'៥':5,'៦':6,'៧':7,'៨':8,'៩':9};
+          let num = 0;
+          for (const ch of trMatch[1]) {
+            if (khmerToArabic[ch] !== undefined) num = num * 10 + khmerToArabic[ch];
+            else if (ch >= '0' && ch <= '9') num = num * 10 + parseInt(ch, 10);
+          }
+          if (num > 0) tr = num;
+        }
+        const prMatch = details.match(new RegExp('=\\s*([0-9,.]+)\\s*(\\$|៛|USD|KHR)?', 'i'));
+        let pr = prMatch ? parseFormattedAmount(prMatch[1]) : 0;
+        let c = currency;
+        if (details.includes('$')) c = 'USD';
+        if (loc) {
+          items.push({
+            id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            location: loc,
+            trips: tr,
+            price: pr,
+            currency: c
+          });
+        }
+      }
+    }
+
+    if (items.length === 1 && items[0].price === 0 && totalAmount > 0) {
+      items[0].price = totalAmount;
+    } else if (items.length > 1) {
+      const zeroItems = items.filter(i => i.price === 0);
+      const knownSum = items.reduce((acc, i) => acc + (i.price || 0), 0);
+      if (zeroItems.length > 0 && totalAmount > knownSum) {
+        const remaining = totalAmount - knownSum;
+        const totalZeroTrips = zeroItems.reduce((acc, i) => acc + (i.trips || 1), 0);
+        zeroItems.forEach(i => {
+          i.price = Math.round((remaining / totalZeroTrips) * (i.trips || 1));
+        });
+      }
+    }
+
+    return items;
+  }
+
+  function addEditServiceTripItem() {
+    const locInput = document.getElementById('edit-location-input');
+    const tripsSelect = document.getElementById('edit-trips-select');
+    const priceInput = document.getElementById('edit-price-input');
+    const itemCurrSelect = document.getElementById('edit-item-currency');
+    const currency = itemCurrSelect ? itemCurrSelect.value : (document.getElementById('edit-tx-currency')?.value || 'KHR');
+
+    const loc = (locInput ? locInput.value : '').trim();
+    const trips = parseInt(tripsSelect ? tripsSelect.value : '1', 10) || 1;
+    const priceVal = priceInput ? parseFormattedAmount(priceInput.value) : 0;
+
+    if (!loc) {
+      showToast('សូមជ្រើសរើស ឬវាយបញ្ចូលទីតាំងផ្ដល់សេវាសិន!', true);
+      if (locInput) locInput.focus();
+      return;
+    }
+
+    saveServiceLocation(loc);
+    if (priceVal > 0 && trips > 0) {
+      saveLocationPrice(loc, priceVal / trips, currency);
+    }
+
+    const existingIndex = currentEditServiceItems.findIndex(i => (i.location || '').trim().toLowerCase() === loc.toLowerCase() && (i.currency || 'KHR') === currency);
+    if (existingIndex !== -1) {
+      currentEditServiceItems[existingIndex].trips = (parseInt(currentEditServiceItems[existingIndex].trips, 10) || 1) + trips;
+      currentEditServiceItems[existingIndex].price = (Number(currentEditServiceItems[existingIndex].price) || 0) + priceVal;
+    } else {
+      const newItem = {
+        id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        location: loc,
+        trips: trips,
+        price: priceVal,
+        currency: currency
+      };
+      currentEditServiceItems.push(newItem);
+    }
+    renderEditServiceItems();
+
+    if (locInput) {
+      locInput.value = '';
+      locInput.focus();
+    }
+    if (priceInput) {
+      priceInput.value = '';
+    }
+    if (tripsSelect) {
+      tripsSelect.value = '1';
+    }
+    const pill = document.getElementById('edit-price-suggestion-pill');
+    if (pill) pill.classList.add('hidden');
+
+    const priceFormatted = formatMoney(priceVal, currency);
+    showToast(`បានបញ្ចូលទីតាំង៖ ${loc} (${trips} ជើង = ${priceFormatted})`);
+  }
+
+  function removeEditServiceItem(id) {
+    currentEditServiceItems = currentEditServiceItems.filter(item => String(item.id) !== String(id) && String(item._id) !== String(id));
+    renderEditServiceItems();
+  }
+
+  function renderEditServiceItems() {
+    const container = document.getElementById('edit-service-items-list');
+    const summaryBox = document.getElementById('edit-items-summary');
+    const totalTripsEl = document.getElementById('edit-items-total-trips');
+    const totalSumEl = document.getElementById('edit-items-total-sum');
+    const descEl = document.getElementById('edit-tx-desc');
+    const amountInp = document.getElementById('edit-tx-amount');
+    const currencySel = document.getElementById('edit-tx-currency');
+
+    if (!container) return;
+
+    if (currentEditServiceItems.length === 0) {
+      container.innerHTML = `
+        <div class="text-center py-2 px-3 border border-dashed border-blue-200 rounded-xl text-slate-400 text-xs">
+          មិនទាន់មានទីតាំងត្រូវបានបញ្ចូលនៅឡើយទេ (សូមរើសទីតាំង ចំនួនជើង និងតម្លៃ រួចចុច «+ បញ្ចូល»)
+        </div>
+      `;
+      if (summaryBox) summaryBox.classList.add('hidden');
+      return;
+    }
+
+    if (summaryBox) summaryBox.classList.remove('hidden');
+
+    const khmerTripsMap = {
+      '1': '១', '2': '២', '3': '៣', '4': '៤', '5': '៥',
+      '6': '៦', '7': '៧', '8': '៨', '9': '៩', '10': '១០',
+      '11': '១១', '12': '១២', '13': '១៣', '14': '១៤', '15': '១៥',
+      '16': '១៦', '17': '១៧', '18': '១៨', '19': '១៩', '20': '២០'
+    };
+
+    let totalTrips = 0;
+    let totalSumKHR = 0;
+    let totalSumUSD = 0;
+    const descLines = [];
+
+    const itemsHtml = currentEditServiceItems.map(item => {
+      totalTrips += Number(item.trips) || 0;
+      const itemPrice = Number(item.price) || 0;
+      const itemCurr = item.currency || 'KHR';
+      if (itemCurr === 'USD') {
+        totalSumUSD += itemPrice;
+      } else {
+        totalSumKHR += itemPrice;
+      }
+
+      const avgPrice = item.trips > 0 ? (itemCurr === 'USD' ? (itemPrice / item.trips) : Math.round(itemPrice / item.trips)) : itemPrice;
+      const trNum = Number(item.trips) || 1;
+      const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
+      const formattedPrice = formatMoney(itemPrice, itemCurr);
+      const formattedAvg = formatMoney(avgPrice, itemCurr);
+      const khmerNum = khmerTripsMap[String(item.trips)] || String(item.trips);
+
+      descLines.push(`${item.location}: ${trStr}`);
+
+      return `
+        <div class="flex items-center justify-between gap-2 p-2 sm:p-2.5 bg-white rounded-xl border border-blue-100 shadow-sm hover:border-blue-300 transition">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg ${itemCurr === 'USD' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold text-xs flex-shrink-0">
+              ${khmerNum}
+            </div>
+            <div class="min-w-0">
+              <div class="font-bold text-xs sm:text-sm text-gray-800 truncate flex items-center gap-1">
+                <span class="material-symbols-outlined text-rose-500 text-sm">pin_drop</span>
+                <span>${escapeHtml(item.location)}</span>
+                <span class="text-[11px] font-normal text-slate-500">(${khmerNum} ជើង)</span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${itemCurr === 'USD' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">${itemCurr === 'USD' ? '$' : '៛'}</span>
+              </div>
+              <div class="text-[10px] sm:text-[11px] text-slate-500 font-mono">
+                មធ្យម៖ <span class="font-semibold text-slate-700">${formattedAvg}/ជើង</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="text-right">
+              <span class="font-bold text-xs sm:text-sm font-mono ${itemCurr === 'USD' ? 'text-amber-700' : 'text-emerald-700'} block">${formattedPrice}</span>
+            </div>
+            <button type="button" onclick="removeEditServiceItem('${item.id || item._id}')"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-rose-400 hover:text-rose-700 hover:bg-rose-50 transition"
+              title="លុបចេញ">
+              <span class="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = itemsHtml;
+
+    if (totalTripsEl) totalTripsEl.textContent = totalTrips;
+
+    if (totalSumEl) {
+      if (totalSumKHR > 0 && totalSumUSD > 0) {
+        totalSumEl.innerHTML = `<span class="text-emerald-700 font-bold">${formatMoney(totalSumKHR, 'KHR')}</span> + <span class="text-amber-700 font-bold">${formatMoney(totalSumUSD, 'USD')}</span>`;
+      } else if (totalSumUSD > 0) {
+        totalSumEl.innerHTML = `<span class="text-amber-700 font-bold">${formatMoney(totalSumUSD, 'USD')}</span>`;
+      } else {
+        totalSumEl.innerHTML = `<span class="text-emerald-700 font-bold">${formatMoney(totalSumKHR, 'KHR')}</span>`;
+      }
+    }
+
+    if (descEl) {
+      descEl.value = descLines.join(' , ');
+    }
+
+    if (amountInp) {
+      if (totalSumUSD > 0 && totalSumKHR === 0) {
+        amountInp.value = totalSumUSD.toFixed(2);
+        if (currencySel) currencySel.value = 'USD';
+      } else {
+        amountInp.value = totalSumKHR.toLocaleString('en-US');
+        if (currencySel) currencySel.value = 'KHR';
+      }
+      formatAmountInput(amountInp);
     }
   }
 
@@ -12544,7 +13106,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       editAmtEl.value = tx.amount;
       formatAmountInput(editAmtEl);
       document.getElementById('edit-tx-currency').value = tx.currency || 'KHR';
-      document.getElementById('edit-tx-date').value = tx.date || '';
+      
+      const dateDisp = tx.date ? formatDateDisplay(tx.date) : '';
+      const dateInp = document.getElementById('edit-tx-date');
+      if (dateInp) {
+        dateInp.value = dateDisp;
+        const fp = dateInp._flatpickr;
+        if (fp && tx.date) fp.setDate(tx.date, true, 'Y-m-d');
+      }
       document.getElementById('edit-tx-time').value = tx.time || '';
       const rawMethod = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
       document.getElementById('edit-tx-method').value = rawMethod.includes('សាច់ប្រាក់') ? 'សាច់ប្រាក់សុទ្ធ' : 'បាញ់តាមធនាគារ';
@@ -12556,8 +13125,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       updateEditCategoriesDropdown(tx.category);
+      populateLocationDatalist();
+
+      // Reset edit location inputs
+      const editLocInp = document.getElementById('edit-location-input');
+      if (editLocInp) editLocInp.value = '';
+      const editTripsSel = document.getElementById('edit-trips-select');
+      if (editTripsSel) editTripsSel.value = '1';
+      const editPriceInp = document.getElementById('edit-price-input');
+      if (editPriceInp) editPriceInp.value = '';
+      const editPill = document.getElementById('edit-price-suggestion-pill');
+      if (editPill) editPill.classList.add('hidden');
+      const editCurrSel = document.getElementById('edit-item-currency');
+      if (editCurrSel) editCurrSel.value = tx.currency || 'KHR';
+
+      // Load service items for editing
+      if (tx.service_items && Array.isArray(tx.service_items) && tx.service_items.length > 0) {
+        currentEditServiceItems = tx.service_items.map((it, idx) => ({
+          id: it.id || ('item_' + Date.now() + '_' + idx),
+          location: it.location || '',
+          trips: Number(it.trips) || 1,
+          price: Number(it.price) || 0,
+          currency: it.currency || tx.currency || 'KHR'
+        }));
+      } else if (tx.type === 'income' && ((tx.category || '').includes('បូមលូ') || (tx.category || '').includes('សេវា'))) {
+        currentEditServiceItems = parseServiceItemsFromDesc(tx.description || formattedDesc, tx.amount || 0, tx.currency || 'KHR');
+      } else {
+        currentEditServiceItems = [];
+      }
+
+      handleEditCategoryChange();
       openModal('edit-tx-modal');
     } catch (e) {
+      console.error('openEditTransactionModal error:', e);
       showToast('មិនអាចទាញយកទិន្នន័យប្រតិបត្តិការបានទេ!', true);
     }
   }
@@ -12592,6 +13192,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     btn.disabled = true;
     const branch = document.getElementById('edit-tx-branch')?.value || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
+
+    // Save locations & price memory if edited
+    if (currentEditServiceItems.length > 0) {
+      for (const item of currentEditServiceItems) {
+        if (item.location) {
+          saveServiceLocation(item.location);
+          if (item.price > 0 && item.trips > 0) {
+            saveLocationPrice(item.location, item.price / item.trips, item.currency);
+          }
+        }
+      }
+    }
+
     try {
       const res = await fetch('/api/finance/transactions/' + id, {
         method: 'PUT',
@@ -12606,7 +13219,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           payment_method: method,
           reference_no: ref,
           description: desc,
-          branch
+          branch,
+          service_items: currentEditServiceItems
         })
       });
       const data = await res.json();
@@ -12616,6 +13230,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (type === 'income') await loadIncome();
         else await loadExpense();
         await loadFinanceStats();
+        if (typeof loadFinanceReports === 'function') loadFinanceReports(true);
       } else {
         showToast(data.detail || 'បរាជ័យក្នុងការកែប្រែ!', true);
       }
