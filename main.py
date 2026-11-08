@@ -7125,15 +7125,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <!-- Filter Category Types -->
-      <div class="flex gap-2 mb-5">
-        <button onclick="filterCatalogType('all')" id="cat-tab-all" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 text-white shadow-sm transition">ទាំងអស់</button>
-        <button onclick="filterCatalogType('income')" id="cat-tab-income" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណូល</button>
-        <button onclick="filterCatalogType('expense')" id="cat-tab-expense" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណាយ</button>
+      <div class="flex gap-2 mb-3 sm:mb-3.5">
+        <button onclick="filterCatalogType('all')" id="cat-tab-all" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-blue-600 text-white shadow-sm transition">ទាំងអស់</button>
+        <button onclick="filterCatalogType('income')" id="cat-tab-income" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណូល</button>
+        <button onclick="filterCatalogType('expense')" id="cat-tab-expense" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition">ប្រភេទចំណាយ</button>
       </div>
 
       <!-- Catalogs Grid -->
-      <div id="catalogs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <div class="col-span-full text-center py-12 text-gray-400">កំពុងទាញទិន្នន័យកាតាឡុក...</div>
+      <div id="catalogs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-2.5">
+        <div class="col-span-full text-center py-8 text-gray-400 text-xs">កំពុងទាញទិន្នន័យកាតាឡុក...</div>
       </div>
     </div>
 
@@ -11779,9 +11779,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const btn = document.getElementById('cat-tab-' + t);
       if (btn) {
         if (t === type) {
-          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 text-white shadow-sm transition';
+          btn.className = 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-blue-600 text-white shadow-sm transition';
         } else {
-          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition';
+          btn.className = 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-gray-700 hover:bg-slate-50 transition';
         }
       }
     });
@@ -11798,7 +11798,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     if (!filtered.length) {
-      container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400">មិនមានកាតាឡុកក្នុងប្រភេទនេះឡើយ</div>';
+      container.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400 text-xs sm:text-sm">មិនមានកាតាឡុកក្នុងប្រភេទនេះឡើយ</div>';
       return;
     }
 
@@ -11816,33 +11816,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     container.innerHTML = filtered.map(c => {
       const col = colorMap[c.color] || colorMap.blue;
-      const typeLabel = c.type === 'income' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">🟢 ចំណូល</span>' :
-                        c.type === 'expense' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">🔴 ចំណាយ</span>' :
-                        '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">⚪ ទាំងពីរ</span>';
+      const typeLabel = c.type === 'income' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 whitespace-nowrap">🟢 ចំណូល</span>' :
+                        c.type === 'expense' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 whitespace-nowrap">🔴 ចំណាយ</span>' :
+                        '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 whitespace-nowrap">⚪ ទាំងពីរ</span>';
 
       return `
-        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 hover:shadow-md transition flex flex-col justify-between">
+        <div class="bg-white rounded-xl p-2.5 sm:p-3 shadow-xs border border-slate-200/80 hover:border-blue-300 hover:shadow-sm transition flex flex-col justify-between">
           <div>
-            <div class="flex items-center justify-between mb-3">
-              <div class="w-10 h-10 rounded-xl ${col.bg} border flex items-center justify-center">
-                <span class="material-symbols-outlined text-xl ${col.icon}">${escapeHtml(c.icon || 'category')}</span>
+            <div class="flex items-center justify-between gap-1.5 mb-1.5">
+              <div class="flex items-center gap-2 min-w-0 flex-1">
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${col.bg} border flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-base ${col.icon}">${escapeHtml(c.icon || 'category')}</span>
+                </div>
+                <h4 class="font-bold text-gray-800 text-xs sm:text-sm truncate leading-tight">${escapeHtml(c.name)}</h4>
               </div>
-              ${typeLabel}
+              <div class="flex items-center gap-1 flex-shrink-0">
+                ${typeLabel}
+                <button onclick="openCatalogModal('edit', '${c._id}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+                  <span class="material-symbols-outlined text-[15px]">edit</span>
+                </button>
+                <button onclick="deleteCatalog('${c._id}', '${escapeHtml(c.name)}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+                  <span class="material-symbols-outlined text-[15px]">delete</span>
+                </button>
+              </div>
             </div>
-            <h4 class="font-bold text-gray-800 text-sm sm:text-base">${escapeHtml(c.name)}</h4>
-            <p class="text-xs text-gray-500 mt-1 line-clamp-2">${escapeHtml(c.description || 'គ្មានការពិពណ៌នា')}</p>
-          </div>
-          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-            <button onclick="openCatalogModal('edit', '${c._id}')" class="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
-              <span class="material-symbols-outlined text-base">edit</span>
-            </button>
-            <button onclick="deleteCatalog('${c._id}', '${escapeHtml(c.name)}')" class="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
-              <span class="material-symbols-outlined text-base">delete</span>
-            </button>
+            <p class="text-[11px] text-gray-500 truncate leading-snug pl-9 sm:pl-10">${escapeHtml(c.description || 'គ្មានការពិពណ៌នា')}</p>
           </div>
         </div>
       `;
     }).join('');
+  }
   }
 
   function openCatalogModal(mode = 'create', catId = null) {
