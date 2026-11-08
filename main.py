@@ -6112,13 +6112,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <table class="w-full text-left border-collapse text-xs">
               <thead class="bg-slate-50/90 text-gray-600 uppercase text-[10px] font-bold border-b border-slate-100">
                 <tr>
-                  <th class="py-2.5 px-3 whitespace-nowrap">ម៉ោង</th>
-                  <th class="py-2.5 px-3 whitespace-nowrap">ប្រភេទ</th>
-                  <th class="py-2.5 px-3 whitespace-nowrap">កាតាឡុក</th>
-                  <th class="py-2.5 px-3 min-w-[120px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
-                  <th class="py-2.5 px-3 whitespace-nowrap">ការទូទាត់</th>
-                  <th class="py-2.5 px-3 text-right whitespace-nowrap font-bold">ចំនួនទឹកប្រាក់</th>
-                  <th class="py-2.5 px-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
+                  <th class="py-1.5 px-3 whitespace-nowrap">ម៉ោង</th>
+                  <th class="py-1.5 px-3 whitespace-nowrap">ប្រភេទ</th>
+                  <th class="py-1.5 px-3 whitespace-nowrap">កាតាឡុក</th>
+                  <th class="py-1.5 px-3 min-w-[120px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                  <th class="py-1.5 px-3 whitespace-nowrap">ការទូទាត់</th>
+                  <th class="py-1.5 px-3 text-right whitespace-nowrap font-bold">ចំនួនទឹកប្រាក់</th>
+                  <th class="py-1.5 px-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
                 </tr>
               </thead>
               <tbody id="dash-daily-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -7002,12 +7002,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
-                <th class="px-1.5 py-2 text-right whitespace-nowrap w-14">សកម្មភាព</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-1.5 py-1.5 text-right whitespace-nowrap w-14">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="income-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -7091,12 +7091,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
-                <th class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ចំណាំ</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
-                <th class="px-1.5 py-2 text-right whitespace-nowrap w-14">សកម្មភាព</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">កាលបរិច្ឆេទ & ម៉ោង</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">កាតាឡុក / ប្រភេទ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 min-w-[110px] max-w-[200px]">ពិពណ៌នា / ចំណាំ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap text-right font-bold">ចំនួនទឹកប្រាក់</th>
+                <th class="px-1.5 py-1.5 text-right whitespace-nowrap w-14">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody id="expense-tbody" class="divide-y divide-slate-50 text-gray-700">
@@ -11576,27 +11576,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span class="material-symbols-outlined text-xs">storefront</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">
-            <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 min-w-[110px] max-w-[200px]">
+            <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-snug">${escapeHtml(formatTransactionDesc(tx))}</div>
+            <div class="text-[10px] text-gray-400">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-emerald-600 text-sm font-mono">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-right font-bold text-emerald-600 text-sm font-mono">
             + ${amtStr}
           </td>
-          <td class="px-1.5 py-2 whitespace-nowrap text-right">
+          <td class="px-1.5 py-1 sm:py-1.5 whitespace-nowrap text-right">
             <div class="inline-flex items-center gap-0.5">
               <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
                 <span class="material-symbols-outlined text-base">edit</span>
@@ -12049,27 +12049,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const amtStr = formatMoney(tx.amount, tx.currency);
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-xs">
             <div class="font-medium text-gray-800 font-mono">${escapeHtml(formatDateDisplay(tx.date))}</div>
             <div class="text-[10px] text-gray-400 font-mono">${escapeHtml(tx.time || '')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
               <span class="material-symbols-outlined text-xs">shopping_cart</span>
               ${escapeHtml(tx.category)}
             </span>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 min-w-[110px] max-w-[200px]">
-            <div class="text-xs text-gray-900 font-medium whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(tx))}</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 min-w-[110px] max-w-[200px]">
+            <div class="text-xs text-gray-900 font-medium whitespace-normal break-words leading-snug">${escapeHtml(formatTransactionDesc(tx))}</div>
+            <div class="text-[10px] text-gray-400">កត់ត្រា៖ ${escapeHtml(tx.recorded_by || 'រដ្ឋបាល')}</div>
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-xs text-gray-600">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-xs text-gray-600">
             ${escapeHtml(tx.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
           </td>
-          <td class="px-2 sm:px-2.5 py-2 whitespace-nowrap text-right font-bold text-rose-600 text-sm font-mono">
+          <td class="px-2 sm:px-2.5 py-1 sm:py-1.5 whitespace-nowrap text-right font-bold text-rose-600 text-sm font-mono">
             - ${amtStr}
           </td>
-          <td class="px-1.5 py-2 whitespace-nowrap text-right">
+          <td class="px-1.5 py-1 sm:py-1.5 whitespace-nowrap text-right">
             <div class="inline-flex items-center gap-0.5">
               <button onclick="openEditTransactionModal('${tx._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
                 <span class="material-symbols-outlined text-base">edit</span>
@@ -12398,16 +12398,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           return `
             <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-              <td class="px-2.5 sm:px-3 py-2 font-mono text-gray-500 whitespace-nowrap text-xs">${escapeHtml(t.time || '—')}</td>
-              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">${typeBadge}</td>
-              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap font-medium text-gray-800 text-xs">${escapeHtml(t.category || '—')}</td>
-              <td class="px-2.5 sm:px-3 py-2 min-w-[120px] max-w-[200px]">
-                <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(t))}</div>
-                <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(t.recorded_by || 'រដ្ឋបាល')}</div>
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 font-mono text-gray-500 whitespace-nowrap text-xs">${escapeHtml(t.time || '—')}</td>
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 whitespace-nowrap">${typeBadge}</td>
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 whitespace-nowrap font-medium text-gray-800 text-xs">${escapeHtml(t.category || '—')}</td>
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 min-w-[120px] max-w-[200px]">
+                <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-snug">${escapeHtml(formatTransactionDesc(t))}</div>
+                <div class="text-[10px] text-gray-400">កត់ត្រា៖ ${escapeHtml(t.recorded_by || 'រដ្ឋបាល')}</div>
               </td>
-              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</td>
-              <td class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap ${amtClass} font-mono text-xs sm:text-sm">${amtSign}${amtStr}</td>
-              <td class="px-1.5 py-2 text-right whitespace-nowrap">
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 whitespace-nowrap text-xs text-gray-600">${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</td>
+              <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 text-right whitespace-nowrap ${amtClass} font-mono text-xs sm:text-sm">${amtSign}${amtStr}</td>
+              <td class="px-1.5 py-1 sm:py-1.5 text-right whitespace-nowrap">
                 <div class="inline-flex items-center gap-0.5">
                   <button onclick="openEditTransactionModal('${t._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
                     <span class="material-symbols-outlined text-base">edit</span>
@@ -12918,14 +12918,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           ${locs.length ? `
             <div class="overflow-x-auto">
               <table class="w-full text-xs text-left">
-                <thead class="bg-slate-50 text-gray-600 border-b border-slate-100 font-semibold">
+                <thead class="bg-slate-50 text-gray-600 border-b border-slate-100 font-semibold text-xs">
                   <tr>
-                    <th class="px-4 py-2.5 rounded-l-xl">ចំណាត់ថ្នាក់</th>
-                    <th class="px-4 py-2.5">ទីតាំងផ្ដល់សេវា</th>
-                    <th class="px-4 py-2.5 text-center">ចំនួនជើងសេវា</th>
-                    <th class="px-4 py-2.5">សមាមាត្រ (% ជើង)</th>
-                    <th class="px-4 py-2.5 text-right">ចំណូលសរុប</th>
-                    <th class="px-4 py-2.5 text-right rounded-r-xl">មធ្យម/ជើង</th>
+                    <th class="px-3 py-1.5 rounded-l-xl">ចំណាត់ថ្នាក់</th>
+                    <th class="px-3 py-1.5">ទីតាំងផ្ដល់សេវា</th>
+                    <th class="px-3 py-1.5 text-center">ចំនួនជើងសេវា</th>
+                    <th class="px-3 py-1.5">សមាមាត្រ (% ជើង)</th>
+                    <th class="px-3 py-1.5 text-right">ចំណូលសរុប</th>
+                    <th class="px-3 py-1.5 text-right rounded-r-xl">មធ្យម/ជើង</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-gray-700">
@@ -12938,19 +12938,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     const rankClass = idx < 3 ? rankColors[idx] : 'bg-slate-100 text-gray-600';
                     return `
                       <tr class="hover:bg-slate-50/80 transition">
-                        <td class="px-4 py-3 whitespace-nowrap">
-                          <span class="w-6 h-6 inline-flex items-center justify-center rounded-full text-[11px] font-bold ${rankClass}">
+                        <td class="px-3 py-1.5 whitespace-nowrap">
+                          <span class="w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-bold ${rankClass}">
                             ${idx + 1}
                           </span>
                         </td>
-                        <td class="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap flex items-center gap-1.5">
-                          <span class="material-symbols-outlined text-red-500 text-base">pin_drop</span>
+                        <td class="px-3 py-1.5 font-semibold text-gray-900 whitespace-nowrap flex items-center gap-1 text-xs">
+                          <span class="material-symbols-outlined text-red-500 text-sm">pin_drop</span>
                           ${escapeHtml(l.location)}
                         </td>
-                        <td class="px-4 py-3 text-center whitespace-nowrap font-bold text-indigo-700">
+                        <td class="px-3 py-1.5 text-center whitespace-nowrap font-bold text-indigo-700 text-xs">
                           ${l.trips} ជើង
                         </td>
-                        <td class="px-4 py-3 w-44">
+                        <td class="px-3 py-1.5 w-44">
                           <div class="flex items-center gap-2">
                             <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                               <div class="bg-indigo-600 h-2 rounded-full" style="width: ${barWidth}%"></div>
@@ -12958,10 +12958,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <span class="text-[10px] text-gray-500 font-mono">${pct}%</span>
                           </div>
                         </td>
-                        <td class="px-4 py-3 text-right font-bold text-emerald-600 font-mono whitespace-nowrap">
+                        <td class="px-3 py-1.5 text-right font-bold text-emerald-600 font-mono whitespace-nowrap text-xs">
                           ${formatDualMoney(l.khr, l.usd)}
                         </td>
-                        <td class="px-4 py-3 text-right font-semibold text-gray-600 font-mono whitespace-nowrap">
+                        <td class="px-3 py-1.5 text-right font-semibold text-gray-600 font-mono whitespace-nowrap text-xs">
                           ${formatDualMoney(avgKhr, avgUsd)}
                         </td>
                       </tr>
@@ -13119,31 +13119,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ម៉ោង</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ប្រភេទ</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">កាតាឡុក</th>
-                <th class="px-3 py-2 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ការទូទាត់</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right font-bold whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
+                <th class="px-2.5 sm:px-3 py-1.5 whitespace-nowrap">ម៉ោង</th>
+                <th class="px-2.5 sm:px-3 py-1.5 whitespace-nowrap">ប្រភេទ</th>
+                <th class="px-2.5 sm:px-3 py-1.5 whitespace-nowrap">កាតាឡុក</th>
+                <th class="px-3 py-1.5 min-w-[130px] max-w-[220px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                <th class="px-2.5 sm:px-3 py-1.5 whitespace-nowrap">ការទូទាត់</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right font-bold whitespace-nowrap">ចំនួនទឹកប្រាក់</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50 text-gray-700">
               ${transactions.length ? transactions.map(t => `
                 <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-                  <td class="px-2.5 sm:px-3 py-2 font-mono text-gray-500 whitespace-nowrap text-xs">${escapeHtml(t.time || '')}</td>
-                  <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">
+                  <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 font-mono text-gray-500 whitespace-nowrap text-xs">${escapeHtml(t.time || '')}</td>
+                  <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 whitespace-nowrap">
                     ${t.type === 'income' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">ចំណូល</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">ចំណាយ</span>'}
                   </td>
-                  <td class="px-2.5 sm:px-3 py-2 font-medium whitespace-nowrap text-xs">${escapeHtml(t.category)}</td>
-                  <td class="px-3 py-2 min-w-[130px] max-w-[220px]">
-                    <div class="whitespace-pre-line break-words leading-relaxed text-xs text-gray-800 font-medium">${escapeHtml(formatTransactionDesc(t))}</div>
+                  <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 font-medium whitespace-nowrap text-xs">${escapeHtml(t.category)}</td>
+                  <td class="px-3 py-1 sm:py-1.5 min-w-[130px] max-w-[220px]">
+                    <div class="whitespace-pre-line break-words leading-snug text-xs text-gray-800 font-medium">${escapeHtml(formatTransactionDesc(t))}</div>
                   </td>
-                  <td class="px-2.5 sm:px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                  <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 text-gray-500 whitespace-nowrap text-xs">
                     <span class="px-2 py-0.5 rounded-md text-[11px] font-medium ${(t.payment_method || '').includes('សាច់ប្រាក់') ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-blue-50 text-blue-800 border border-blue-100'}">
                       ${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}
                     </span>
                   </td>
-                  <td class="px-2.5 sm:px-3 py-2 text-right font-bold whitespace-nowrap font-mono text-xs sm:text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
+                  <td class="px-2.5 sm:px-3 py-1 sm:py-1.5 text-right font-bold whitespace-nowrap font-mono text-xs sm:text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
                     ${t.type === 'income' ? '+ ' : '- '}${formatMoney(t.amount, t.currency)}
                   </td>
                 </tr>
@@ -13209,14 +13209,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2 sm:px-2.5 py-2 whitespace-nowrap">កាលបរិច្ឆេទ</th>
-                <th class="px-2 sm:px-2.5 py-2 text-center whitespace-nowrap">ចំនួនជើង</th>
-                <th class="px-2 sm:px-2.5 py-2 text-right whitespace-nowrap">ចំណូលរៀល (៛)</th>
-                <th class="px-2 sm:px-2.5 py-2 text-right whitespace-nowrap">ចំណូលដុល្លារ ($)</th>
-                <th class="px-2 sm:px-2.5 py-2 text-right whitespace-nowrap">ចំណាយរៀល (៛)</th>
-                <th class="px-2 sm:px-2.5 py-2 text-right whitespace-nowrap">ចំណាយដុល្លារ ($)</th>
-                <th class="px-2 sm:px-2.5 py-2 text-right whitespace-nowrap">សមតុល្យសុទ្ធ</th>
-                <th class="px-2 sm:px-2.5 py-2 text-center whitespace-nowrap">ប្រតិបត្តិការ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 whitespace-nowrap">កាលបរិច្ឆេទ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-center whitespace-nowrap">ចំនួនជើង</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-right whitespace-nowrap">ចំណូលរៀល (៛)</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-right whitespace-nowrap">ចំណូលដុល្លារ ($)</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-right whitespace-nowrap">ចំណាយរៀល (៛)</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-right whitespace-nowrap">ចំណាយដុល្លារ ($)</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-right whitespace-nowrap">សមតុល្យសុទ្ធ</th>
+                <th class="px-2 sm:px-2.5 py-1.5 text-center whitespace-nowrap">ប្រតិបត្តិការ</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50 text-gray-700 font-mono">
@@ -13226,28 +13226,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const isPos = d.net_khr >= 0 && d.net_usd >= 0;
                 return `
                   <tr class="hover:bg-slate-50 transition ${hasData ? 'bg-white' : 'opacity-60'} border-b border-slate-50">
-                    <td class="px-2 sm:px-2.5 py-2 font-sans font-medium text-gray-800 text-xs whitespace-nowrap">${escapeHtml(formatDateDisplay(d.date))}</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-center font-sans font-bold text-indigo-700 text-xs whitespace-nowrap">${d.trips || 0} ជើង</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">${Math.round(d.income_khr).toLocaleString('en-US')} ៛</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">$${d.income_usd.toFixed(2)}</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-right font-bold text-rose-600 text-xs whitespace-nowrap">${Math.round(d.expense_khr).toLocaleString('en-US')} ៛</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-right font-bold text-rose-600 text-xs whitespace-nowrap">$${d.expense_usd.toFixed(2)}</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-right font-bold font-sans text-xs whitespace-nowrap ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
-                    <td class="px-2 sm:px-2.5 py-2 text-center font-sans text-xs text-gray-500 whitespace-nowrap">${d.count}</td>
+                    <td class="px-2 sm:px-2.5 py-1 font-sans font-medium text-gray-800 text-xs whitespace-nowrap">${escapeHtml(formatDateDisplay(d.date))}</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-center font-sans font-bold text-indigo-700 text-xs whitespace-nowrap">${d.trips || 0} ជើង</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">${Math.round(d.income_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">$${d.income_usd.toFixed(2)}</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-right font-bold text-rose-600 text-xs whitespace-nowrap">${Math.round(d.expense_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-right font-bold text-rose-600 text-xs whitespace-nowrap">$${d.expense_usd.toFixed(2)}</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-right font-bold font-sans text-xs whitespace-nowrap ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
+                    <td class="px-2 sm:px-2.5 py-1 text-center font-sans text-xs text-gray-500 whitespace-nowrap">${d.count}</td>
                   </tr>
                 `;
               }).join('')}
             </tbody>
             <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200 text-xs">
               <tr>
-                <td class="px-2 sm:px-2.5 py-2.5 font-sans text-gray-900 whitespace-nowrap">សរុបប្រចាំខែ</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-center font-sans text-indigo-800 whitespace-nowrap">${summary.total_trips || 0} ជើង</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-right text-emerald-700 font-mono whitespace-nowrap">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-right text-emerald-700 font-mono whitespace-nowrap">$${summary.income_usd.toFixed(2)}</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-right text-rose-700 font-mono whitespace-nowrap">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-right text-rose-700 font-mono whitespace-nowrap">$${summary.expense_usd.toFixed(2)}</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-right font-sans whitespace-nowrap ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
-                <td class="px-2 sm:px-2.5 py-2.5 text-center font-sans whitespace-nowrap">${summary.count}</td>
+                <td class="px-2 sm:px-2.5 py-1.5 font-sans text-gray-900 whitespace-nowrap">សរុបប្រចាំខែ</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-center font-sans text-indigo-800 whitespace-nowrap">${summary.total_trips || 0} ជើង</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-right text-emerald-700 font-mono whitespace-nowrap">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-right text-emerald-700 font-mono whitespace-nowrap">$${summary.income_usd.toFixed(2)}</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-right text-rose-700 font-mono whitespace-nowrap">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-right text-rose-700 font-mono whitespace-nowrap">$${summary.expense_usd.toFixed(2)}</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-right font-sans whitespace-nowrap ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
+                <td class="px-2 sm:px-2.5 py-1.5 text-center font-sans whitespace-nowrap">${summary.count}</td>
               </tr>
             </tfoot>
           </table>
@@ -13276,14 +13276,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <table class="w-full text-xs sm:text-sm text-left">
             <thead class="bg-slate-50 text-gray-500 border-b border-slate-100 font-semibold text-xs">
               <tr>
-                <th class="px-2.5 sm:px-3 py-2 whitespace-nowrap">ខែ</th>
-                <th class="px-2.5 sm:px-3 py-2 text-center whitespace-nowrap">ចំនួនជើង</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap">ចំណូលរៀល (៛)</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap">ចំណូលដុល្លារ ($)</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap">ចំណាយរៀល (៛)</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap">ចំណាយដុល្លារ ($)</th>
-                <th class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap">ចំណេញ/ខាតសុទ្ធ</th>
-                <th class="px-2.5 sm:px-3 py-2 text-center whitespace-nowrap">ប្រតិបត្តិការ</th>
+                <th class="px-2.5 sm:px-3 py-1.5 whitespace-nowrap">ខែ</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-center whitespace-nowrap">ចំនួនជើង</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right whitespace-nowrap">ចំណូលរៀល (៛)</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right whitespace-nowrap">ចំណូលដុល្លារ ($)</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right whitespace-nowrap">ចំណាយរៀល (៛)</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right whitespace-nowrap">ចំណាយដុល្លារ ($)</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-right whitespace-nowrap">ចំណេញ/ខាតសុទ្ធ</th>
+                <th class="px-2.5 sm:px-3 py-1.5 text-center whitespace-nowrap">ប្រតិបត្តិការ</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50 text-gray-700 font-mono">
@@ -13292,28 +13292,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const isPos = m.net_khr >= 0 && m.net_usd >= 0;
                 return `
                   <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-                    <td class="px-2.5 sm:px-3 py-2 font-sans font-bold text-gray-800 text-xs whitespace-nowrap">ខែ${escapeHtml(m.month_name)} (${m.month})</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-center font-sans font-bold text-indigo-700 text-xs whitespace-nowrap">${m.trips || 0} ជើង</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">${Math.round(m.income_khr).toLocaleString('en-US')} ៛</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">$${m.income_usd.toFixed(2)}</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-right font-bold text-rose-600 text-xs whitespace-nowrap">${Math.round(m.expense_khr).toLocaleString('en-US')} ៛</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-right font-bold text-rose-600 text-xs whitespace-nowrap">$${m.expense_usd.toFixed(2)}</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-right font-bold font-sans text-xs whitespace-nowrap ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
-                    <td class="px-2.5 sm:px-3 py-2 text-center font-sans text-xs text-gray-500 whitespace-nowrap">${m.count}</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 font-sans font-bold text-gray-800 text-xs whitespace-nowrap">ខែ${escapeHtml(m.month_name)} (${m.month})</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-center font-sans font-bold text-indigo-700 text-xs whitespace-nowrap">${m.trips || 0} ជើង</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">${Math.round(m.income_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-right font-bold text-emerald-600 text-xs whitespace-nowrap">$${m.income_usd.toFixed(2)}</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-right font-bold text-rose-600 text-xs whitespace-nowrap">${Math.round(m.expense_khr).toLocaleString('en-US')} ៛</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-right font-bold text-rose-600 text-xs whitespace-nowrap">$${m.expense_usd.toFixed(2)}</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-right font-bold font-sans text-xs whitespace-nowrap ${isPos ? 'text-emerald-700' : 'text-rose-700'}">${netStr}</td>
+                    <td class="px-2.5 sm:px-3 py-1 sm:py-1.25 text-center font-sans text-xs text-gray-500 whitespace-nowrap">${m.count}</td>
                   </tr>
                 `;
               }).join('')}
             </tbody>
             <tfoot class="bg-slate-100 font-bold border-t-2 border-slate-200 text-xs">
               <tr>
-                <td class="px-2.5 sm:px-3 py-2.5 font-sans text-gray-900 whitespace-nowrap">សរុបឆ្នាំ ${year}</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-center font-sans text-indigo-800 whitespace-nowrap">${summary.total_trips || 0} ជើង</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-right text-emerald-700 font-mono whitespace-nowrap">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-right text-emerald-700 font-mono whitespace-nowrap">$${summary.income_usd.toFixed(2)}</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-right text-rose-700 font-mono whitespace-nowrap">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-right text-rose-700 font-mono whitespace-nowrap">$${summary.expense_usd.toFixed(2)}</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-right font-sans whitespace-nowrap ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
-                <td class="px-2.5 sm:px-3 py-2.5 text-center font-sans whitespace-nowrap">${summary.count}</td>
+                <td class="px-2.5 sm:px-3 py-1.5 font-sans text-gray-900 whitespace-nowrap">សរុបឆ្នាំ ${year}</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-center font-sans text-indigo-800 whitespace-nowrap">${summary.total_trips || 0} ជើង</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-right text-emerald-700 font-mono whitespace-nowrap">${Math.round(summary.income_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-right text-emerald-700 font-mono whitespace-nowrap">$${summary.income_usd.toFixed(2)}</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-right text-rose-700 font-mono whitespace-nowrap">${Math.round(summary.expense_khr).toLocaleString('en-US')} ៛</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-right text-rose-700 font-mono whitespace-nowrap">$${summary.expense_usd.toFixed(2)}</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-right font-sans whitespace-nowrap ${summary.net_khr >= 0 && summary.net_usd >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${formatDualMoney(summary.net_khr, summary.net_usd)}</td>
+                <td class="px-2.5 sm:px-3 py-1.5 text-center font-sans whitespace-nowrap">${summary.count}</td>
               </tr>
             </tfoot>
           </table>
