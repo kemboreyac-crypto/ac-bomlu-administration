@@ -11822,26 +11822,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       return `
         <div class="bg-white rounded-xl p-2.5 sm:p-3 shadow-xs border border-slate-200/80 hover:border-blue-300 hover:shadow-sm transition flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between gap-1.5 mb-1.5">
-              <div class="flex items-center gap-2 min-w-0 flex-1">
-                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${col.bg} border flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-base ${col.icon}">${escapeHtml(c.icon || 'category')}</span>
-                </div>
-                <h4 class="font-bold text-gray-800 text-xs sm:text-sm truncate leading-tight">${escapeHtml(c.name)}</h4>
+          <div class="flex items-center justify-between gap-1 mb-1.5">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${col.bg} border flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-base ${col.icon}">${escapeHtml(c.icon || 'category')}</span>
               </div>
-              <div class="flex items-center gap-1 flex-shrink-0">
-                ${typeLabel}
-                <button onclick="openCatalogModal('edit', '${c._id}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
-                  <span class="material-symbols-outlined text-[15px]">edit</span>
-                </button>
-                <button onclick="deleteCatalog('${c._id}', '${escapeHtml(c.name)}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
-                  <span class="material-symbols-outlined text-[15px]">delete</span>
-                </button>
-              </div>
+              ${typeLabel}
             </div>
-            <p class="text-[11px] text-gray-500 truncate leading-snug pl-9 sm:pl-10">${escapeHtml(c.description || 'គ្មានការពិពណ៌នា')}</p>
+            <div class="flex items-center gap-0.5 flex-shrink-0">
+              <button onclick="openCatalogModal('edit', '${c._id}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+                <span class="material-symbols-outlined text-[15px]">edit</span>
+              </button>
+              <button onclick="deleteCatalog('${c._id}', '${escapeHtml(c.name)}')" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+                <span class="material-symbols-outlined text-[15px]">delete</span>
+              </button>
+            </div>
           </div>
+          <h4 class="font-bold text-gray-800 text-xs sm:text-sm truncate leading-snug">${escapeHtml(c.name)}</h4>
+          <p class="text-[11px] text-gray-500 truncate leading-snug mt-0.5">${escapeHtml(c.description || 'គ្មានការពិពណ៌នា')}</p>
         </div>
       `;
     }).join('');
