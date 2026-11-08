@@ -11846,7 +11846,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       `;
     }).join('');
   }
-  }
 
   function openCatalogModal(mode = 'create', catId = null) {
     const form = document.querySelector('#catalog-modal form');
