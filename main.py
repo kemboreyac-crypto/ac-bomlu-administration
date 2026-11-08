@@ -6072,33 +6072,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Transfer History Table -->
-        <div id="dash-transfer-history" class="px-5 pb-5 pt-1 border-t border-slate-100/80">
-          <div class="flex items-center justify-between py-3">
-            <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-indigo-600 text-sm">history</span>
-              <h5 class="font-bold text-gray-700 text-xs sm:text-sm">ប្រវត្តិបង្វិលសាច់ប្រាក់ចូលគណនីវិនិយោគទុន</h5>
+        <!-- Daily Income & Expense Report Section on Dashboard -->
+        <div id="dash-daily-report-section" class="px-4 sm:px-5 pb-5 pt-3 border-t border-slate-100/80">
+          <div class="flex items-center justify-between py-3 flex-wrap gap-2.5">
+            <div class="flex items-center gap-2 sm:gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 border border-blue-100">
+                <span class="material-symbols-outlined text-lg">today</span>
+              </div>
+              <div>
+                <h5 class="font-bold text-gray-800 text-xs sm:text-sm flex items-center gap-1.5">
+                  <span>របាយការណ៍ចំណូល និងចំណាយប្រចាំថ្ងៃ</span>
+                  <span id="dash-daily-count" class="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">0 ប្រតិបត្តិការ</span>
+                </h5>
+                <p id="dash-daily-date-label" class="text-[11px] text-gray-500 font-mono mt-0.5">ថ្ងៃទី --</p>
+              </div>
             </div>
-            <span id="dash-transfer-count" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">0 ប្រតិបត្តិការ</span>
+            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                ចំណូល៖ <b id="dash-daily-inc-sum" class="font-mono font-bold text-emerald-700">0 ៛</b>
+              </span>
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+                ចំណាយ៖ <b id="dash-daily-exp-sum" class="font-mono font-bold text-rose-700">0 ៛</b>
+              </span>
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                ចំណេញសុទ្ធ៖ <b id="dash-daily-net-sum" class="font-mono font-bold text-indigo-700">0 ៛</b>
+              </span>
+              <button onclick="showTab('reports-finance')" class="text-xs text-blue-600 hover:text-blue-800 font-semibold hover:underline flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-blue-50 transition">
+                <span>របាយការណ៍ពិស្ដារ</span>
+                <span class="material-symbols-outlined text-sm">arrow_forward</span>
+              </button>
+            </div>
           </div>
-          <div class="overflow-x-auto rounded-xl border border-slate-100">
+
+          <!-- Desktop Table (>= md) -->
+          <div class="hidden md:block overflow-x-auto rounded-xl border border-slate-100 shadow-sm">
             <table class="w-full text-left border-collapse text-xs">
-              <thead class="bg-slate-50/80 text-gray-600 uppercase text-[10px] font-bold border-b border-slate-100">
+              <thead class="bg-slate-50/90 text-gray-600 uppercase text-[10px] font-bold border-b border-slate-100">
                 <tr>
-                  <th class="py-2 px-3">កាលបរិច្ឆេទ</th>
-                  <th class="py-2 px-3">ផ្ទេរចេញពី</th>
-                  <th class="py-2 px-3">ផ្ទេរទៅកាន់</th>
-                  <th class="py-2 px-3 text-right">ចំនួនទឹកប្រាក់</th>
-                  <th class="py-2 px-3">កំណត់ចំណាំ</th>
-                  <th class="py-2 px-3 text-right">សកម្មភាព</th>
+                  <th class="py-2.5 px-3 whitespace-nowrap">ម៉ោង</th>
+                  <th class="py-2.5 px-3 whitespace-nowrap">ប្រភេទ</th>
+                  <th class="py-2.5 px-3 whitespace-nowrap">កាតាឡុក</th>
+                  <th class="py-2.5 px-3 min-w-[120px] max-w-[200px]">ពិពណ៌នា / ទីតាំង & ជើង</th>
+                  <th class="py-2.5 px-3 whitespace-nowrap">ការទូទាត់</th>
+                  <th class="py-2.5 px-3 text-right whitespace-nowrap font-bold">ចំនួនទឹកប្រាក់</th>
+                  <th class="py-2.5 px-2 text-right whitespace-nowrap w-16">សកម្មភាព</th>
                 </tr>
               </thead>
-              <tbody id="dash-transfer-tbody" class="divide-y divide-slate-50">
-                <tr><td colspan="6" class="text-center py-4 text-gray-400 text-xs">មិនទាន់មានប្រវត្តិបង្វិលសាច់ប្រាក់នៅឡើយទេ</td></tr>
+              <tbody id="dash-daily-tbody" class="divide-y divide-slate-50 text-gray-700">
+                <tr><td colspan="7" class="text-center py-6 text-gray-400 text-xs">កំពុងទាញទិន្នន័យ...</td></tr>
               </tbody>
             </table>
           </div>
+
+          <!-- Mobile Cards (< md) -->
+          <div id="dash-daily-mobile-cards" class="md:hidden space-y-2 mt-2">
+            <!-- Dynamic Mobile Cards -->
+          </div>
         </div>
+
+        <!-- Hidden legacy transfer history container -->
+        <div id="dash-transfer-history" class="hidden"><tbody id="dash-transfer-tbody"></tbody><span id="dash-transfer-count"></span></div>
       </div>
 
       <!-- Hidden legacy containers so renderDashLeaves / renderDashLoans don't fail -->
@@ -11413,6 +11446,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         loadTransferHistory();
       }
 
+      loadDashboardDailyReport();
+
       // Sidebar badges
       const incBadge = document.getElementById('badge-income-count');
       if (incBadge) {
@@ -12299,6 +12334,134 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         btn.disabled = false;
         btn.innerHTML = '<span class="material-symbols-outlined text-base">check_circle</span> រក្សាទុកការបង្វិលប្រាក់';
       }
+    }
+  }
+
+  // --- DASHBOARD DAILY INCOME & EXPENSE REPORT ---
+  async function loadDashboardDailyReport() {
+    const tbody = document.getElementById('dash-daily-tbody');
+    const mobileContainer = document.getElementById('dash-daily-mobile-cards');
+    if (!tbody && !mobileContainer) return;
+
+    try {
+      const todayISO = getTodayString();
+      let url = '/api/finance/reports/daily?date=' + encodeURIComponent(todayISO);
+      if (currentActiveBranch) url += '&branch=' + encodeURIComponent(currentActiveBranch);
+
+      const res = await fetch(url);
+      const data = await res.json();
+      const summary = data.summary || {};
+      const txs = data.transactions || [];
+
+      // Update date and summary badges
+      const dateLabel = document.getElementById('dash-daily-date-label');
+      if (dateLabel) {
+        dateLabel.textContent = 'ថ្ងៃទី ' + formatDateDisplay(data.date || todayISO);
+      }
+      const countEl = document.getElementById('dash-daily-count');
+      if (countEl) countEl.textContent = (txs ? txs.length : 0) + ' ប្រតិបត្តិការ';
+
+      const incSumEl = document.getElementById('dash-daily-inc-sum');
+      if (incSumEl) incSumEl.textContent = formatDualMoney(summary.income_khr || 0, summary.income_usd || 0);
+
+      const expSumEl = document.getElementById('dash-daily-exp-sum');
+      if (expSumEl) expSumEl.textContent = formatDualMoney(summary.expense_khr || 0, summary.expense_usd || 0);
+
+      const netSumEl = document.getElementById('dash-daily-net-sum');
+      if (netSumEl) {
+        netSumEl.textContent = formatDualMoney(summary.net_khr || 0, summary.net_usd || 0);
+        if ((summary.net_khr || 0) >= 0 && (summary.net_usd || 0) >= 0) {
+          netSumEl.className = 'font-mono font-bold text-indigo-700';
+        } else {
+          netSumEl.className = 'font-mono font-bold text-rose-700';
+        }
+      }
+
+      if (!txs.length) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-400 text-xs">មិនទាន់មានប្រតិបត្តិការចំណូល ឬចំណាយក្នុងថ្ងៃនេះនៅឡើយទេ</td></tr>';
+        if (mobileContainer) mobileContainer.innerHTML = '<div class="text-center py-6 text-gray-400 text-xs">មិនទាន់មានប្រតិបត្តិការចំណូល ឬចំណាយក្នុងថ្ងៃនេះនៅឡើយទេ</div>';
+        return;
+      }
+
+      if (tbody) {
+        tbody.innerHTML = txs.map(t => {
+          const isIncome = t.type === 'income';
+          const isExpense = t.type === 'expense';
+          const typeBadge = isIncome
+            ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="material-symbols-outlined text-xs">trending_up</span> ចំណូល</span>'
+            : (isExpense
+                ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"><span class="material-symbols-outlined text-xs">trending_down</span> ចំណាយ</span>'
+                : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"><span class="material-symbols-outlined text-xs">swap_horiz</span> បង្វិល</span>');
+
+          const amtStr = formatMoney(t.amount, t.currency);
+          const amtClass = isIncome ? 'text-emerald-600 font-bold' : (isExpense ? 'text-rose-600 font-bold' : 'text-indigo-600 font-bold');
+          const amtSign = isIncome ? '+ ' : (isExpense ? '- ' : '🔄 ');
+
+          return `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-50">
+              <td class="px-2.5 sm:px-3 py-2 font-mono text-gray-500 whitespace-nowrap text-xs">${escapeHtml(t.time || '—')}</td>
+              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap">${typeBadge}</td>
+              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap font-medium text-gray-800 text-xs">${escapeHtml(t.category || '—')}</td>
+              <td class="px-2.5 sm:px-3 py-2 min-w-[120px] max-w-[200px]">
+                <div class="text-xs text-gray-900 font-bold whitespace-normal break-words leading-relaxed">${escapeHtml(formatTransactionDesc(t))}</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">កត់ត្រា៖ ${escapeHtml(t.recorded_by || 'រដ្ឋបាល')}</div>
+              </td>
+              <td class="px-2.5 sm:px-3 py-2 whitespace-nowrap text-xs text-gray-600">${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</td>
+              <td class="px-2.5 sm:px-3 py-2 text-right whitespace-nowrap ${amtClass} font-mono text-xs sm:text-sm">${amtSign}${amtStr}</td>
+              <td class="px-1.5 py-2 text-right whitespace-nowrap">
+                <div class="inline-flex items-center gap-0.5">
+                  <button onclick="openEditTransactionModal('${t._id}')" class="p-1 rounded-lg text-blue-600 hover:bg-blue-50 transition" title="កែប្រែ">
+                    <span class="material-symbols-outlined text-base">edit</span>
+                  </button>
+                  <button onclick="deleteTransaction('${t._id}')" class="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition" title="លុប">
+                    <span class="material-symbols-outlined text-base">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      if (mobileContainer) {
+        mobileContainer.innerHTML = txs.map(t => {
+          const isIncome = t.type === 'income';
+          const isExpense = t.type === 'expense';
+          const typeBadge = isIncome
+            ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">ចំណូល</span>'
+            : (isExpense
+                ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">ចំណាយ</span>'
+                : '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">បង្វិល</span>');
+
+          const amtStr = formatMoney(t.amount, t.currency);
+          const amtClass = isIncome ? 'text-emerald-600 font-extrabold' : (isExpense ? 'text-rose-600 font-extrabold' : 'text-indigo-600 font-extrabold');
+          const amtSign = isIncome ? '+ ' : (isExpense ? '- ' : '🔄 ');
+
+          return `
+            <div class="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex flex-col gap-2">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  ${typeBadge}
+                  <span class="text-xs font-semibold text-gray-800">${escapeHtml(t.category || '—')}</span>
+                  <span class="text-[10px] text-gray-400 font-mono">${escapeHtml(t.time || '')}</span>
+                </div>
+                <span class="text-sm ${amtClass} font-mono">${amtSign}${amtStr}</span>
+              </div>
+              <p class="text-xs text-gray-800 font-medium">${escapeHtml(formatTransactionDesc(t))}</p>
+              <div class="flex items-center justify-between pt-1.5 border-t border-slate-50 text-[11px] text-gray-500">
+                <span>💳 ${escapeHtml(t.payment_method || 'សាច់ប្រាក់សុទ្ធ')}</span>
+                <div class="flex items-center gap-1">
+                  <button onclick="openEditTransactionModal('${t._id}')" class="px-2 py-0.5 rounded text-blue-600 hover:bg-blue-50 font-medium transition">កែប្រែ</button>
+                  <button onclick="deleteTransaction('${t._id}')" class="px-2 py-0.5 rounded text-rose-500 hover:bg-rose-50 font-medium transition">លុប</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    } catch (err) {
+      console.warn('loadDashboardDailyReport error:', err);
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-rose-500 text-xs">កំហុសក្នុងការទាញយករបាយការណ៍ប្រចាំថ្ងៃ</td></tr>';
     }
   }
 
