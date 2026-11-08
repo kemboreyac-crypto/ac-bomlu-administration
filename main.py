@@ -2947,8 +2947,11 @@ async def api_update_transaction(tx_id: str, payload: FinanceTransactionUpdate):
     if payload.service_items is not None:
         update_data["service_items"] = payload.service_items
     elif payload.description is not None:
+        existing_tx = finance_transactions_collection.find_one({"_id": ObjectId(tx_id)})
+        old_items = (existing_tx.get("service_items") or []) if existing_tx else []
+        old_prices = {it.get("location"): it.get("price", 0.0) for it in old_items if isinstance(it, dict) and it.get("location")}
         extracted = extract_trips_and_locations(payload.description, is_sewage_income=True)
-        update_data["service_items"] = [{"location": loc, "trips": tr, "price": pr} for loc, tr, pr in extracted]
+        update_data["service_items"] = [{"location": loc, "trips": tr, "price": old_prices.get(loc, pr)} for loc, tr, pr in extracted]
 
     update_data["updated_at"] = datetime.now(timezone(timedelta(hours=7))).isoformat()
     r = finance_transactions_collection.update_one({"_id": ObjectId(tx_id)}, {"$set": update_data})
@@ -11812,20 +11815,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const sumKHR = khrItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
       const sumUSD = usdItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
       
-      // Preserve any manual non-location notes without duplicating location lines
-      const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
-
+      // Clean location descriptions strictly per currency without any duplicate concatenation
       const khrDesc = khrItems.map(i => {
         const trNum = Number(i.trips) || 1;
         const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
         return `${i.location}: ${trStr}`;
-      }).join(' , ') + (customNotes ? ' ' + customNotes : '');
+      }).join(' , ');
 
       const usdDesc = usdItems.map(i => {
         const trNum = Number(i.trips) || 1;
         const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
         return `${i.location}: ${trStr}`;
-      }).join(' , ') + (customNotes ? ' ' + customNotes : '');
+      }).join(' , ');
 
       btn.disabled = true;
       try {
@@ -11894,13 +11895,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     let finalDesc = desc;
     if (finalItems && finalItems.length > 0) {
-      const customNotes = (desc || '').split('\\n').filter(line => !line.trim().startsWith('ទីតាំង៖')).join('\\n').trim();
-      const itemsDesc = finalItems.map(i => {
+      finalDesc = finalItems.map(i => {
         const trNum = Number(i.trips) || 1;
         const trStr = trNum < 10 ? ('0' + trNum) : String(trNum);
         return `${i.location}: ${trStr}`;
       }).join(' , ');
-      finalDesc = itemsDesc + (customNotes ? ' ' + customNotes : '');
     }
 
     if (!finalAmount || finalAmount <= 0) {
@@ -12550,7 +12549,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const rawMethod = tx.payment_method || 'សាច់ប្រាក់សុទ្ធ';
       document.getElementById('edit-tx-method').value = rawMethod.includes('សាច់ប្រាក់') ? 'សាច់ប្រាក់សុទ្ធ' : 'បាញ់តាមធនាគារ';
       document.getElementById('edit-tx-ref').value = tx.reference_no || '';
-      document.getElementById('edit-tx-desc').value = tx.description || '';
+      const formattedDesc = formatTransactionDesc(tx);
+      document.getElementById('edit-tx-desc').value = (formattedDesc && formattedDesc !== '—') ? formattedDesc : (tx.description || '');
       if (document.getElementById('edit-tx-branch')) {
         document.getElementById('edit-tx-branch').value = tx.branch || currentActiveBranch || 'ក្រុមហ៊ុនបូមលូ កំពង់ចាម';
       }
