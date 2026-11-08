@@ -13451,61 +13451,207 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       ratioStatusText = 'កម្រិតមធ្យម';
     }
 
+    // --- 1. Creative Liquidity & Cash Flow Graph Calculations ---
+    const cashNetApprox = (rec.cash_balance?.khr || 0) + ((rec.cash_balance?.usd || 0) * 4100.0);
+    const bankNetApprox = (rec.bank_balance?.khr || 0) + ((rec.bank_balance?.usd || 0) * 4100.0);
+    const totalLiquidApprox = Math.max(1, (cashNetApprox > 0 ? cashNetApprox : 0) + (bankNetApprox > 0 ? bankNetApprox : 0));
+    
+    let cashPct = Math.round((Math.max(0, cashNetApprox) / totalLiquidApprox) * 1000) / 10;
+    let bankPct = Math.round((Math.max(0, bankNetApprox) / totalLiquidApprox) * 1000) / 10;
+    if (cashNetApprox <= 0 && bankNetApprox <= 0) {
+      cashPct = 50; bankPct = 50;
+    }
+
+    // Cash Retention Rate
+    const cashInApprox = (rec.cash_income?.khr || 0) + ((rec.cash_income?.usd || 0) * 4100.0);
+    const cashExpApprox = (rec.cash_expense?.khr || 0) + ((rec.cash_expense?.usd || 0) * 4100.0);
+    const cashRetPct = cashInApprox > 0 
+      ? Math.max(0, Math.min(100, Math.round(((cashInApprox - cashExpApprox) / cashInApprox) * 1000) / 10)) 
+      : 100;
+
+    // Bank Retention / Growth Rate
+    const bankInApprox = (rec.bank_income?.khr || 0) + ((rec.bank_income?.usd || 0) * 4100.0);
+    const bankExpApprox = (rec.bank_expense?.khr || 0) + ((rec.bank_expense?.usd || 0) * 4100.0);
+    const bankRetPct = bankInApprox > 0 
+      ? Math.max(0, Math.min(100, Math.round(((bankInApprox - bankExpApprox) / bankInApprox) * 1000) / 10)) 
+      : 100;
+
+    // --- 2. Creative Expense Structure SVG Donut Graph Calculations ---
+    const expColors = {
+      maintenance: { color: '#f43f5e', bg: 'bg-rose-50/40', border: 'border-rose-100', text: 'text-rose-600', fill: 'bg-rose-500', iconBg: 'bg-rose-100', iconText: 'text-rose-600' },
+      fuel: { color: '#f59e0b', bg: 'bg-amber-50/40', border: 'border-amber-100', text: 'text-amber-600', fill: 'bg-amber-500', iconBg: 'bg-amber-100', iconText: 'text-amber-600' },
+      disposal: { color: '#a855f7', bg: 'bg-purple-50/40', border: 'border-purple-100', text: 'text-purple-600', fill: 'bg-purple-500', iconBg: 'bg-purple-100', iconText: 'text-purple-600' },
+      marketing: { color: '#06b6d4', bg: 'bg-cyan-50/40', border: 'border-cyan-100', text: 'text-cyan-600', fill: 'bg-cyan-500', iconBg: 'bg-cyan-100', iconText: 'text-cyan-600' },
+      salary: { color: '#10b981', bg: 'bg-teal-50/40', border: 'border-teal-100', text: 'text-teal-600', fill: 'bg-teal-500', iconBg: 'bg-teal-100', iconText: 'text-teal-600' },
+      other: { color: '#6366f1', bg: 'bg-indigo-50/40', border: 'border-indigo-100', text: 'text-indigo-600', fill: 'bg-indigo-500', iconBg: 'bg-indigo-100', iconText: 'text-indigo-600' }
+    };
+
+    let totalExpApprox = 0;
+    let totExpKhr = 0;
+    let totExpUsd = 0;
+    const catApprovals = {};
+
+    Object.keys(expStruct).forEach(k => {
+      const it = expStruct[k];
+      totExpKhr += (it.khr || 0);
+      totExpUsd += (it.usd || 0);
+      const approx = (it.khr || 0) + ((it.usd || 0) * 4100.0);
+      catApprovals[k] = approx;
+      totalExpApprox += approx;
+    });
+
+    const circumference = 2 * Math.PI * 56; // ~351.86
+    let strokeOffset = 0;
+    const donutSegments = [];
+
+    const allExpKeys = Object.keys(expStruct);
+    const activeCats = allExpKeys.filter(k => catApprovals[k] > 0);
+    const emptyCats = allExpKeys.filter(k => catApprovals[k] <= 0);
+
+    activeCats.forEach(k => {
+      const approx = catApprovals[k];
+      const pct = totalExpApprox > 0 ? (approx / totalExpApprox * 100) : 0;
+      const dash = (pct / 100) * circumference;
+      const gap = circumference - dash;
+      const currentOffset = -strokeOffset;
+      strokeOffset += dash;
+      const cfg = expColors[k] || expColors.other;
+      donutSegments.push(`
+        <circle cx="80" cy="80" r="56" fill="none" stroke="${cfg.color}" stroke-width="16"
+          stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${currentOffset.toFixed(2)}"
+          stroke-linecap="round" class="transition-all duration-700" />
+      `);
+    });
+
+    const donutSVG = totalExpApprox > 0 ? `
+      <svg viewBox="0 0 160 160" class="w-full h-full transform -rotate-90 drop-shadow-md">
+        <circle cx="80" cy="80" r="56" fill="none" stroke="#f1f5f9" stroke-width="16" />
+        ${donutSegments.join('')}
+      </svg>
+    ` : `
+      <svg viewBox="0 0 160 160" class="w-full h-full transform -rotate-90">
+        <circle cx="80" cy="80" r="56" fill="none" stroke="#f1f5f9" stroke-width="16" />
+        <circle cx="80" cy="80" r="56" fill="none" stroke="#10b981" stroke-width="16" stroke-dasharray="${circumference.toFixed(2)} 0" opacity="0.25" />
+      </svg>
+    `;
+
     return `
-      <!-- 1. Cash vs Bank Reconciliation Hub -->
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-          <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-blue-600">account_balance_wallet</span>
-            <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ</h4>
-          </div>
-          <span class="text-xs text-gray-500 font-medium">${escapeHtml(periodTitle)}</span>
-        </div>
-        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
-          <!-- Cash in Hand Safe Box -->
-          <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 p-4 relative overflow-hidden">
-            <div class="flex items-center justify-between mb-3">
-              <span class="flex items-center gap-2 text-emerald-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-emerald-600">payments</span> សាច់ប្រាក់សុទ្ធ
-              </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">ថតប្រាក់</span>
+      <!-- 1. Cash vs Bank Reconciliation Hub with Creative Graph -->
+      <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <!-- Card Header -->
+        <div class="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center">
+              <span class="material-symbols-outlined text-lg">account_balance_wallet</span>
             </div>
+            <div>
+              <h4 class="font-bold text-gray-800 text-sm">ផ្ទាំងផ្ទៀងផ្ទាត់សាច់ប្រាក់ និងធនាគារ</h4>
+              <p class="text-[11px] text-gray-400">តារាងប្រៀបធៀបលំហូរសាច់ប្រាក់ក្នុងដៃ និងគណនីធនាគារ</p>
+            </div>
+          </div>
+          <span class="text-xs text-gray-500 font-semibold px-3 py-1 rounded-full bg-white border border-slate-200/60 shadow-xs">${escapeHtml(periodTitle)}</span>
+        </div>
+
+        <!-- Creative Visual Liquidity Split Meter -->
+        <div class="px-4 sm:px-5 pt-4 pb-2">
+          <div class="p-3 sm:p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+            <div class="flex items-center justify-between text-xs font-bold mb-2 flex-wrap gap-1">
+              <div class="flex items-center gap-1.5 text-emerald-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse"></span>
+                <span>💵 សាច់ប្រាក់ក្នុងដៃ (ថតប្រាក់)៖ ${cashPct}%</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-blue-800">
+                <span>🏛️ ក្នុងគណនីធនាគារ (ABA)៖ ${bankPct}%</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm"></span>
+              </div>
+            </div>
+            
+            <!-- Dual Proportional Progress Bar -->
+            <div class="w-full h-3 rounded-full bg-slate-200 flex overflow-hidden shadow-inner p-0.5 gap-0.5">
+              <div class="h-full rounded-l-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-700 shadow-xs" style="width: ${cashPct}%"></div>
+              <div class="h-full rounded-r-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-700 shadow-xs" style="width: ${bankPct}%"></div>
+            </div>
+            
+            <div class="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1.5 px-0.5">
+              <span>${formatDualMoney(rec.cash_balance?.khr || 0, rec.cash_balance?.usd || 0)}</span>
+              <span class="hidden sm:inline">សមាមាត្រសាច់ប្រាក់សរុប (100%)</span>
+              <span>${formatDualMoney(rec.bank_balance?.khr || 0, rec.bank_balance?.usd || 0)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detailed Breakdown 2 Cards -->
+        <div class="p-4 sm:p-5 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Cash in Hand Safe Box -->
+          <div class="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/40 p-4 relative overflow-hidden shadow-xs hover:shadow-md transition">
+            <div class="flex items-center justify-between mb-3">
+              <span class="flex items-center gap-2 text-emerald-950 font-bold text-sm">
+                <span class="p-1 rounded-lg bg-emerald-100 text-emerald-700 material-symbols-outlined text-base">payments</span>
+                សាច់ប្រាក់សុទ្ធ
+              </span>
+              <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">ថតប្រាក់</span>
+            </div>
+
+            <!-- Retention Mini Bar -->
+            <div class="mb-3 p-2.5 rounded-xl bg-white/80 border border-emerald-100">
+              <div class="flex items-center justify-between text-[11px] font-semibold text-gray-600 mb-1">
+                <span>អត្រារក្សាសាច់ប្រាក់ទុក</span>
+                <span class="font-bold text-emerald-700 font-mono">${cashRetPct}% រក្សាទុក</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
+                <div class="h-full bg-emerald-500 rounded-full" style="width: ${cashRetPct}%"></div>
+              </div>
+            </div>
+
             <div class="space-y-2 text-xs text-gray-700">
-              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
-                <span class="text-gray-600">ចំណូលសាច់ប្រាក់ (+)</span>
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/70">
+                <span class="text-gray-500">ចំណូលសាច់ប្រាក់ (+)</span>
                 <span class="font-bold text-emerald-700 font-mono">${formatDualMoney(rec.cash_income.khr, rec.cash_income.usd)}</span>
               </div>
-              <div class="flex items-center justify-between py-1 border-b border-emerald-100/80">
-                <span class="text-gray-600">ចំណាយសាច់ប្រាក់ (-)</span>
+              <div class="flex items-center justify-between py-1 border-b border-emerald-100/70">
+                <span class="text-gray-500">ចំណាយសាច់ប្រាក់ (-)</span>
                 <span class="font-bold text-rose-600 font-mono">${formatDualMoney(rec.cash_expense.khr, rec.cash_expense.usd)}</span>
               </div>
               <div class="flex items-center justify-between pt-2">
-                <span class="font-bold text-gray-800">សាច់ប្រាក់នៅសល់ជាក់ស្ដែង៖</span>
-                <span class="text-sm font-black text-emerald-800 font-mono">${formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd)}</span>
+                <span class="font-bold text-gray-900 text-xs sm:text-sm">សាច់ប្រាក់នៅសល់ជាក់ស្ដែង៖</span>
+                <span class="text-xs sm:text-sm font-black text-emerald-800 font-mono">${formatDualMoney(rec.cash_balance.khr, rec.cash_balance.usd)}</span>
               </div>
             </div>
           </div>
 
           <!-- Bank Account Box -->
-          <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 p-4 relative overflow-hidden">
+          <div class="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/40 p-4 relative overflow-hidden shadow-xs hover:shadow-md transition">
             <div class="flex items-center justify-between mb-3">
-              <span class="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <span class="material-symbols-outlined text-blue-600">account_balance</span> បាញ់តាមធនាគារ
+              <span class="flex items-center gap-2 text-blue-950 font-bold text-sm">
+                <span class="p-1 rounded-lg bg-blue-100 text-blue-700 material-symbols-outlined text-base">account_balance</span>
+                បាញ់តាមធនាគារ
               </span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900">គណនីធនាគារ</span>
+              <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">គណនីធនាគារ</span>
             </div>
+
+            <!-- Retention Mini Bar -->
+            <div class="mb-3 p-2.5 rounded-xl bg-white/80 border border-blue-100">
+              <div class="flex items-center justify-between text-[11px] font-semibold text-gray-600 mb-1">
+                <span>សមតុល្យធនាគារកើនឡើង</span>
+                <span class="font-bold text-blue-700 font-mono">${bankRetPct}% កំណើន</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
+                <div class="h-full bg-blue-500 rounded-full" style="width: ${bankRetPct}%"></div>
+              </div>
+            </div>
+
             <div class="space-y-2 text-xs text-gray-700">
-              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
-                <span class="text-gray-600">ប្រាក់ផ្ទេរចូល (+)</span>
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/70">
+                <span class="text-gray-500">ប្រាក់ផ្ទេរចូល (+)</span>
                 <span class="font-bold text-blue-700 font-mono">${formatDualMoney(rec.bank_income.khr, rec.bank_income.usd)}</span>
               </div>
-              <div class="flex items-center justify-between py-1 border-b border-blue-100/80">
-                <span class="text-gray-600">ប្រាក់ផ្ទេរចេញ (-)</span>
+              <div class="flex items-center justify-between py-1 border-b border-blue-100/70">
+                <span class="text-gray-500">ប្រាក់ផ្ទេរចេញ (-)</span>
                 <span class="font-bold text-rose-600 font-mono">${formatDualMoney(rec.bank_expense.khr, rec.bank_expense.usd)}</span>
               </div>
               <div class="flex items-center justify-between pt-2">
-                <span class="font-bold text-gray-800">សមតុល្យធនាគារកើនឡើង៖</span>
-                <span class="text-sm font-black text-blue-800 font-mono">${formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd)}</span>
+                <span class="font-bold text-gray-900 text-xs sm:text-sm">សមតុល្យធនាគារកើនឡើង៖</span>
+                <span class="text-xs sm:text-sm font-black text-blue-800 font-mono">${formatDualMoney(rec.bank_balance.khr, rec.bank_balance.usd)}</span>
               </div>
             </div>
           </div>
@@ -13514,148 +13660,210 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       <!-- 2. Locations & Trips Performance Leaderboard -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-blue-50/30 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 via-purple-50/30 to-indigo-50/30 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-indigo-600">location_on</span>
-            <h4 class="font-bold text-gray-800 text-sm">វិភាគទីតាំងផ្ដល់សេវា & ចំនួនជើង</h4>
+            <span class="material-symbols-outlined text-purple-600">leaderboard</span>
+            <h4 class="font-bold text-gray-800 text-sm">ចំណាត់ថ្នាក់ទីតាំង & ចំនួនជើងសេវាកម្ម</h4>
           </div>
-          <div class="flex items-center gap-2 sm:gap-3 text-xs">
-            <span class="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
-              សរុប៖ <b>${totalTrips}</b> ជើង
-            </span>
-            <span class="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-              មធ្យម/ជើង៖ <b>${formatDualMoney(summary.arpt ? summary.arpt.khr : 0, summary.arpt ? summary.arpt.usd : 0)}</b>
-            </span>
-          </div>
+          <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+            សរុប៖ ${totalTrips} ជើង (${locs.length} ទីតាំង)
+          </span>
         </div>
-
-        <div class="p-5">
-          ${locs.length ? `
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left">
-                <thead class="bg-slate-50 text-gray-600 border-b border-slate-100 font-semibold text-xs">
-                  <tr>
-                    <th class="px-3 py-1.5 rounded-l-xl">ចំណាត់ថ្នាក់</th>
-                    <th class="px-3 py-1.5">ទីតាំងផ្ដល់សេវា</th>
-                    <th class="px-3 py-1.5 text-center">ចំនួនជើងសេវា</th>
-                    <th class="px-3 py-1.5">សមាមាត្រ (% ជើង)</th>
-                    <th class="px-3 py-1.5 text-right">ចំណូលសរុប</th>
-                    <th class="px-3 py-1.5 text-right rounded-r-xl">មធ្យម/ជើង</th>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-gray-600 font-bold border-b border-slate-100 uppercase text-[10px] tracking-wider">
+              <tr>
+                <th class="px-2.5 py-1.5 text-center w-12">ចំណាត់ថ្នាក់</th>
+                <th class="px-3 py-1.5">ទីតាំងផ្តល់សេវា</th>
+                <th class="px-3 py-1.5 text-center">ចំនួនជើងសេវា</th>
+                <th class="px-3 py-1.5">សមាមាត្រ (% ជើង)</th>
+                <th class="px-3 py-1.5 text-right">ចំណូលសរុប</th>
+                <th class="px-3 py-1.5 text-right">មធ្យម/ជើង</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${locs.length ? locs.map((l, idx) => {
+                const pct = totalTrips > 0 ? (l.trips / totalTrips * 100).toFixed(1) : '0';
+                const rankBadge = idx === 0
+                  ? '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white font-bold text-[10px] shadow-sm">1</span>'
+                  : (idx === 1
+                    ? '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-400 text-white font-bold text-[10px] shadow-sm">2</span>'
+                    : (idx === 2
+                      ? '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-700 text-white font-bold text-[10px] shadow-sm">3</span>'
+                      : `<span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-gray-600 font-bold text-[10px]">${idx + 1}</span>`));
+                return `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="px-2.5 py-1.5 text-center">${rankBadge}</td>
+                    <td class="px-3 py-1.5 font-bold text-gray-800">
+                      <span class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-rose-500 text-xs">location_on</span>
+                        ${escapeHtml(l.location)}
+                      </span>
+                    </td>
+                    <td class="px-3 py-1.5 text-center font-bold text-indigo-700 font-mono">${l.trips} ជើង</td>
+                    <td class="px-3 py-1.5">
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div class="bg-indigo-600 h-1.5 rounded-full" style="width: ${pct}%"></div>
+                        </div>
+                        <span class="text-[10px] text-gray-500 font-mono w-9 text-right">${pct}%</span>
+                      </div>
+                    </td>
+                    <td class="px-3 py-1.5 text-right font-bold text-emerald-600 font-mono">
+                      ${formatDualMoney(l.income_khr, l.income_usd)}
+                    </td>
+                    <td class="px-3 py-1.5 text-right font-semibold text-gray-700 font-mono text-[11px]">
+                      ${formatDualMoney(l.avg_per_trip_khr, l.avg_per_trip_usd)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 text-gray-700">
-                  ${locs.map((l, idx) => {
-                    const pct = totalTrips ? ((l.trips / totalTrips) * 100).toFixed(1) : '0';
-                    const barWidth = Math.round((l.trips / maxTrips) * 100);
-                    const avgKhr = l.trips ? (l.khr / l.trips) : 0;
-                    const avgUsd = l.trips ? (l.usd / l.trips) : 0;
-                    const rankColors = ['bg-amber-400 text-white', 'bg-slate-400 text-white', 'bg-amber-700 text-white'];
-                    const rankClass = idx < 3 ? rankColors[idx] : 'bg-slate-100 text-gray-600';
-                    return `
-                      <tr class="hover:bg-slate-50/80 transition">
-                        <td class="px-3 py-1.5 whitespace-nowrap">
-                          <span class="w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-bold ${rankClass}">
-                            ${idx + 1}
-                          </span>
-                        </td>
-                        <td class="px-3 py-1.5 font-semibold text-gray-900 whitespace-nowrap flex items-center gap-1 text-xs">
-                          <span class="material-symbols-outlined text-red-500 text-sm">pin_drop</span>
-                          ${escapeHtml(l.location)}
-                        </td>
-                        <td class="px-3 py-1.5 text-center whitespace-nowrap font-bold text-indigo-700 text-xs">
-                          ${l.trips} ជើង
-                        </td>
-                        <td class="px-3 py-1.5 w-44">
-                          <div class="flex items-center gap-2">
-                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                              <div class="bg-indigo-600 h-2 rounded-full" style="width: ${barWidth}%"></div>
-                            </div>
-                            <span class="text-[10px] text-gray-500 font-mono">${pct}%</span>
-                          </div>
-                        </td>
-                        <td class="px-3 py-1.5 text-right font-bold text-emerald-600 font-mono whitespace-nowrap text-xs">
-                          ${formatDualMoney(l.khr, l.usd)}
-                        </td>
-                        <td class="px-3 py-1.5 text-right font-semibold text-gray-600 font-mono whitespace-nowrap text-xs">
-                          ${formatDualMoney(avgKhr, avgUsd)}
-                        </td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : `
-            <div class="text-center py-6 text-gray-400 text-xs">
-              <span class="material-symbols-outlined text-3xl mb-1 text-gray-300">map</span>
-              <p>មិនទាន់មានទិន្នន័យទីតាំងសេវាសម្រាប់កាលបរិច្ឆេទនេះទេ</p>
-            </div>
-          `}
+                `;
+              }).join('') : `
+                <tr>
+                  <td colspan="6" class="px-4 py-8 text-center text-gray-400">មិនទាន់មានទិន្នន័យទីតាំងក្នុងចន្លោះពេលនេះឡើយ</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- 3. Operating Cost Structure & Staff Contribution -->
+      <!-- 3. Operating Cost Structure & Staff Contribution with Creative Graph -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Expense Structure (2 Cols) -->
-        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="px-5 py-3.5 bg-rose-50/40 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <!-- Expense Structure with Creative SVG Donut Graph (2 Cols) -->
+        <div class="lg:col-span-2 bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden">
+          <div class="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-rose-50/60 via-amber-50/40 to-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-rose-600">pie_chart</span>
-              <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ</h4>
+              <div class="w-8 h-8 rounded-xl bg-rose-600/10 text-rose-600 flex items-center justify-center">
+                <span class="material-symbols-outlined text-lg">donut_small</span>
+              </div>
+              <div>
+                <h4 class="font-bold text-gray-800 text-sm">វិភាគរចនាសម្ព័ន្ធចំណាយប្រតិបត្តិការ</h4>
+                <p class="text-[11px] text-gray-400">គំនូសតាងរូបភាព (Chart Illustration) បង្ហាញសមាមាត្រចំណាយតាមប្រភេទ</p>
+              </div>
             </div>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full border ${ratioBadgeClass}">
+            <span class="text-xs font-bold px-3 py-1 rounded-full border ${ratioBadgeClass} shadow-xs">
               សមាមាត្រចំណាយ៖ ${expRatio}% (${ratioStatusText})
             </span>
           </div>
 
-          <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            ${Object.keys(expStruct).map(k => {
-              const item = expStruct[k];
-              const hasVal = item.khr > 0 || item.usd > 0;
-              const iconsMap = {
-                fuel: 'local_gas_station',
-                maintenance: 'build',
-                disposal: 'delete_sweep',
-                marketing: 'campaign',
-                salary: 'badge',
-                other: 'receipt'
-              };
-              const icon = iconsMap[k] || 'payments';
-              return `
-                <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition">
-                  <div class="flex items-center justify-between mb-1.5">
-                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                      <span class="material-symbols-outlined text-base text-rose-500">${icon}</span>
-                      ${escapeHtml(item.label)}
-                    </span>
-                    <span class="text-[10px] text-gray-400 font-mono">${item.count} ប្រតិបត្តិការ</span>
-                  </div>
-                  <p class="text-sm font-bold ${hasVal ? 'text-rose-600' : 'text-gray-400'} font-mono">
-                    ${formatDualMoney(item.khr, item.usd)}
-                  </p>
+          <!-- Main Donut + Progress Bars Layout -->
+          <div class="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            
+            <!-- Left: Creative SVG Donut Illustration (5 Cols) -->
+            <div class="lg:col-span-5 flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-b from-slate-50/80 to-rose-50/20 border border-slate-100">
+              <div class="relative w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center">
+                ${donutSVG}
+
+                <!-- Center Summary Text -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-2">
+                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">សមាមាត្រចំណាយ</span>
+                  <span class="text-2xl sm:text-3xl font-black text-gray-800 font-mono tracking-tight my-0.5">${expRatio}%</span>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${ratioBadgeClass}">
+                    ${ratioStatusText}
+                  </span>
                 </div>
-              `;
-            }).join('')}
+              </div>
+
+              <!-- Total Expense Badge -->
+              <div class="mt-3 text-center">
+                <span class="text-[11px] text-gray-500 font-medium">ចំណាយប្រតិបត្តិការសរុប៖</span>
+                <p class="text-xs sm:text-sm font-black text-rose-600 font-mono mt-0.5">${formatDualMoney(totExpKhr, totExpUsd)}</p>
+              </div>
+            </div>
+
+            <!-- Right: Category List with Visual Proportional Progress Bars (7 Cols) -->
+            <div class="lg:col-span-7 space-y-2.5">
+              ${activeCats.length ? activeCats.map(k => {
+                const item = expStruct[k];
+                const approx = catApprovals[k];
+                const pct = totalExpApprox > 0 ? (approx / totalExpApprox * 100).toFixed(1) : '0';
+                const cfg = expColors[k] || expColors.other;
+                const iconsMap = {
+                  fuel: 'local_gas_station',
+                  maintenance: 'build',
+                  disposal: 'delete_sweep',
+                  marketing: 'campaign',
+                  salary: 'badge',
+                  other: 'receipt'
+                };
+                const icon = iconsMap[k] || 'payments';
+                return `
+                  <div class="p-3 sm:p-3.5 rounded-2xl border ${cfg.border} ${cfg.bg} hover:shadow-xs transition">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="flex items-center gap-2 text-xs font-bold text-gray-800">
+                        <span class="p-1 rounded-lg ${cfg.iconBg} ${cfg.iconText} material-symbols-outlined text-sm">${icon}</span>
+                        ${escapeHtml(item.label)}
+                      </span>
+                      <div class="flex items-center gap-2 font-mono">
+                        <span class="text-[10px] text-gray-400">${item.count} ប្រតិបត្តិការ</span>
+                        <span class="text-xs font-black ${cfg.text}">${formatDualMoney(item.khr, item.usd)}</span>
+                      </div>
+                    </div>
+                    <!-- Progress Bar -->
+                    <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                      <div class="h-full ${cfg.fill} rounded-full" style="width: ${pct}%"></div>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] text-gray-400 font-mono mt-1">
+                      <span>${approx > 0 ? '~ ' + Math.round(approx).toLocaleString() + ' ៛' : ''}</span>
+                      <span class="font-bold ${cfg.text}">${pct}% នៃចំណាយ</span>
+                    </div>
+                  </div>
+                `;
+              }).join('') : `
+                <div class="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-center">
+                  <span class="material-symbols-outlined text-3xl text-emerald-500 mb-1">verified</span>
+                  <p class="text-xs font-bold text-emerald-800">មិនមានចំណាយប្រតិបត្តិការក្នុងចន្លោះពេលនេះឡើយ</p>
+                  <p class="text-[11px] text-emerald-600 mt-0.5">អាជីវកម្មទទួលបានប្រាក់ចំណេញសុទ្ធ 100%</p>
+                </div>
+              `}
+
+              <!-- Empty / Inactive Categories in Compact Grid -->
+              ${emptyCats.length ? `
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                  ${emptyCats.map(k => {
+                    const item = expStruct[k];
+                    const iconsMap = {
+                      fuel: 'local_gas_station',
+                      maintenance: 'build',
+                      disposal: 'delete_sweep',
+                      marketing: 'campaign',
+                      salary: 'badge',
+                      other: 'receipt'
+                    };
+                    const icon = iconsMap[k] || 'payments';
+                    return `
+                      <div class="p-2 sm:p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs">
+                        <span class="flex items-center gap-1.5 text-gray-400 text-[11px] truncate">
+                          <span class="material-symbols-outlined text-xs text-gray-400">${icon}</span>
+                          ${escapeHtml(item.label)}
+                        </span>
+                        <span class="font-mono text-gray-300 text-[10px] font-bold">0 ៛</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              ` : ''}
+            </div>
           </div>
         </div>
 
         <!-- Staff Contribution Card (1 Col) -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+        <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden flex flex-col">
           <div class="px-5 py-3.5 bg-blue-50/40 border-b border-slate-100 flex items-center justify-between">
             <h4 class="font-bold text-gray-800 text-sm flex items-center gap-2">
               <span class="material-symbols-outlined text-blue-600">group</span> ការបំពេញការងារតាមបុគ្គលិក
             </h4>
             <span class="text-[11px] text-gray-500 font-mono">${staffList.length} នាក់</span>
           </div>
-          <div class="p-4 space-y-3 flex-1 overflow-y-auto">
+          <div class="p-4 space-y-3 flex-1 overflow-y-auto max-h-[380px]">
             ${staffList.length ? staffList.map(s => `
-              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/60">
+              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 transition">
                 <div class="flex items-center justify-between mb-1">
                   <span class="font-bold text-xs text-gray-800 flex items-center gap-1.5">
                     <span class="material-symbols-outlined text-blue-500 text-base">person</span>
                     ${escapeHtml(s.staff)}
                   </span>
-                  <span class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                  <span class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full font-mono">
                     ${s.trips} ជើង
                   </span>
                 </div>
@@ -13668,10 +13876,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
       </div>
-    </div>
     `;
   }
-
   function renderFinanceReportDaily(data) {
     const content = document.getElementById('rep-finance-content');
     const { date, summary, transactions } = data;
