@@ -1966,7 +1966,7 @@ async def create_leave(request: LeaveRequest):
         ]]
     }
     target_chat = get_chat_id_by_branch(data["branch"])
-    send_telegram_notify(
+    sent_res = send_telegram_notify(
         f"📋 <b>សំណើសុំច្បាប់ឈប់សម្រាកថ្មី!</b>\n\n"
         f"🏢 <b>សាខា:</b> {data['branch']}\n"
         f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
@@ -1978,6 +1978,14 @@ async def create_leave(request: LeaveRequest):
         target_chat_id=target_chat,
         fallback_to_default=False
     )
+    if sent_res and isinstance(sent_res, dict) and "result" in sent_res:
+        tg_msg_id = sent_res["result"].get("message_id")
+        tg_chat = sent_res["result"].get("chat", {}).get("id") or target_chat
+        if tg_msg_id and tg_chat:
+            leaves_collection.update_one(
+                {"_id": result.inserted_id},
+                {"$set": {"telegram_message_id": int(tg_msg_id), "telegram_chat_id": str(tg_chat)}}
+            )
     return {"message": "Leave request saved!", "id": leave_id}
 
 @app.patch("/api/leave/{leave_id}/status")
@@ -1987,26 +1995,45 @@ async def update_leave_status(leave_id: str, status: str):
     if leave:
         name = leave.get("employee_name", "បុគ្គលិក")
         days = leave.get("days", 1)
+        reason = leave.get("reason", "")
         branch = leave.get("branch", "ក្រុមហ៊ុនបូមលូ កំពង់ចាម")
-        target_chat = get_chat_id_by_branch(branch)
-        if status == "approved":
-            send_telegram_notify(
-                f"✅ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
-                f"🏢 <b>សាខា:</b> {branch}\n"
-                f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ",
-                target_chat_id=target_chat
+        target_chat = leave.get("telegram_chat_id") or get_chat_id_by_branch(branch)
+        tg_msg_id = leave.get("telegram_message_id")
+        date_str = format_date_display_py(leave.get("date", ""))
+        
+        v_id = leave.get("voice_id")
+        voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង 🔊</a>" if v_id else ""
+        is_approve = (status == "approved")
+        result_text = "🟢 <b>ស្ថានភាព:</b> ត្រូវបានអនុញ្ញាតិ ✅ (ដោយរដ្ឋបាលលើ Dashboard)" if is_approve else "🔴 <b>ស្ថានភាព:</b> មិនអនុញ្ញាតិ ❌ (ដោយរដ្ឋបាលលើ Dashboard)"
+        
+        updated_card_text = (
+            f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+            f"🏢 <b>សាខា:</b> {branch}\n"
+            f"👤 <b>បុគ្គលិក:</b> {name}\n"
+            f"📅 <b>កាលបរិច្ឆេទ:</b> {date_str}\n"
+            f"⏱️ <b>ចំនួនថ្ងៃ:</b> {days} ថ្ងៃ\n"
+            f"📝 <b>មូលហេតុ:</b> {reason}"
+            f"{voice_line}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{result_text}"
+        )
+        
+        decision_kb = []
+        if v_id:
+            decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក", "url": f"{get_base_url()}/voice-player/{v_id}"}])
+            
+        # If we have the original Telegram message ID, EDIT IT directly and REMOVE the buttons!
+        if tg_msg_id and target_chat:
+            edit_telegram_message(
+                chat_id=str(target_chat),
+                message_id=int(tg_msg_id),
+                new_text=updated_card_text,
+                reply_markup={"inline_keyboard": decision_kb}
             )
-        elif status == "rejected":
-            send_telegram_notify(
-                f"❌ <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
-                f"🏢 <b>សាខា:</b> {branch}\n"
-                f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
-                f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ",
-                target_chat_id=target_chat
-            )
+        else:
+            # Fallback if no message_id was recorded: send clean update message
+            send_telegram_notify(updated_card_text, target_chat_id=target_chat)
+            
     return {"message": f"Leave updated to {status}"}
 
 @app.delete("/api/leave/{leave_id}")
@@ -2045,7 +2072,7 @@ async def create_loan(request: LoanRequest):
     # Only notify dedicated admin private chat if configured
     admin_chat = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
     if admin_chat:
-        send_telegram_notify(
+        sent_ln = send_telegram_notify(
             f"💰 <b>សំណើខ្ចីប្រាក់ថ្មី (សម្ងាត់)!</b>\n\n"
             f"🏢 <b>សាខា:</b> {data['branch']}\n"
             f"👤 <b>បុគ្គលិក:</b> {request.employee_name}\n"
@@ -2057,6 +2084,13 @@ async def create_loan(request: LoanRequest):
             target_chat_id=admin_chat,
             fallback_to_default=False
         )
+        if sent_ln and isinstance(sent_ln, dict) and "result" in sent_ln:
+            tg_msg_id = sent_ln["result"].get("message_id")
+            if tg_msg_id:
+                loans_collection.update_one(
+                    {"_id": result.inserted_id},
+                    {"$set": {"telegram_message_id": int(tg_msg_id), "telegram_chat_id": str(admin_chat)}}
+                )
     return {"message": "Loan request saved!", "id": loan_id}
 
 @app.patch("/api/loan/{loan_id}/status")
@@ -2067,29 +2101,32 @@ async def update_loan_status(loan_id: str, status: str):
         name = loan.get("employee_name", "បុគ្គលិក")
         amount = f"{loan.get('amount_khr', 0):,}"
         branch = loan.get("branch", "ក្រុមហ៊ុនបូមលូ កំពង់ចាម")
+        purpose = loan.get("purpose", "")
         # Strict Financial Privacy: Never broadcast loan approvals or money amounts to branch group chats!
-        admin_chat = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+        admin_chat = loan.get("telegram_chat_id") or os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+        tg_msg_id = loan.get("telegram_message_id")
+        is_approve = (status == "approved")
+        result_text = "🟢 <b>ស្ថានភាព:</b> ត្រូវបានអនុញ្ញាតិ ✅ (ដោយរដ្ឋបាលលើ Dashboard)" if is_approve else "🔴 <b>ស្ថានភាព:</b> មិនអនុញ្ញាតិ ❌ (ដោយរដ្ឋបាលលើ Dashboard)"
+        
+        updated_loan_card = (
+            f"💰 <b>ការសម្រេចលើសំណើខ្ចីប្រាក់ (សម្ងាត់)</b>\n\n"
+            f"🏢 <b>សាខា:</b> {branch}\n"
+            f"👤 <b>បុគ្គលិក:</b> {name}\n"
+            f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
+            f"🎯 <b>គោលបំណង:</b> {purpose or 'មិនបានបញ្ជាក់'}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{result_text}"
+        )
         if admin_chat:
-            if status == "approved":
-                send_telegram_notify(
-                    f"✅ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
-                    f"🏢 <b>សាខា:</b> {branch}\n"
-                    f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                    f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                    f"🟢 <b>លទ្ធផល:</b> ត្រូវបានអនុញ្ញាតិ",
-                    target_chat_id=admin_chat,
-                    fallback_to_default=False
+            if tg_msg_id:
+                edit_telegram_message(
+                    chat_id=str(admin_chat),
+                    message_id=int(tg_msg_id),
+                    new_text=updated_loan_card,
+                    reply_markup={"inline_keyboard": []}
                 )
-            elif status == "rejected":
-                send_telegram_notify(
-                    f"❌ <b>ការសម្រេចលើសំណើខ្ចីប្រាក់</b>\n\n"
-                    f"🏢 <b>សាខា:</b> {branch}\n"
-                    f"👤 <b>បុគ្គលិក:</b> {name}\n"
-                    f"💵 <b>ចំនួន:</b> {amount} រៀល\n"
-                    f"🔴 <b>លទ្ធផល:</b> មិនអនុញ្ញាតិ",
-                    target_chat_id=admin_chat,
-                    fallback_to_default=False
-                )
+            else:
+                send_telegram_notify(updated_loan_card, target_chat_id=admin_chat, fallback_to_default=False)
     return {"message": f"Loan updated to {status}"}
 
 @app.delete("/api/loan/{loan_id}")
@@ -4368,9 +4405,25 @@ async def telegram_webhook(req: Request):
                         f"🔒 <i>សំណើរបស់អ្នកត្រូវបានរក្សាការសម្ងាត់ក្នុង DM និងបានបញ្ជូនទៅកាន់រដ្ឋបាលពិនិត្យអនុញ្ញាត។</i>"
                     )
                     send_telegram_notify(emp_conf, target_chat_id=cq_chat_id)
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                    sent_adm = send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=admin_group_chat_id)
+                    if sent_adm and isinstance(sent_adm, dict) and "result" in sent_adm:
+                        tg_msg_id = sent_adm["result"].get("message_id")
+                        tg_chat = sent_adm["result"].get("chat", {}).get("id") or admin_group_chat_id
+                        if tg_msg_id and tg_chat:
+                            leaves_collection.update_one(
+                                {"_id": l_res.inserted_id},
+                                {"$set": {"telegram_message_id": int(tg_msg_id), "telegram_chat_id": str(tg_chat)}}
+                            )
                 else:
-                    send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=cq_chat_id)
+                    sent_adm = send_telegram_notify(admin_card, reply_markup=adm_btn, target_chat_id=cq_chat_id)
+                    if sent_adm and isinstance(sent_adm, dict) and "result" in sent_adm:
+                        tg_msg_id = sent_adm["result"].get("message_id")
+                        tg_chat = sent_adm["result"].get("chat", {}).get("id") or cq_chat_id
+                        if tg_msg_id and tg_chat:
+                            leaves_collection.update_one(
+                                {"_id": l_res.inserted_id},
+                                {"$set": {"telegram_message_id": int(tg_msg_id), "telegram_chat_id": str(tg_chat)}}
+                            )
                 return {"ok": True}
 
             # 2. Callback for Loan Amount selection -> Show Purpose Selection & Allow Direct Typing!
@@ -4585,13 +4638,34 @@ async def telegram_webhook(req: Request):
                         return {"ok": True}
                     
                     if leave.get("status") in ["approved", "rejected"]:
-                        curr_status = "អនុញ្ញាត" if leave.get("status") == "approved" else "មិនអនុញ្ញាត"
+                        curr_status = "អនុញ្ញាតិ" if leave.get("status") == "approved" else "មិនអនុញ្ញាតិ"
+                        emp_name = leave.get("employee_name", "បុគ្គលិក")
+                        days = leave.get("days", 1)
+                        reason = leave.get("reason", "")
+                        v_id = leave.get("voice_id")
+                        voice_line = f"\n🎙️ <b>សារសំឡេង:</b> <a href=\"{get_base_url()}/voice-player/{v_id}\">▶️ ចុចទីនេះដើម្បីស្ដាប់សំឡេង 🔊</a>" if v_id else ""
+                        is_app = (leave.get("status") == "approved")
+                        res_str = "🟢 <b>ស្ថានភាព:</b> ត្រូវបានអនុញ្ញាតិ ✅" if is_app else "🔴 <b>ស្ថានភាព:</b> មិនអនុញ្ញាតិ ❌"
+                        branch_line = f"🏢 <b>សាខា:</b> {leave.get('branch', '')}\n" if leave.get("branch") else ""
+                        fixed_text = (
+                            f"📋 <b>ការសម្រេចលើសំណើសុំច្បាប់</b>\n\n"
+                            f"{branch_line}"
+                            f"👤 <b>បុគ្គលិក:</b> {emp_name}\n"
+                            f"⏱️ <b>ចំនួន:</b> {days} ថ្ងៃ\n"
+                            f"📝 <b>មូលហេតុ:</b> {reason}"
+                            f"{voice_line}\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"{res_str}"
+                        )
+                        decision_kb = []
+                        if v_id:
+                            decision_kb.append([{"text": "🎧 ស្ដាប់សារសំឡេងបុគ្គលិក", "url": f"{get_base_url()}/voice-player/{v_id}"}])
                         if msg_id:
-                            remove_telegram_inline_keyboard(chat_id_str, msg_id)
+                            edit_telegram_message(chat_id=chat_id_str, message_id=msg_id, new_text=fixed_text, reply_markup={"inline_keyboard": decision_kb})
                         ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
                         ans_data = json.dumps({
                             "callback_query_id": cq_id,
-                            "text": f"⚠️ សំណើនេះត្រូវបានសម្រេចរួចហើយ: {curr_status}! មិនអនុញ្ញាតឱ្យចុចម្តងទៀតបានឡើយ។",
+                            "text": f"✅ សំណើនេះបានសម្រេចរួចហើយ ({curr_status})។ ប៊ូតុងត្រូវបានដកចេញស្អាតបាត!",
                             "show_alert": True
                         }).encode('utf-8')
                         try:
