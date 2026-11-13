@@ -1739,13 +1739,16 @@ async def api_cron_check_reports():
 
 # ===== Health Check & Keep-Alive Ping Routes =====
 @app.get("/ping")
+@app.head("/ping")
+@app.post("/ping")
 @app.get("/healthz")
+@app.head("/healthz")
 async def health_check():
-    return {
-        "status": "ok",
-        "service": "AC BOMLU Administration",
-        "time": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
-    }
+    return Response(
+        content="ok",
+        media_type="text/plain",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 # ===== API Routes =====
 # ===== Admin Authentication & PWA Routes =====
