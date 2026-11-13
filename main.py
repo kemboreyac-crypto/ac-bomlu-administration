@@ -410,8 +410,7 @@ def send_telegram_notify(text: str, reply_markup: dict = None, target_chat_id: s
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True,
-                "one_time_keyboard": False,
-                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើកម្ចី]..."
+                "one_time_keyboard": False
             }
             
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -4808,8 +4807,7 @@ async def telegram_webhook(req: Request):
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True,
-                "one_time_keyboard": False,
-                "input_field_placeholder": "ចុចប៊ូតុង [📝 ស្នើសុំច្បាប់] ឬ [💰 ស្នើកម្ចី]..."
+                "one_time_keyboard": False
             }
             send_telegram_notify(conf_msg, reply_markup=done_kb, target_chat_id=chat_id_str)
             return {"ok": True}
