@@ -1918,7 +1918,14 @@ async def api_admin_logout():
     res.delete_cookie("admin_session")
     return res
 
-# ===== PWA Manifest & Service Worker =====
+# ===== Favicon & PWA Manifest & Service Worker =====
+@app.get("/favicon.ico", include_in_schema=False)
+async def get_favicon():
+    fav_path = os.path.join(BASE_DIR, "favicon.ico")
+    if os.path.exists(fav_path):
+        return FileResponse(fav_path, media_type="image/x-icon")
+    return Response(status_code=404)
+
 @app.get("/manifest.json")
 async def get_manifest():
     manifest_data = {
@@ -1947,9 +1954,9 @@ async def get_manifest():
                 "purpose": "any maskable"
             },
             {
-                "src": "/static/ac_logo.jpg",
-                "sizes": "512x512",
-                "type": "image/jpeg",
+                "src": "/static/ac_logo.png",
+                "sizes": "1024x1024",
+                "type": "image/png",
                 "purpose": "any"
             }
         ]
@@ -3528,7 +3535,7 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
   <div class="w-full max-w-md glass-card rounded-3xl p-6 shadow-2xl">
     <!-- Header -->
     <div class="flex items-center gap-3 mb-6 pb-4 border-b border-blue-900/50">
-      <img src="/static/ac_logo.jpg" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover ring-2 ring-blue-500/40" />
+      <img src="/static/ac_logo.png" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover shadow-lg" />
       <div>
         <h1 class="text-base font-bold text-white flex items-center gap-1.5">
           <span class="material-symbols-outlined text-blue-400 text-lg">event_available</span>
@@ -3695,7 +3702,7 @@ LOAN_FORM_HTML = """<!DOCTYPE html>
   <div class="w-full max-w-md glass-card rounded-3xl p-6 shadow-2xl">
     <!-- Header -->
     <div class="flex items-center gap-3 mb-6 pb-4 border-b border-emerald-900/60">
-      <img src="/static/ac_logo.jpg" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover ring-2 ring-emerald-500/40" />
+      <img src="/static/ac_logo.png" alt="AC BOMLU" class="w-12 h-12 rounded-2xl object-cover shadow-lg" />
       <div>
         <h1 class="text-base font-bold text-white flex items-center gap-1.5">
           <span class="material-symbols-outlined text-emerald-400 text-lg">payments</span>
@@ -5440,9 +5447,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="AC BOMLU Admin" />
 
-  <!-- Favicon: AC Logo -->
-  <link rel="icon" type="image/jpeg" href="/static/ac_logo.jpg" />
-  <link rel="apple-touch-icon" href="/static/ac_logo.jpg" />
+  <!-- Favicon: AC Logo (High-Res Transparent PNG & Multi-size ICO) -->
+  <link rel="icon" type="image/png" href="/static/ac_logo.png" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/static/ac_logo_192.png" />
 
   <!-- Tailwind CSS v3 CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -5555,8 +5563,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Top Floating Logo with Ring -->
     <div class="flex justify-center -mt-16 sm:-mt-20 mb-4">
       <div class="relative">
-        <img src="/static/ac_logo.jpg" alt="AC BOMLU Logo"
-          class="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover shadow-2xl border-4 border-white ring-4 ring-blue-500/30" />
+        <img src="/static/ac_logo.png" alt="AC BOMLU Logo"
+          class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover shadow-2xl border-2 border-white ring-4 ring-blue-500/30" />
         <span class="absolute bottom-1 right-1 w-5 h-5 bg-emerald-500 border-2 border-white rounded-full"></span>
       </div>
     </div>
@@ -5825,8 +5833,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- Logo -->
   <div class="h-16 flex items-center justify-between px-5 border-b border-blue-800">
     <div onclick="goToHomepage()" class="flex items-center gap-3 cursor-pointer hover:opacity-90 transition group" title="ចុចដើម្បីទៅកាន់ទំព័រដើម">
-      <img src="/static/ac_logo.jpg" alt="AC Logo"
-        class="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white/30 flex-shrink-0 group-hover:scale-105 transition" />
+      <img src="/static/ac_logo.png" alt="AC Logo"
+        class="w-10 h-10 rounded-xl object-cover shadow-md flex-shrink-0 group-hover:scale-105 transition" />
       <div class="leading-tight">
         <p class="text-xs text-blue-300 font-medium">AC BOMLU</p>
         <p class="text-sm font-bold group-hover:text-blue-200 transition">ផ្ទាំងគ្រប់គ្រងរដ្ឋបាល</p>
@@ -6033,8 +6041,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
 
       <!-- Avatar -->
-      <div onclick="goToHomepage()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 border-blue-200 shadow cursor-pointer hover:opacity-85 transition flex-shrink-0" title="ទៅកាន់ទំព័រដើម">
-        <img src="/static/ac_logo.jpg" alt="AC" class="w-full h-full object-cover" />
+      <div onclick="goToHomepage()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden shadow cursor-pointer hover:opacity-85 transition flex-shrink-0" title="ទៅកាន់ទំព័រដើម">
+        <img src="/static/ac_logo.png" alt="AC" class="w-full h-full object-cover" />
       </div>
     </div>
   </header>
@@ -14358,7 +14366,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="border-b-2 border-blue-900 pb-4 mb-6">
           <div class="flex items-start justify-between gap-4">
             <div class="flex items-center gap-3">
-              <img src="/static/ac_logo.jpg" alt="AC Logo" class="w-16 h-16 rounded-full border-2 border-blue-800 object-cover shadow-sm" onerror="this.style.display='none'">
+              <img src="/static/ac_logo.png" alt="AC Logo" class="w-16 h-16 rounded-xl object-cover shadow-sm" onerror="this.style.display='none'">
               <div>
                 <h1 class="text-xl sm:text-2xl font-black text-blue-950 uppercase tracking-tight">ក្រុមហ៊ុន អេស៊ី បូមលូ</h1>
                 <p class="text-xs font-bold text-gray-700 tracking-wide">AC BOMLU SERVICE CO., LTD.</p>
