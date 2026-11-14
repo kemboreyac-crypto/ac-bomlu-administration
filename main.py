@@ -12,7 +12,7 @@ import calendar
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response, JSONResponse
+from fastapi.responses import HTMLResponse, Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pydantic import BaseModel
