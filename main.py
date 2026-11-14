@@ -299,6 +299,57 @@ def check_admin_auth(req: Request) -> bool:
         token = req.query_params.get("token", "")
     return validate_session_token(token)
 
+# ===== Security Middleware: Enforce Admin Authentication on Private Business APIs =====
+@app.middleware("http")
+async def enforce_admin_authentication(request: Request, call_next):
+    path = request.url.path
+    method = request.method.upper()
+
+    # Allow CORS preflight requests
+    if method == "OPTIONS":
+        return await call_next(request)
+
+    # 1. Allow root and static assets (HTML, CSS, JS, favicons, PWA)
+    if path == "/" or path.startswith("/static") or path in ["/favicon.ico", "/manifest.json", "/sw.js"]:
+        return await call_next(request)
+
+    # 2. Allow Health checks (Keep-Alive ping for UptimeRobot)
+    if path in ["/ping", "/healthz"]:
+        return await call_next(request)
+
+    # 3. Allow Authentication routes (login, verify, logout)
+    if path.startswith("/api/auth/"):
+        return await call_next(request)
+
+    # 4. Allow Telegram Webhooks
+    if path in ["/api/telegram-webhook", "/api/register-webhook"]:
+        return await call_next(request)
+
+    # 5. Allow Telegram Web App forms & voice streaming
+    if path.startswith("/form/") or path.startswith("/voice-player/") or path.startswith("/api/voice/"):
+        return await call_next(request)
+
+    # 6. Allow public submission of Leave or Loan from staff
+    if method == "POST" and path in ["/api/leave", "/api/loan"]:
+        return await call_next(request)
+
+    # 7. Allow scheduled reports check
+    if path == "/api/cron/check-reports":
+        return await call_next(request)
+
+    # 8. All other /api/* endpoints are protected business routes:
+    # Requires valid admin session (via Cookie, Authorization header, or token parameter)
+    if path.startswith("/api/"):
+        if not check_admin_auth(request):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "សូមចូលប្រើប្រព័ន្ធជាមុនសិន (401 Unauthorized: Admin session required)!"
+                }
+            )
+
+    return await call_next(request)
+
 # ===== Helper =====
 def fix_id(doc):
     doc["_id"] = str(doc["_id"])
@@ -1776,7 +1827,8 @@ async def api_admin_login(payload: AdminLoginRequest):
         max_age=30 * 86400,
         httponly=False,
         samesite="lax",
-        secure=False
+        secure=False,
+        path="/"
     )
     return res
 
@@ -1795,8 +1847,18 @@ async def api_admin_verify(req: Request):
         
     if validate_session_token(token):
         username = token.split("_")[0]
-        return {"authenticated": True, "username": username}
-    return {"authenticated": False}
+        res = JSONResponse(content={"authenticated": True, "username": username})
+        res.set_cookie(
+            key="admin_session",
+            value=token,
+            max_age=30 * 86400,
+            httponly=False,
+            samesite="lax",
+            secure=False,
+            path="/"
+        )
+        return res
+    return JSONResponse(content={"authenticated": False})
 
 @app.post("/api/auth/change-credentials")
 async def api_admin_change_credentials(payload: AdminChangeCredentialsRequest, req: Request):
@@ -5347,6 +5409,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           for (var i = 0; i < keys.length; i++) caches.delete(keys[i]);
         });
       }
+    } catch(e) {}
+
+    // Global fetch interceptor: Attach Admin Session Token to all /api/ calls
+    try {
+      const _origFetch = window.fetch;
+      window.fetch = function(url, options) {
+        options = options || {};
+        const token = localStorage.getItem('acbomlu_admin_token');
+        if (token && typeof url === 'string' && url.startsWith('/api/')) {
+          options.headers = options.headers || {};
+          if (options.headers instanceof Headers) {
+            if (!options.headers.has('Authorization')) options.headers.set('Authorization', 'Bearer ' + token);
+          } else if (Array.isArray(options.headers)) {
+            options.headers.push(['Authorization', 'Bearer ' + token]);
+          } else {
+            if (!options.headers['Authorization']) options.headers['Authorization'] = 'Bearer ' + token;
+          }
+        }
+        return _origFetch.call(this, url, options);
+      };
     } catch(e) {}
   </script>
 
