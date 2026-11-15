@@ -724,6 +724,9 @@ async def schedule_message_timeout_cleanup(chat_id: str, message_id: int, user_i
             curr = user_flows_collection.find_one({"user_id": str(user_id)})
             if curr:
                 if curr.get("step1_msg_id") == message_id or curr.get("reason_msg_id") == message_id or curr.get("purpose_msg_id") == message_id:
+                    old_trig = curr.get("trigger_msg_id")
+                    if old_trig:
+                        delete_telegram_message(chat_id, old_trig)
                     user_flows_collection.delete_one({"user_id": str(user_id)})
     except Exception as e:
         print(f"schedule_message_timeout_cleanup error: {e}")
@@ -4493,6 +4496,8 @@ async def telegram_webhook(req: Request):
                 if reason_msg_id:
                     asyncio.create_task(schedule_message_timeout_cleanup(cq_chat_id, reason_msg_id, cq_user_id, 60))
                 
+                active_flow = user_flows_collection.find_one({"user_id": cq_user_id})
+                trigger_msg_id = active_flow.get("trigger_msg_id") if active_flow else None
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
                     {
@@ -4503,6 +4508,7 @@ async def telegram_webhook(req: Request):
                         "name": cq_name,
                         "is_private": is_cq_private,
                         "chat_id": cq_chat_id,
+                        "trigger_msg_id": trigger_msg_id,
                         "step1_msg_id": cq_msg_id,
                         "reason_msg_id": reason_msg_id
                     },
@@ -4566,10 +4572,13 @@ async def telegram_webhook(req: Request):
                     days_display = f"{days} ថ្ងៃ"
                 
                 # Clean up intermediate reason & step 1 messages so ONLY the final Admin Card remains!
+                trigger_msg_id = active_flow.get("trigger_msg_id") if active_flow else None
                 if cq_msg_id:
                     delete_telegram_message(cq_chat_id, cq_msg_id)
                 if step1_msg_id and step1_msg_id != cq_msg_id:
                     delete_telegram_message(cq_chat_id, step1_msg_id)
+                if trigger_msg_id:
+                    delete_telegram_message(cq_chat_id, trigger_msg_id)
                 
                 # Acknowledge callback
                 if token and cq_id:
@@ -4700,6 +4709,8 @@ async def telegram_webhook(req: Request):
                 if purpose_msg_id:
                     asyncio.create_task(schedule_message_timeout_cleanup(cq_chat_id, purpose_msg_id, cq_user_id, 60))
                 
+                active_flow = user_flows_collection.find_one({"user_id": cq_user_id})
+                trigger_msg_id = active_flow.get("trigger_msg_id") if active_flow else None
                 user_flows_collection.replace_one(
                     {"user_id": cq_user_id},
                     {
@@ -4709,6 +4720,7 @@ async def telegram_webhook(req: Request):
                         "name": cq_name,
                         "is_private": is_cq_private,
                         "chat_id": cq_chat_id,
+                        "trigger_msg_id": trigger_msg_id,
                         "step1_msg_id": cq_msg_id,
                         "purpose_msg_id": purpose_msg_id
                     },
@@ -4764,10 +4776,13 @@ async def telegram_webhook(req: Request):
                 user_flows_collection.delete_one({"user_id": cq_user_id})
                 
                 # Clean up intermediate purpose & step 1 messages so ONLY the final Admin Card remains!
+                trigger_msg_id = active_flow.get("trigger_msg_id") if active_flow else None
                 if cq_msg_id:
                     delete_telegram_message(cq_chat_id, cq_msg_id)
                 if step1_msg_id and step1_msg_id != cq_msg_id:
                     delete_telegram_message(cq_chat_id, step1_msg_id)
+                if trigger_msg_id:
+                    delete_telegram_message(cq_chat_id, trigger_msg_id)
                 
                 # Acknowledge callback
                 if token and cq_id:
@@ -5020,7 +5035,7 @@ async def telegram_webhook(req: Request):
                         f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
                         f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
                         f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
-                        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+                        f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី"
                     )
                     send_telegram_notify(welcome_bot, target_chat_id=c_chat_id)
                 elif m_user and not m_user.get("is_bot"):
@@ -5055,7 +5070,7 @@ async def telegram_webhook(req: Request):
                         f"👇 <b>ក្ដារចុចប៊ូតុងផ្លូវការត្រូវបានភ្ជាប់ជូន៖</b>\n"
                         f"សូមចុចលើប៊ូតុងខាងក្រោមដើម្បីដំណើរការ៖\n"
                         f"• <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ដើម្បីសុំច្បាប់ឈប់សម្រាក\n"
-                        f"• <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / បុរេប្រទាន"
+                        f"• <b>[ 💰 ស្នើកម្ចី ]</b> ដើម្បីស្នើសុំខ្ចីប្រាក់ / កម្ចី"
                     )
                     send_telegram_notify(welcome_bot, target_chat_id=chat_id_str)
                     continue
@@ -5356,14 +5371,21 @@ async def telegram_webhook(req: Request):
 
         # 3. Handle Leave Button -> Step 1: Show Days Selection Buttons
         if is_leave_btn:
+            trigger_msg_id = message.get("message_id")
+            if trigger_msg_id:
+                delete_telegram_message(chat_id_str, trigger_msg_id)
+
             prev_flow = user_flows_collection.find_one({"user_id": user_id_str})
             if prev_flow:
                 old_m1 = prev_flow.get("step1_msg_id")
                 old_m2 = prev_flow.get("reason_msg_id") or prev_flow.get("purpose_msg_id")
+                old_trig = prev_flow.get("trigger_msg_id")
                 if old_m1:
                     delete_telegram_message(chat_id_str, old_m1)
                 if old_m2:
                     delete_telegram_message(chat_id_str, old_m2)
+                if old_trig and old_trig != trigger_msg_id:
+                    delete_telegram_message(chat_id_str, old_trig)
                 user_flows_collection.delete_one({"user_id": user_id_str})
 
             inline_days = {
@@ -5395,6 +5417,7 @@ async def telegram_webhook(req: Request):
                         "step": 1,
                         "name": sender_name,
                         "chat_id": chat_id_str,
+                        "trigger_msg_id": trigger_msg_id,
                         "step1_msg_id": m_id,
                         "created_at": time.time()
                     },
@@ -5405,14 +5428,21 @@ async def telegram_webhook(req: Request):
 
         # 4. Handle Loan Button -> Step 1: Show Amount Selection Buttons
         if is_loan_btn:
+            trigger_msg_id = message.get("message_id")
+            if trigger_msg_id:
+                delete_telegram_message(chat_id_str, trigger_msg_id)
+
             prev_flow = user_flows_collection.find_one({"user_id": user_id_str})
             if prev_flow:
                 old_m1 = prev_flow.get("step1_msg_id")
                 old_m2 = prev_flow.get("reason_msg_id") or prev_flow.get("purpose_msg_id")
+                old_trig = prev_flow.get("trigger_msg_id")
                 if old_m1:
                     delete_telegram_message(chat_id_str, old_m1)
                 if old_m2:
                     delete_telegram_message(chat_id_str, old_m2)
+                if old_trig and old_trig != trigger_msg_id:
+                    delete_telegram_message(chat_id_str, old_trig)
                 user_flows_collection.delete_one({"user_id": user_id_str})
 
             inline_amounts = {
@@ -5449,6 +5479,7 @@ async def telegram_webhook(req: Request):
                         "step": 1,
                         "name": sender_name,
                         "chat_id": chat_id_str,
+                        "trigger_msg_id": trigger_msg_id,
                         "step1_msg_id": m_id,
                         "created_at": time.time()
                     },
@@ -5463,7 +5494,7 @@ async def telegram_webhook(req: Request):
                 f"👋 <b>ជម្រាបសួរ {sender_name}!</b>\n\n"
                 f"📌 <b>របៀបសុំច្បាប់ ឬខ្ចីប្រាក់ជាមួយ Bot AC BOMLU:</b>\n"
                 f"• ចុចប៊ូតុង <b>[ 📝 ស្នើសុំច្បាប់ ]</b> ខាងក្រោម ➡️ រើសចំនួនថ្ងៃ ➡️ រើសមូលហេតុ\n"
-                f"• ចុចប៊ូតុង <b>[ 💰 ស្នើខ្ចីប្រាក់ ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់ ➡️ រើសគោលបំណង\n\n"
+                f"• ចុចប៊ូតុង <b>[ 💰 ស្នើកម្ចី ]</b> ខាងក្រោម ➡️ រើសចំនួនប្រាក់ ➡️ រើសគោលបំណង\n\n"
                 f"👮‍♂️ <b>ពាក្យបញ្ជាសម្រាប់រដ្ឋបាល:</b>\n"
                 f"• <code>/sync_members</code> — Sync ទិន្នន័យបុគ្គលិកពី Telegram Group\n"
                 f"• <code>/weekend_report</code> — របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍\n"
