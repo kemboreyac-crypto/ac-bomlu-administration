@@ -351,6 +351,30 @@ async def enforce_admin_authentication(request: Request, call_next):
     return await call_next(request)
 
 # ===== Helper =====
+def format_date_display_py(d_str: str) -> str:
+    if not d_str:
+        return ""
+    s = str(d_str).strip().replace("/", "-")
+    parts = s.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 4:
+            return f"{parts[2]}-{parts[1]}-{parts[0]}"
+        elif len(parts[2]) == 4:
+            return f"{parts[0]}-{parts[1]}-{parts[2]}"
+    return s
+
+def normalize_date_input_py(d_str: str) -> str:
+    if not d_str:
+        return ""
+    s = str(d_str).strip().replace("/", "-")
+    parts = s.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 2 and len(parts[2]) == 4:
+            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        elif len(parts[0]) == 4:
+            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+    return s
+
 def fix_id(doc):
     doc["_id"] = str(doc["_id"])
     return doc
@@ -832,6 +856,66 @@ def sync_group_members_from_telegram() -> dict:
         print("sync_group_members_from_telegram error:", e)
         return {"success": False, "message": f"កំហុសក្នុងការ Sync: {e}"}
 
+def is_leave_active_on_target_date(leave: dict, target_date: datetime.date, cambodia_tz: timezone) -> bool:
+    """Accurately checks if an approved leave is active on target_date,
+    handling multi-day spans, Sunday roll-forwards, and evening request submissions.
+    """
+    raw_date_str = leave.get("date")
+    gen_dt = None
+    if isinstance(leave.get("_id"), ObjectId):
+        try:
+            gen_dt = leave["_id"].generation_time.astimezone(cambodia_tz)
+        except Exception:
+            gen_dt = None
+
+    if not raw_date_str:
+        if gen_dt:
+            if gen_dt.weekday() == 6 or gen_dt.hour >= 18:
+                start_date = gen_dt.date() + timedelta(days=1)
+                if start_date.weekday() == 6:
+                    start_date += timedelta(days=1)
+            else:
+                start_date = gen_dt.date()
+        else:
+            return False
+    else:
+        norm_str = normalize_date_input_py(raw_date_str)
+        try:
+            start_date = datetime.strptime(norm_str, "%Y-%m-%d").date()
+        except Exception:
+            start_date = gen_dt.date() if gen_dt else target_date
+
+    # If leave start date is Sunday (non-work day), roll forward to Monday
+    if start_date.weekday() == 6:
+        start_date = start_date + timedelta(days=1)
+    elif gen_dt and gen_dt.date() == start_date and gen_dt.hour >= 18 and float(leave.get("days", 1) or 1) >= 1.0:
+        # Evening request submitted at night: roll forward to next day
+        start_date = start_date + timedelta(days=1)
+        if start_date.weekday() == 6:
+            start_date += timedelta(days=1)
+
+    try:
+        days = float(leave.get("days", 1))
+    except (ValueError, TypeError):
+        days = 1.0
+
+    if days <= 0:
+        return False
+
+    # Check span of working days (excluding Sunday)
+    curr_d = start_date
+    counted = 0.0
+    while counted < days:
+        if curr_d.weekday() != 6:  # Work day (Mon-Sat)
+            if curr_d == target_date:
+                return True
+            counted += 1.0
+        curr_d += timedelta(days=1)
+        if (curr_d - start_date).days > 30:  # Safety guard
+            break
+
+    return False
+
 def check_leave_conflicts(emp_name: str) -> str:
     """Feature 4: Alert Admin if multiple staff take leave on the same day!"""
     try:
@@ -846,8 +930,7 @@ def check_leave_conflicts(emp_name: str) -> str:
         
         conflict_names = []
         for l in recent_leaves:
-            doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
-            if doc_date == today_date or l.get("date") == today_str:
+            if is_leave_active_on_target_date(l, today_date, cambodia_tz):
                 ename = l.get("employee_name", "").strip()
                 if ename and ename not in conflict_names:
                     conflict_names.append(ename)
@@ -941,8 +1024,7 @@ def generate_daily_morning_briefing(branch: Optional[str] = None) -> str:
         approved_leaves = list(leaves_collection.find(leave_query))
         emp_leaves = {}  # ename -> total_days
         for l in approved_leaves:
-            doc_date = l["_id"].generation_time.astimezone(cambodia_tz).date()
-            if doc_date == today_date or l.get("date") == now_cam.strftime("%Y-%m-%d"):
+            if is_leave_active_on_target_date(l, today_date, cambodia_tz):
                 ename = (l.get("employee_name") or "").strip()
                 if not ename:
                     continue
@@ -2022,7 +2104,17 @@ async def create_leave(request: LeaveRequest):
     if not data.get("branch"):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
-    date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
+    date_str = (request.date or "").strip()
+    if not date_str:
+        if now.weekday() == 6:  # Sunday -> default to Monday
+            date_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        elif now.hour >= 18:  # Evening after 6 PM -> default to tomorrow
+            next_d = now + timedelta(days=1)
+            if next_d.weekday() == 6:  # If tomorrow is Sunday, advance to Monday
+                next_d += timedelta(days=1)
+            date_str = next_d.strftime("%Y-%m-%d")
+        else:
+            date_str = now.strftime("%Y-%m-%d")
     data["date"] = normalize_date_input_py(date_str)
     if "created_at" not in data:
         data["created_at"] = now.isoformat()
@@ -2124,7 +2216,17 @@ async def create_loan(request: LoanRequest):
     if not data.get("branch"):
         emp = employees_collection.find_one({"name": request.employee_name})
         data["branch"] = emp.get("branch") if emp and emp.get("branch") else "ក្រុមហ៊ុនបូមលូ កំពង់ចាម"
-    date_str = (request.date or "").strip() or now.strftime("%Y-%m-%d")
+    date_str = (request.date or "").strip()
+    if not date_str:
+        if now.weekday() == 6:  # Sunday -> default to Monday
+            date_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        elif now.hour >= 18:  # Evening after 6 PM -> default to tomorrow
+            next_d = now + timedelta(days=1)
+            if next_d.weekday() == 6:  # If tomorrow is Sunday, advance to Monday
+                next_d += timedelta(days=1)
+            date_str = next_d.strftime("%Y-%m-%d")
+        else:
+            date_str = now.strftime("%Y-%m-%d")
     data["date"] = normalize_date_input_py(date_str)
     if "created_at" not in data:
         data["created_at"] = now.isoformat()
@@ -2878,30 +2980,6 @@ def parse_khmer_or_arabic_number(s):
     except ValueError:
         return 0.0
 
-def format_date_display_py(d_str: str) -> str:
-    if not d_str:
-        return ""
-    s = str(d_str).strip().replace("/", "-")
-    parts = s.split("-")
-    if len(parts) == 3:
-        if len(parts[0]) == 4:
-            return f"{parts[2]}-{parts[1]}-{parts[0]}"
-        elif len(parts[2]) == 4:
-            return f"{parts[0]}-{parts[1]}-{parts[2]}"
-    return s
-
-def normalize_date_input_py(d_str: str) -> str:
-    if not d_str:
-        return ""
-    s = str(d_str).strip().replace("/", "-")
-    parts = s.split("-")
-    if len(parts) == 3:
-        if len(parts[0]) == 2 and len(parts[2]) == 4:
-            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-        elif len(parts[0]) == 4:
-            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
-    return s
-
 def extract_trips_and_locations(desc, is_sewage_income=True):
     if not desc:
         return [("សេវាទូទៅ", 1, 0.0)] if is_sewage_income else []
@@ -3557,6 +3635,22 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- Leave Date Selection -->
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">កាលបរិច្ឆេទចាប់ផ្តើមឈប់ *</label>
+        <div class="flex items-center gap-1.5 mb-2">
+          <button type="button" onclick="setLeaveDatePreset('today')" id="btn-date-today"
+            class="flex-1 py-1.5 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300 transition">📅 ថ្ងៃនេះ</button>
+          <button type="button" onclick="setLeaveDatePreset('tomorrow')" id="btn-date-tomorrow"
+            class="flex-1 py-1.5 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300 transition">🌅 ថ្ងៃស្អែក</button>
+        </div>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-lg">calendar_today</span>
+          <input type="date" id="leave-date" required onchange="updateDateButtons()"
+            class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+
       <!-- Days Selection -->
       <div>
         <label class="block text-xs font-medium text-slate-300 mb-1.5">ចំនួនថ្ងៃឈប់សម្រាក</label>
@@ -3619,6 +3713,55 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
       }
     }
 
+    function initLeaveDate() {
+      const now = new Date();
+      let target = new Date();
+      if (now.getHours() >= 18 || now.getDay() === 0) {
+        target.setDate(target.getDate() + 1);
+        if (target.getDay() === 0) target.setDate(target.getDate() + 1);
+      }
+      const yyyy = target.getFullYear();
+      const mm = String(target.getMonth() + 1).padStart(2, '0');
+      const dd = String(target.getDate()).padStart(2, '0');
+      document.getElementById('leave-date').value = `${yyyy}-${mm}-${dd}`;
+      updateDateButtons();
+    }
+
+    function setLeaveDatePreset(which) {
+      const d = new Date();
+      if (which === 'tomorrow') {
+        d.setDate(d.getDate() + 1);
+        if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+      }
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      document.getElementById('leave-date').value = `${yyyy}-${mm}-${dd}`;
+      updateDateButtons();
+    }
+
+    function updateDateButtons() {
+      const cur = document.getElementById('leave-date').value;
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const tom = new Date();
+      tom.setDate(tom.getDate() + 1);
+      if (tom.getDay() === 0) tom.setDate(tom.getDate() + 1);
+      const tomStr = `${tom.getFullYear()}-${String(tom.getMonth()+1).padStart(2,'0')}-${String(tom.getDate()).padStart(2,'0')}`;
+
+      const bToday = document.getElementById('btn-date-today');
+      const bTom = document.getElementById('btn-date-tomorrow');
+      if (bToday) {
+        bToday.className = cur === todayStr ? 'flex-1 py-1.5 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'flex-1 py-1.5 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+      }
+      if (bTom) {
+        bTom.className = cur === tomStr ? 'flex-1 py-1.5 text-xs font-semibold rounded-xl border border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'flex-1 py-1.5 text-xs font-semibold rounded-xl border border-slate-700 bg-slate-800 text-slate-300';
+      }
+    }
+
+    // Initialize date
+    initLeaveDate();
+
     function selectDay(n) {
       document.getElementById('leave-days').value = n;
       document.querySelectorAll('.day-btn').forEach(b => {
@@ -3643,7 +3786,8 @@ LEAVE_FORM_HTML = """<!DOCTYPE html>
 
       const payload = {
         employee_name: document.getElementById('emp-name').value.trim(),
-        days: parseInt(document.getElementById('leave-days').value) || 1,
+        date: document.getElementById('leave-date').value.trim(),
+        days: parseFloat(document.getElementById('leave-days').value) || 1,
         reason: document.getElementById('leave-reason').value.trim()
       };
 
