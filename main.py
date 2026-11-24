@@ -1055,7 +1055,7 @@ def generate_daily_morning_briefing(branch: Optional[str] = None) -> str:
         branch_display = f" - {branch}" if branch else ""
         branch_label = "ក្នុងសាខា" if branch else "ក្នុងប្រព័ន្ធ"
         return (
-            f"🌅 <b>របាយការណ៍វត្តមាន និងច្បាប់ឈប់សម្រាកពេលព្រឹក{branch_display} (ម៉ោង ០៦:០០ ព្រឹក)</b>\n"
+            f"🌅 <b>របាយការណ៍វត្តមាន និងច្បាប់ឈប់សម្រាកពេលព្រឹក{branch_display} (ម៉ោង ០៥:០០ ព្រឹក)</b>\n"
             f"📅 <b>កាលបរិច្ឆេទ:</b> {today_str}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"👥 <b>បុគ្គលិកសរុប{branch_label}:</b> {total_emp} នាក់\n"
@@ -1357,7 +1357,7 @@ def format_telegram_weekend_leave_report(data: dict) -> str:
     
     return (
         f"📢 <b>របាយការណ៍ច្បាប់ត្រូវសងចុងសប្តាហ៍ (ថ្ងៃសៅរ៍ & អាទិត្យ)</b>\n"
-        f"⏰ <b>ជូនដំណឹងស្វ័យប្រវត្តិ:</b> រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ៦:០០ ល្ងាច (18:00)\n"
+        f"⏰ <b>ជូនដំណឹងស្វ័យប្រវត្តិ:</b> រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ៧:០០ ល្ងាច (19:00)\n"
         f"📅 <b>កាលបរិច្ឆេទ:</b> {now_cam_str}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"👥 <b>បុគ្គលិកត្រូវធ្វើការសង:</b> {total_staff} នាក់ (សរុប {total_days} ថ្ងៃ - អនុញ្ញាតប៉ុណ្ណោះ ✅)\n\n"
@@ -1751,8 +1751,8 @@ def check_and_send_scheduled_morning_briefing(force: bool = False) -> bool:
         rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
         last_sent = rec.get("last_daily_briefing_date", "")
 
-        # Trigger if forced OR if it's morning (between 06:00 AM and 11:59 AM) and not yet sent today
-        if force or (6 <= now_cam.hour < 12 and last_sent != today_str):
+        # Trigger if forced OR if it's morning (between 05:00 AM and 11:59 AM) and not yet sent today
+        if force or (5 <= now_cam.hour < 12 and last_sent != today_str):
             branches = get_all_branches()
             sent_count = 0
             
@@ -1789,13 +1789,13 @@ def check_and_send_scheduled_morning_briefing(force: bool = False) -> bool:
     return False
 
 def check_and_send_scheduled_weekend_report() -> bool:
-    """Friday 18:00 (6:00 PM) to 23:59: notifies staff who must compensate work on Saturday & Sunday."""
+    """Friday 19:00 (7:00 PM) to 23:59: notifies staff who must compensate work on Saturday & Sunday."""
     try:
         cambodia_tz = timezone(timedelta(hours=7))
         now_cam = datetime.now(cambodia_tz)
         today_str = now_cam.strftime("%Y-%m-%d")
 
-        if now_cam.weekday() == 4 and now_cam.hour >= 18:
+        if now_cam.weekday() == 4 and now_cam.hour >= 19:
             rec = settings_collection.find_one({"_id": "scheduled_reports_state"}) or {}
             last_sent = rec.get("last_weekend_report_date", "")
             if last_sent != today_str:
@@ -7100,7 +7100,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
               <p class="text-xs text-gray-500 font-medium">កាលវិភាគស្វ័យប្រវត្តិ</p>
-              <p class="text-xs sm:text-sm font-semibold text-emerald-600">រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ០៦:០០ ល្ងាច (18:00)</p>
+              <p class="text-xs sm:text-sm font-semibold text-emerald-600">រៀងរាល់ថ្ងៃសុក្រ ម៉ោង ០៧:០០ ល្ងាច (19:00)</p>
             </div>
           </div>
         </div>
